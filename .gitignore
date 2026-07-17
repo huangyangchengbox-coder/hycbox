@@ -1,0 +1,17 @@
+﻿node_modules/
+miniprogram_npm/
+.idea/
+.vscode/
+*.log
+project.private.config.json
+.DS_Store
+Thumbs.db
+.specstory/
+.cursor/
+miniprogram/packageAPI/
+miniprogram/packageCloud/
+miniprogram/packageComponent/
+miniprogram/packageExtend/
+miniprogram/page/
+miniprogram/workers/
+cloudfunctions/

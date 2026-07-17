@@ -1,0 +1,69 @@
+<view class="hyc-page">
+  <view class="hyc-card" wx:if="{{publication}}">
+    <view class="hyc-title">{{publication.title}}</view>
+    <view class="hyc-sub">剩余 {{publication.remainBags}} 袋</view>
+  </view>
+
+  <view class="hyc-card">
+    <view class="hyc-title">选择地址</view>
+
+    <view class="picker-label">期数</view>
+    <picker mode="selector" range="{{phaseNames}}" value="{{phaseIndex}}" bindchange="onPhaseChange">
+      <view class="picker-value">{{phaseNames[phaseIndex] || '请选择期数'}}</view>
+    </picker>
+
+    <view class="picker-label">楼栋</view>
+    <picker mode="selector" range="{{buildingNames}}" value="{{buildingIndex}}" bindchange="onBuildingChange">
+      <view class="picker-value">{{buildingNames[buildingIndex] || '请选择楼栋'}}</view>
+    </picker>
+
+    <view class="picker-label">单元</view>
+    <picker mode="selector" range="{{unitOptions}}" value="{{unitIndex}}" bindchange="onUnitChange">
+      <view class="picker-value">{{unitOptions[unitIndex] || '请选择单元'}}</view>
+    </picker>
+
+    <view class="picker-label">门牌号</view>
+    <picker mode="selector" range="{{roomLabels}}" value="{{roomIndex}}" bindchange="onRoomChange">
+      <view class="picker-value">{{roomLabels[roomIndex] || '请选择门牌'}}</view>
+    </picker>
+
+    <view class="divider">或搜索门牌</view>
+    <input
+      class="hyc-input"
+      placeholder="输入楼栋/门牌号搜索，如 2号楼 1501"
+      value="{{searchKeyword}}"
+      bindinput="onSearchInput"
+    />
+    <view class="hyc-search-result" wx:if="{{searchResults.length > 0}}">
+      <view
+        class="hyc-search-item {{selectedRoom && selectedRoom.id === item.id ? 'active' : ''}}"
+        wx:for="{{searchResults}}"
+        wx:key="id"
+        data-index="{{index}}"
+        bindtap="selectSearchResult"
+      >
+        {{item.label}}
+      </view>
+    </view>
+  </view>
+
+  <view class="hyc-card">
+    <view class="hyc-title">领取信息</view>
+    <view class="picker-label">您的称呼</view>
+    <input class="hyc-input" placeholder="如 张先生" value="{{userName}}" bindinput="onNameInput" />
+
+    <view class="picker-label">领取袋数</view>
+    <view class="quantity-row">
+      <button size="mini" bindtap="changeQuantity" data-delta="-1">-</button>
+      <text class="quantity-num">{{quantity}}</text>
+      <button size="mini" bindtap="changeQuantity" data-delta="1">+</button>
+    </view>
+  </view>
+
+  <view class="hyc-card" wx:if="{{selectedRoom}}">
+    <view class="hyc-sub">已选地址</view>
+    <view class="hyc-title" style="font-size:30rpx">{{selectedRoom.label}}</view>
+  </view>
+
+  <button class="hyc-btn-primary submit-btn" bindtap="submitOrder">提交领取</button>
+</view>

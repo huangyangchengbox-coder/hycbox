@@ -1,0 +1,64 @@
+<view class="hyc-page">
+  <view class="hyc-card stats-card">
+    <view class="stats-row">
+      <view class="stat-item">
+        <view class="hyc-stat-num">{{stats.pendingCount}}</view>
+        <view class="hyc-sub">待配送户数</view>
+      </view>
+      <view class="stat-item">
+        <view class="hyc-stat-num">{{stats.pendingBags}}</view>
+        <view class="hyc-sub">待配送袋数</view>
+      </view>
+      <view class="stat-item">
+        <view class="hyc-stat-num">{{stats.completedCount}}</view>
+        <view class="hyc-sub">已完成</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="hyc-card">
+    <view class="picker-label">选择发布批次</view>
+    <picker mode="selector" range="{{pubTitles}}" value="{{pubIndex}}" bindchange="onPubChange">
+      <view class="picker-value">{{pubTitles[pubIndex] || '请选择'}}</view>
+    </picker>
+  </view>
+
+  <view class="hyc-card building-group" wx:for="{{buildingGroups}}" wx:key="buildingName">
+    <view class="hyc-row" bindtap="toggleGroup" data-index="{{index}}">
+      <view>
+        <view class="hyc-title" style="font-size:30rpx">{{item.phaseName}} {{item.buildingName}}</view>
+        <view class="hyc-sub">{{item.orderCount}} 户 · 共 {{item.totalBags}} 袋</view>
+      </view>
+      <text class="expand-icon">{{item.expanded ? '▼' : '▶'}}</text>
+    </view>
+
+    <view wx:if="{{item.expanded}}">
+      <view class="order-item" wx:for="{{item.orders}}" wx:for-item="order" wx:key="id">
+        <view class="hyc-row">
+          <view>
+            <view>{{order.roomLabel}}</view>
+            <view class="hyc-sub">{{order.userName}} · {{order.quantity}} 袋 · {{order.createdAt}}</view>
+          </view>
+          <button
+            size="mini"
+            class="hyc-btn-primary mini-btn"
+            data-id="{{order.id}}"
+            bindtap="completeOrder"
+          >
+            已送达
+          </button>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="hyc-empty" wx:if="{{!loading && buildingGroups.length === 0}}">
+    暂无待配送订单
+  </view>
+
+  <view class="hyc-bottom-bar">
+    <view class="hyc-bottom-item" bindtap="goPublish">发布</view>
+    <view class="hyc-bottom-item active">配送管理</view>
+    <view class="hyc-bottom-item" bindtap="switchRole">切换身份</view>
+  </view>
+</view>

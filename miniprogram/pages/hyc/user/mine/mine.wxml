@@ -1,0 +1,22 @@
+<view class="hyc-page">
+  <view class="hyc-card" wx:for="{{orders}}" wx:key="id">
+    <view class="hyc-row">
+      <text class="hyc-title" style="font-size:30rpx">{{item.roomLabel}}</text>
+      <text class="hyc-tag {{item.status === 'pending' ? 'hyc-tag-pending' : 'hyc-tag-done'}}">
+        {{item.status === 'pending' ? '待配送' : '已送达'}}
+      </text>
+    </view>
+    <view class="hyc-sub">领取 {{item.quantity}} 袋 · {{item.createdAt}}</view>
+    <view class="hyc-sub" wx:if="{{item.deliveredAt}}">送达时间：{{item.deliveredAt}}</view>
+  </view>
+
+  <view class="hyc-empty" wx:if="{{!loading && orders.length === 0}}">
+    暂无领取记录
+  </view>
+
+  <view class="hyc-bottom-bar">
+    <view class="hyc-bottom-item" bindtap="goHome">首页</view>
+    <view class="hyc-bottom-item active">我的订单</view>
+    <view class="hyc-bottom-item" bindtap="switchRole">切换身份</view>
+  </view>
+</view>
