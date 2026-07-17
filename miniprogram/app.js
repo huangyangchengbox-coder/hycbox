@@ -1,21 +1,11 @@
-const config = require('./config')
 const themeListeners = []
-global.isDemo = false
-App({
 
+App({
   onLaunch(opts, data) {
     console.log('App Launch', opts)
     if (data && data.path) {
       wx.navigateTo({
         url: data.path,
-      })
-    }
-    if (!wx.cloud) {
-      console.error('请使用 2.2.3 或以上的基础库以使用云能力')
-    } else {
-      wx.cloud.init({
-        env: config.envId,
-        traceUser: true,
       })
     }
     this.bootstrapWxSession()
@@ -78,8 +68,7 @@ App({
     adminToken: wx.getStorageSync('hyc_admin_token') || '',
     adminId: wx.getStorageSync('hyc_admin_id') || '',
     adminName: wx.getStorageSync('hyc_admin_name') || '',
-    isSuperAdmin: wx.getStorageSync('hyc_is_super_admin') === '1',
-    iconTabbar: '/page/weui/example/images/icon_tabbar.png',
+    isSuperAdmin: wx.getStorageSync('hyc_is_super_admin') === '1'
   },
   getUserOpenId(callback) {
     const self = this
