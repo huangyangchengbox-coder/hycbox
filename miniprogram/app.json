@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/hyc/user/home/home",
+    "pages/hyc/user/community/community",
     "pages/hyc/user/order/order",
     "pages/hyc/user/mine/mine",
     "pages/hyc/user/profile/profile",

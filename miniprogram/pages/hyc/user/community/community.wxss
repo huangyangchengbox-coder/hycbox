@@ -1,0 +1,24 @@
+@import "../../common.wxss";
+
+.picker-label {
+  margin-top: 24rpx;
+  margin-bottom: 12rpx;
+  font-size: 26rpx;
+  color: #666;
+}
+
+.picker-value {
+  padding: 22rpx 24rpx;
+  background: #f5f6f8;
+  border-radius: 12rpx;
+  font-size: 30rpx;
+  color: #1a1a1a;
+}
+
+.tip-no-phase {
+  margin-top: 24rpx;
+}
+
+.save-btn {
+  margin-top: 48rpx;
+}

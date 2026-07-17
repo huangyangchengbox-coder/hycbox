@@ -1,9 +1,11 @@
 const api = require('../../../../services/api')
+const communityPref = require('../../../../services/communityPref')
 
 Page({
   data: {
     publications: [],
-    loading: true
+    loading: true,
+    communityLabel: ''
   },
 
   onLoad(options) {
@@ -14,6 +16,15 @@ Page({
   onShow() {
     const app = getApp()
     app.globalData.role = 'user'
+
+    if (!communityPref.hasPref()) {
+      wx.redirectTo({ url: '/pages/hyc/user/community/community' })
+      return
+    }
+
+    const pref = communityPref.getPref()
+    this.setData({ communityLabel: communityPref.formatLabel(pref) })
+
     // 不在这里强制写 storage role，避免覆盖启动时的管理员偏好；切换时已 syncRole
     if (!this.forceStay && !this.entryChecked) {
       this.entryChecked = true
@@ -37,8 +48,16 @@ Page({
   },
 
   loadData() {
-    this.setData({ loading: true })
-    api.listPublications().then(res => {
+    const pref = communityPref.getPref()
+    if (!pref) {
+      wx.redirectTo({ url: '/pages/hyc/user/community/community' })
+      return
+    }
+    this.setData({ loading: true, communityLabel: communityPref.formatLabel(pref) })
+    api.listPublications({
+      communityId: pref.communityId,
+      phaseId: pref.phaseId || undefined
+    }).then(res => {
       if (res.code === 0) {
         this.setData({ publications: res.data || [] })
       }
@@ -65,5 +84,9 @@ Page({
 
   goProfile() {
     wx.redirectTo({ url: '/pages/hyc/user/profile/profile' })
+  },
+
+  goChangeCommunity() {
+    wx.navigateTo({ url: '/pages/hyc/user/community/community?change=1' })
   }
 })

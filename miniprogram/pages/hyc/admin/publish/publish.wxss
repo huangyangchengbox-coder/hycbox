@@ -30,7 +30,7 @@
 }
 
 .form-wrap.form-open {
-  max-height: 1100rpx;
+  max-height: 1600rpx;
   opacity: 1;
   margin-top: 8rpx;
 }
@@ -71,6 +71,14 @@
 
 .save-btn {
   margin-top: 28rpx;
+}
+
+.phase-scope-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8rpx;
+  padding: 8rpx 0;
 }
 
 .pub-item {

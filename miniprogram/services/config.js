@@ -4,8 +4,8 @@
  */
 module.exports = {
   useMock: false,
-  // 本地调试
-  baseUrl: 'http://127.0.0.1:8080/api',
-  // 线上：'http://8.152.99.189:8080/api'
+  // 线上服务器
+  baseUrl: 'http://8.152.99.189:8080/api',
+  // 本地调试：'http://127.0.0.1:8080/api'
   timeout: 20000
 }

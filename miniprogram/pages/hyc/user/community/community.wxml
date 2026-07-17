@@ -1,0 +1,25 @@
+<view class="hyc-page">
+  <view class="hyc-card">
+    <view class="hyc-title">{{fromChange ? '修改小区' : '选择你的小区'}}</view>
+    <view class="hyc-sub">选好后会记住，下次无需再选；可随时在「我的」里修改</view>
+  </view>
+
+  <view class="hyc-card" wx:if="{{!loading}}">
+    <view class="picker-label">小区</view>
+    <picker mode="selector" range="{{communityNames}}" value="{{communityIndex}}" bindchange="onCommunityChange">
+      <view class="picker-value">{{communityNames[communityIndex] || '请选择'}}</view>
+    </picker>
+
+    <block wx:if="{{hasPhases}}">
+      <view class="picker-label">期数</view>
+      <picker mode="selector" range="{{phaseNames}}" value="{{phaseIndex}}" bindchange="onPhaseChange">
+        <view class="picker-value">{{phaseNames[phaseIndex] || '请选择'}}</view>
+      </picker>
+    </block>
+    <view wx:else class="hyc-sub tip-no-phase">该小区暂无分期</view>
+
+    <button class="hyc-btn-primary save-btn" bindtap="confirm">确认</button>
+  </view>
+
+  <view class="hyc-empty" wx:if="{{loading}}">加载中...</view>
+</view>

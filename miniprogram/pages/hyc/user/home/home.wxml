@@ -1,7 +1,16 @@
 <view class="hyc-page">
+  <view class="hyc-card community-bar" bindtap="goChangeCommunity" wx:if="{{communityLabel}}">
+    <view class="community-main">
+      <text class="community-label">{{communityLabel}}</text>
+      <text class="hyc-sub">点击可修改</text>
+    </view>
+    <text class="menu-arrow">›</text>
+  </view>
+
   <view class="hyc-card" wx:for="{{publications}}" wx:key="id">
     <image wx:if="{{item.imageUrl}}" class="hyc-fruit-img" src="{{item.imageUrl}}" mode="aspectFill" />
     <view class="hyc-title" style="margin-top:16rpx">{{item.title}}</view>
+    <view class="hyc-sub" wx:if="{{item.phaseName}}">{{item.communityName}} · {{item.phaseName}}</view>
     <view class="hyc-sub">发布人：{{item.adminName || '管理者'}} · {{item.createdAt}}</view>
     <view class="hyc-row">
       <text>剩余 <text class="hyc-stat-num">{{item.remainBags}}</text> {{item.unit || '袋'}}</text>

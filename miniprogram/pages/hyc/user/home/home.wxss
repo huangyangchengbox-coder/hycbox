@@ -1,1 +1,26 @@
 @import "../../common.wxss";
+
+.community-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx;
+}
+
+.community-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.community-label {
+  font-size: 30rpx;
+  color: #1a1a1a;
+  font-weight: 500;
+}
+
+.menu-arrow {
+  font-size: 40rpx;
+  color: #ccc;
+  line-height: 1;
+}

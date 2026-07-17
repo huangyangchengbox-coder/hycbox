@@ -14,6 +14,25 @@
 
     <view class="form-wrap {{showForm ? 'form-open' : ''}}">
       <view class="form-inner">
+        <view class="picker-label">小区</view>
+        <picker mode="selector" range="{{communityNames}}" value="{{communityIndex}}" bindchange="onCommunityChange">
+          <view class="picker-value">{{communityNames[communityIndex] || '请选择小区'}}</view>
+        </picker>
+
+        <block wx:if="{{hasPhases}}">
+          <view class="picker-label">面向范围</view>
+          <view class="phase-scope-row">
+            <text class="hyc-sub">全部期</text>
+            <switch checked="{{allPhases}}" bindchange="onAllPhasesSwitch" color="#07c160" />
+          </view>
+          <block wx:if="{{!allPhases}}">
+            <view class="picker-label">指定期数</view>
+            <picker mode="selector" range="{{phaseNames}}" value="{{phaseIndex}}" bindchange="onPhaseChange">
+              <view class="picker-value">{{phaseNames[phaseIndex] || '请选择期数'}}</view>
+            </picker>
+          </block>
+        </block>
+
         <view class="picker-label">物品名称</view>
         <input class="hyc-input" placeholder="如 新鲜苹果" value="{{title}}" bindinput="onTitleInput" />
 
@@ -51,6 +70,9 @@
         <text class="hyc-tag {{item.status === 'ended' ? 'hyc-tag-done' : 'hyc-tag-pending'}}">
           {{item.status === 'ended' ? '已结束' : '进行中'}}
         </text>
+      </view>
+      <view class="hyc-sub" wx:if="{{item.communityName}}">
+        {{item.communityName}}{{item.phaseName ? ' · ' + item.phaseName : ' · 全部期'}}
       </view>
       <view class="hyc-row">
         <text class="hyc-sub">剩余 {{item.remainBags}}/{{item.totalBags}} {{item.unit || '袋'}}</text>

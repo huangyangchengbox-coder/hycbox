@@ -1,9 +1,11 @@
 const api = require('../../../../services/api')
+const communityPref = require('../../../../services/communityPref')
 
 Page({
   data: {
     publicationId: '',
     publication: null,
+    communityId: '',
     phases: [],
     phaseNames: [],
     phaseIndex: 0,
@@ -23,13 +25,22 @@ Page({
   },
 
   onLoad(options) {
-    this.setData({ publicationId: options.publicationId || '' })
+    const pref = communityPref.getPref() || communityPref.getDefault()
+    this.setData({
+      publicationId: options.publicationId || '',
+      communityId: pref.communityId
+    })
+    this.prefPhaseId = pref.phaseId || ''
     this.loadPublication()
     this.loadPhases()
   },
 
   loadPublication() {
-    api.listPublications().then(res => {
+    const pref = communityPref.getPref() || communityPref.getDefault()
+    api.listPublications({
+      communityId: pref.communityId,
+      phaseId: pref.phaseId || undefined
+    }).then(res => {
       if (res.code === 0) {
         const publication = (res.data || []).find(item => item.id === this.data.publicationId)
         this.setData({ publication: publication || null })
@@ -38,15 +49,22 @@ Page({
   },
 
   loadPhases() {
-    api.getPhases().then(res => {
+    api.getPhases(this.data.communityId).then(res => {
       if (res.code === 0) {
         const phases = res.data || []
+        let phaseIndex = 0
+        if (this.prefPhaseId) {
+          const idx = phases.findIndex(p => p.id === this.prefPhaseId)
+          if (idx >= 0) {
+            phaseIndex = idx
+          }
+        }
         this.setData({
           phases,
           phaseNames: phases.map(item => item.name)
         })
         if (phases.length > 0) {
-          this.refreshBuildings(0)
+          this.refreshBuildings(phaseIndex)
         }
       }
     })
@@ -87,6 +105,7 @@ Page({
   loadRooms(building, unit) {
     const phase = this.data.phases[this.data.phaseIndex]
     api.getRooms({
+      communityId: this.data.communityId,
       phaseId: phase.id,
       buildingId: building.id,
       unit
@@ -135,7 +154,7 @@ Page({
       this.setData({ searchResults: [] })
       return
     }
-    api.searchRooms(keyword).then(res => {
+    api.searchRooms(keyword, this.data.communityId).then(res => {
       if (res.code === 0) {
         this.setData({ searchResults: res.data || [] })
       }

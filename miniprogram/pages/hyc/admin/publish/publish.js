@@ -1,5 +1,6 @@
 const api = require('../../../../services/api')
 const adminSession = require('../../../../services/adminSession')
+const communityPref = require('../../../../services/communityPref')
 
 Page({
   data: {
@@ -12,6 +13,15 @@ Page({
     unitOtherIndex: 5,
     customUnit: '',
     currentUnit: '袋',
+    communities: [],
+    communityNames: [],
+    communityIndex: 0,
+    phases: [],
+    phaseNames: [],
+    phaseIndex: 0,
+    hasPhases: false,
+    /** 面向全部期 */
+    allPhases: true,
     publications: [],
     adminName: '',
     isSuperAdmin: false
@@ -26,7 +36,74 @@ Page({
       adminName: wx.getStorageSync('hyc_admin_name') || '管理者',
       isSuperAdmin: wx.getStorageSync('hyc_is_super_admin') === '1'
     })
+    this.loadCommunities()
     this.loadPublications()
+  },
+
+  loadCommunities() {
+    api.listCommunities().then(res => {
+      const list = (res.code === 0 && res.data && res.data.length)
+        ? res.data
+        : require('../../../../data/buildingHelper').listCommunities()
+      if (list.length === 0) {
+        return
+      }
+      const pref = communityPref.getPref() || communityPref.getDefault()
+      let communityIndex = list.findIndex(c => c.id === pref.communityId)
+      if (communityIndex < 0) {
+        communityIndex = 0
+      }
+      this.setData({
+        communities: list,
+        communityNames: list.map(c => c.name),
+        communityIndex
+      })
+      this.applyCommunity(communityIndex, list)
+    }).catch(() => {
+      const list = require('../../../../data/buildingHelper').listCommunities()
+      if (!list.length) {
+        return
+      }
+      this.setData({
+        communities: list,
+        communityNames: list.map(c => c.name),
+        communityIndex: 0
+      })
+      this.applyCommunity(0, list)
+    })
+  },
+
+  applyCommunity(communityIndex, listOverride) {
+    const list = listOverride || this.data.communities
+    const community = list[communityIndex]
+    if (!community) {
+      return
+    }
+    const phases = community.phases || []
+    const hasPhases = !!community.hasPhases && phases.length > 0
+    this.setData({
+      communityIndex,
+      phases,
+      phaseNames: phases.map(p => p.name),
+      phaseIndex: 0,
+      hasPhases,
+      allPhases: hasPhases
+    })
+  },
+
+  onCommunityChange(e) {
+    this.applyCommunity(Number(e.detail.value))
+  },
+
+  onPhaseChange(e) {
+    this.setData({
+      phaseIndex: Number(e.detail.value),
+      allPhases: false
+    })
+  },
+
+  onAllPhasesSwitch(e) {
+    this.setData({ allPhases: !!e.detail.value })
   },
 
   loadPublications() {
@@ -58,7 +135,8 @@ Page({
       imageUrl: showForm ? this.data.imageUrl : '',
       unitIndex: showForm ? this.data.unitIndex : 0,
       customUnit: showForm ? this.data.customUnit : '',
-      currentUnit: showForm ? this.data.currentUnit : '袋'
+      currentUnit: showForm ? this.data.currentUnit : '袋',
+      allPhases: showForm ? this.data.allPhases : true
     })
   },
 
@@ -119,9 +197,17 @@ Page({
   },
 
   submitPublish() {
-    const { title, totalBags, imageUrl } = this.data
+    const {
+      title, totalBags, imageUrl, communities, communityIndex,
+      hasPhases, allPhases, phases, phaseIndex
+    } = this.data
     const bags = Number(totalBags)
     const unit = this.resolveUnit()
+    const community = communities[communityIndex]
+    if (!community) {
+      wx.showToast({ title: '请选择小区', icon: 'none' })
+      return
+    }
     if (!title.trim()) {
       wx.showToast({ title: '请填写名称', icon: 'none' })
       return
@@ -135,12 +221,28 @@ Page({
       return
     }
 
+    let phaseId
+    let phaseName = ''
+    if (hasPhases && !allPhases) {
+      const phase = phases[phaseIndex]
+      if (!phase) {
+        wx.showToast({ title: '请选择期数', icon: 'none' })
+        return
+      }
+      phaseId = phase.id
+      phaseName = phase.name
+    }
+
     wx.showLoading({ title: '发布中' })
     api.createPublication({
       title: title.trim(),
       totalBags: bags,
       unit: unit,
-      imageUrl
+      imageUrl,
+      communityId: community.id,
+      communityName: community.name,
+      phaseId: phaseId || undefined,
+      phaseName: phaseName || undefined
     }).then(res => {
       wx.hideLoading()
       if (res.code === 0) {
@@ -152,7 +254,8 @@ Page({
           imageUrl: '',
           unitIndex: 0,
           customUnit: '',
-          currentUnit: '袋'
+          currentUnit: '袋',
+          allPhases: true
         })
         this.loadPublications()
       } else {

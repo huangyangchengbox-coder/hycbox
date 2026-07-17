@@ -5,6 +5,13 @@
   </view>
 
   <view class="hyc-card menu-card">
+    <view class="menu-item" bindtap="goChangeCommunity">
+      <view>
+        <view class="menu-title">我的小区</view>
+        <view class="hyc-sub">{{communityLabel}}</view>
+      </view>
+      <text class="menu-arrow">›</text>
+    </view>
     <view class="menu-item" bindtap="goAdmin">
       <view>
         <view class="menu-title">进入管理者</view>

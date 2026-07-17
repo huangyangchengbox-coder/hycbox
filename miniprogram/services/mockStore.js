@@ -24,6 +24,10 @@ const store = {
       totalBags: 50,
       remainBags: 38,
       unit: '袋',
+      communityId: 'hengda_mingdu',
+      communityName: '宜昌·恒大名都',
+      phaseId: '',
+      phaseName: '',
       status: 'active',
       createdAt: '2026-07-17 09:00:00'
     }
@@ -60,9 +64,19 @@ const store = {
   ]
 }
 
-function listPublications() {
+function listPublications(query) {
+  const q = query || {}
   return store.publications
     .filter(item => item.status === 'active')
+    .filter(item => {
+      if (q.communityId && item.communityId && item.communityId !== q.communityId) {
+        return false
+      }
+      if (q.phaseId && item.phaseId && item.phaseId !== q.phaseId) {
+        return false
+      }
+      return true
+    })
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
 }
 
@@ -78,6 +92,10 @@ function createPublication(payload) {
     totalBags: payload.totalBags,
     remainBags: payload.totalBags,
     unit: payload.unit || '袋',
+    communityId: payload.communityId || 'hengda_mingdu',
+    communityName: payload.communityName || '宜昌·恒大名都',
+    phaseId: payload.phaseId || '',
+    phaseName: payload.phaseName || '',
     status: 'active',
     createdAt: nowStr()
   }

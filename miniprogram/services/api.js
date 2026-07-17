@@ -153,36 +153,58 @@ const api = {
     return request({ url: '/community/info' })
   },
 
-  getPhases() {
+  /** 小区列表（支持多小区扩展）；失败时回退内置宜昌·恒大名都 */
+  listCommunities() {
     if (config.useMock) {
-      return wrapMock(() => ({ code: 0, data: buildingHelper.getPhases() }))
+      return wrapMock(() => ({ code: 0, data: buildingHelper.listCommunities() }))
     }
-    return request({ url: '/community/phases' })
+    return request({ url: '/community/list' }).then(res => {
+      if (res && res.code === 0 && res.data && res.data.length) {
+        return res
+      }
+      return { code: 0, data: buildingHelper.listCommunities() }
+    }).catch(() => ({ code: 0, data: buildingHelper.listCommunities() }))
+  },
+
+  getPhases(communityId) {
+    if (config.useMock) {
+      return wrapMock(() => ({ code: 0, data: buildingHelper.getPhases(communityId) }))
+    }
+    return request({ url: '/community/phases', data: communityId ? { communityId } : {} })
   },
 
   getRooms(params) {
     if (config.useMock) {
       return wrapMock(() => ({
         code: 0,
-        data: buildingHelper.getRoomsByBuilding(params.phaseId, params.buildingId, params.unit)
+        data: buildingHelper.getRoomsByBuilding(
+          params.communityId,
+          params.phaseId,
+          params.buildingId,
+          params.unit
+        )
       }))
     }
     return request({ url: '/community/rooms', data: params })
   },
 
-  searchRooms(keyword) {
+  searchRooms(keyword, communityId) {
     if (config.useMock) {
-      return wrapMock(() => ({ code: 0, data: buildingHelper.searchRooms(keyword) }))
+      return wrapMock(() => ({ code: 0, data: buildingHelper.searchRooms(keyword, 30, communityId) }))
     }
-    return request({ url: '/community/rooms/search', data: { keyword } })
+    return request({
+      url: '/community/rooms/search',
+      data: { keyword, communityId: communityId || undefined }
+    })
   },
 
-  /** 用户端：全部发布 */
-  listPublications() {
+  /** 用户端：按小区/期数筛选发布 */
+  listPublications(params) {
+    const query = params || {}
     if (config.useMock) {
-      return wrapMock(() => ({ code: 0, data: mockStore.listPublications() }))
+      return wrapMock(() => ({ code: 0, data: mockStore.listPublications(query) }))
     }
-    return request({ url: '/publications' })
+    return request({ url: '/publications', data: query })
   },
 
   /** 管理者端：仅自己的发布 */
