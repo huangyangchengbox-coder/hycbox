@@ -18,6 +18,7 @@ Page({
     searchKeyword: '',
     searchResults: [],
     userName: '',
+    remark: '',
     quantity: 1
   },
 
@@ -94,7 +95,7 @@ Page({
         const rooms = res.data || []
         this.setData({
           rooms,
-          roomLabels: rooms.map(item => `${item.unit}单元 ${item.roomNo}`),
+          roomLabels: rooms.map(item => item.roomNo || ''),
           roomIndex: 0,
           selectedRoom: rooms[0] || null
         })
@@ -154,6 +155,10 @@ Page({
     this.setData({ userName: e.detail.value })
   },
 
+  onRemarkInput(e) {
+    this.setData({ remark: e.detail.value })
+  },
+
   changeQuantity(e) {
     const delta = Number(e.currentTarget.dataset.delta)
     let quantity = this.data.quantity + delta
@@ -168,7 +173,7 @@ Page({
   },
 
   submitOrder() {
-    const { publicationId, selectedRoom, userName, quantity, publication } = this.data
+    const { publicationId, selectedRoom, userName, remark, quantity, publication } = this.data
     if (!selectedRoom) {
       wx.showToast({ title: '请选择门牌', icon: 'none' })
       return
@@ -187,7 +192,8 @@ Page({
       publicationId,
       roomId: selectedRoom.id,
       quantity,
-      userName: userName.trim()
+      userName: userName.trim(),
+      remark: (remark || '').trim()
     }).then(res => {
       wx.hideLoading()
       if (res.code === 0) {
@@ -195,6 +201,8 @@ Page({
         setTimeout(() => {
           wx.redirectTo({ url: '/pages/hyc/user/mine/mine' })
         }, 800)
+      } else {
+        wx.showToast({ title: res.message || '提交失败', icon: 'none' })
       }
     }).catch(err => {
       wx.hideLoading()

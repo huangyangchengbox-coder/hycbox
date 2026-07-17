@@ -6,17 +6,22 @@
         {{item.status === 'pending' ? '待配送' : '已送达'}}
       </text>
     </view>
-    <view class="hyc-sub">领取 {{item.quantity}} 袋 · {{item.createdAt}}</view>
+    <view class="hyc-sub">登记派送 {{item.quantity}} {{item.qtyUnit || '袋'}} · {{item.createdAt}}</view>
+    <view class="hyc-sub" wx:if="{{item.status === 'completed' && item.deliveredQuantity != null}}">
+      实际送达 {{item.deliveredQuantity}} {{item.qtyUnit || '袋'}}
+      <text wx:if="{{item.extraQuantity > 0}}">（超出申请 {{item.extraQuantity}}）</text>
+    </view>
+    <view class="hyc-sub" wx:if="{{item.remark}}">备注：{{item.remark}}</view>
     <view class="hyc-sub" wx:if="{{item.deliveredAt}}">送达时间：{{item.deliveredAt}}</view>
   </view>
 
   <view class="hyc-empty" wx:if="{{!loading && orders.length === 0}}">
-    暂无领取记录
+    暂无派送记录
   </view>
 
   <view class="hyc-bottom-bar">
     <view class="hyc-bottom-item" bindtap="goHome">首页</view>
     <view class="hyc-bottom-item active">我的订单</view>
-    <view class="hyc-bottom-item" bindtap="switchRole">切换身份</view>
+    <view class="hyc-bottom-item" bindtap="goProfile">我的</view>
   </view>
 </view>

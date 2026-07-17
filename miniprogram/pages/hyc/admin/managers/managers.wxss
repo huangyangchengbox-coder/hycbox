@@ -1,0 +1,92 @@
+@import "../../common.wxss";
+
+.head-row {
+  align-items: flex-start;
+  margin-top: 0;
+}
+
+.mini-add {
+  margin: 0 !important;
+  padding: 0 20rpx !important;
+  font-size: 24rpx !important;
+  line-height: 2 !important;
+}
+
+.cancel-btn {
+  margin: 0 !important;
+  padding: 0 20rpx !important;
+  font-size: 24rpx !important;
+  line-height: 2 !important;
+  background: #fff !important;
+  color: #666 !important;
+  border: 1rpx solid #ddd !important;
+}
+
+.form-wrap {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.28s ease, opacity 0.22s ease;
+}
+
+.form-wrap.form-open {
+  max-height: 700rpx;
+  opacity: 1;
+  margin-top: 8rpx;
+}
+
+.form-inner {
+  padding-top: 8rpx;
+}
+
+.picker-label {
+  font-size: 26rpx;
+  color: #666;
+  margin-top: 20rpx;
+}
+
+.save-btn {
+  margin-top: 28rpx;
+}
+
+.list-card {
+  overflow: hidden;
+  padding-bottom: 8rpx;
+}
+
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.swipe-row:last-child {
+  border-bottom: none;
+}
+
+.swipe-actions {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.swipe-del {
+  width: 140rpx;
+  background: #ff4d4f;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+}
+
+.swipe-content {
+  position: relative;
+  z-index: 1;
+  background: #fff;
+  padding: 20rpx 0;
+  transition: transform 0.15s ease;
+}

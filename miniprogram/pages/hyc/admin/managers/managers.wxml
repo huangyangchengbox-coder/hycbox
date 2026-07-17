@@ -1,0 +1,69 @@
+<view class="hyc-page">
+  <view class="hyc-card">
+    <view class="hyc-row head-row">
+      <view>
+        <view class="hyc-title">管理员账号</view>
+        <view class="hyc-sub">仅超级管理员可操作 · 左滑可删除</view>
+      </view>
+      <button
+        size="mini"
+        class="{{showForm ? 'cancel-btn' : 'hyc-btn-primary mini-add'}}"
+        bindtap="toggleForm"
+      >{{showForm ? '收起' : '添加管理员'}}</button>
+    </view>
+
+    <view class="form-wrap {{showForm ? 'form-open' : ''}}">
+      <view class="form-inner">
+        <view class="picker-label">账号</view>
+        <input class="hyc-input" placeholder="登录账号" value="{{username}}" bindinput="onUsernameInput" />
+
+        <view class="picker-label">密码</view>
+        <input class="hyc-input" password placeholder="登录密码" value="{{password}}" bindinput="onPasswordInput" />
+
+        <view class="picker-label">昵称</view>
+        <input class="hyc-input" placeholder="显示昵称" value="{{displayName}}" bindinput="onDisplayNameInput" />
+
+        <button class="hyc-btn-primary save-btn" bindtap="submitCreate" loading="{{saving}}">保存</button>
+      </view>
+    </view>
+  </view>
+
+  <view class="hyc-card list-card">
+    <view class="hyc-title">管理员列表</view>
+    <view class="swipe-row" wx:for="{{admins}}" wx:key="id">
+      <view class="swipe-actions">
+        <view
+          wx:if="{{item.role !== 'super'}}"
+          class="swipe-del"
+          data-id="{{item.id}}"
+          data-name="{{item.displayName || item.username}}"
+          catchtap="confirmDelete"
+        >删除</view>
+      </view>
+      <view
+        class="swipe-content"
+        style="transform: translateX({{item.offsetX || 0}}px);"
+        data-index="{{index}}"
+        data-id="{{item.id}}"
+        bindtouchstart="onTouchStart"
+        bindtouchmove="onTouchMove"
+        bindtouchend="onTouchEnd"
+      >
+        <view class="hyc-row">
+          <text>{{item.displayName || item.username}}</text>
+          <text class="hyc-tag {{item.role === 'super' ? 'hyc-tag-done' : 'hyc-tag-pending'}}">
+            {{item.role === 'super' ? '超级管理员' : '管理员'}}
+          </text>
+        </view>
+        <view class="hyc-sub">账号：{{item.username}} · {{item.createdAt || ''}}</view>
+      </view>
+    </view>
+    <view class="hyc-empty" wx:if="{{!loading && admins.length === 0}}">暂无管理员</view>
+  </view>
+
+  <view class="hyc-bottom-bar">
+    <view class="hyc-bottom-item" bindtap="goPublish">发布</view>
+    <view class="hyc-bottom-item" bindtap="goDelivery">配送</view>
+    <view class="hyc-bottom-item active" bindtap="goMine">我的</view>
+  </view>
+</view>

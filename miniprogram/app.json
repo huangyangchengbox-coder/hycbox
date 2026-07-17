@@ -1,11 +1,15 @@
 {
   "pages": [
-    "pages/hyc/index",
     "pages/hyc/user/home/home",
     "pages/hyc/user/order/order",
     "pages/hyc/user/mine/mine",
+    "pages/hyc/user/profile/profile",
+    "pages/hyc/index",
+    "pages/hyc/admin/login/login",
     "pages/hyc/admin/publish/publish",
     "pages/hyc/admin/delivery/delivery",
+    "pages/hyc/admin/managers/managers",
+    "pages/hyc/admin/mine/mine",
     "page/component/index",
     "page/API/index",
     "page/cloud/index",
@@ -218,7 +222,7 @@
   },
   "window": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "恒大名都水果领取",
+    "navigationBarTitleText": "恒大名都邻里信息备忘录",
     "navigationBarBackgroundColor": "#ffffff",
     "backgroundColor": "#f5f6f8"
   },

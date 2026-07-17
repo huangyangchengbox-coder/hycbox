@@ -1,27 +1,3 @@
 <view class="hyc-page">
-  <view class="hero">
-    <view class="hero-title">宜昌恒大名都</view>
-    <view class="hero-sub">邻里水果领取小工具</view>
-  </view>
-
-  <view class="hyc-card">
-    <view class="hyc-title">选择身份</view>
-    <view class="hyc-sub">用户领取水果，管理者发布与配送</view>
-
-    <button class="role-btn user" bindtap="enterAsUser">
-      <view class="role-name">我是用户</view>
-      <view class="role-desc">选择楼栋门牌，领取水果</view>
-    </button>
-
-    <button class="role-btn admin" bindtap="enterAsAdmin">
-      <view class="role-name">我是管理者</view>
-      <view class="role-desc">发布水果、查看配送进度</view>
-    </button>
-  </view>
-
-  <view class="hyc-card info-card" wx:if="{{communityInfo}}">
-    <view class="info-row">小区：{{communityInfo.communityName}}</view>
-    <view class="info-row">地址：{{communityInfo.address}}</view>
-    <view class="info-row">覆盖：{{communityInfo.phaseCount}}期 · {{communityInfo.buildingCount}}栋</view>
-  </view>
+  <view class="hyc-empty">正在进入…</view>
 </view>

@@ -23,6 +23,7 @@ const store = {
       imageUrl: 'https://img.yzcdn.cn/vant/cat.jpeg',
       totalBags: 50,
       remainBags: 38,
+      unit: '袋',
       status: 'active',
       createdAt: '2026-07-17 09:00:00'
     }
@@ -76,6 +77,7 @@ function createPublication(payload) {
     imageUrl: payload.imageUrl || '',
     totalBags: payload.totalBags,
     remainBags: payload.totalBags,
+    unit: payload.unit || '袋',
     status: 'active',
     createdAt: nowStr()
   }
@@ -106,6 +108,8 @@ function createOrder(payload) {
     buildingName: room.buildingName,
     phaseName: room.phaseName,
     quantity: payload.quantity,
+    qtyUnit: publication.unit || '袋',
+    remark: payload.remark || '',
     status: 'pending',
     createdAt: nowStr(),
     deliveredAt: null
@@ -128,7 +132,7 @@ function listOrders(filter) {
   return list.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
 }
 
-function completeOrder(orderId) {
+function completeOrder(orderId, deliveredQuantity) {
   const order = store.orders.find(item => item.id === orderId)
   if (!order) {
     throw new Error('订单不存在')
@@ -136,6 +140,20 @@ function completeOrder(orderId) {
   if (order.status === 'completed') {
     throw new Error('订单已完成')
   }
+  const ordered = order.quantity
+  const actual = deliveredQuantity == null ? ordered : Number(deliveredQuantity)
+  if (actual < 0) {
+    throw new Error('实际领取数量无效')
+  }
+  const diff = ordered - actual
+  const publication = getPublication(order.publicationId)
+  if (diff > 0 && publication) {
+    publication.remainBags += diff
+  } else if (diff < 0 && publication) {
+    publication.remainBags -= (actual - ordered)
+  }
+  order.deliveredQuantity = actual
+  order.extraQuantity = Math.max(0, actual - ordered)
   order.status = 'completed'
   order.deliveredAt = nowStr()
   return order
@@ -172,7 +190,7 @@ function getAdminStats(publicationId) {
     pendingCount: pending.length,
     pendingBags: pending.reduce((sum, item) => sum + item.quantity, 0),
     completedCount: completed.length,
-    completedBags: completed.reduce((sum, item) => sum + item.quantity, 0)
+    completedBags: completed.reduce((sum, item) => sum + (item.deliveredQuantity != null ? item.deliveredQuantity : item.quantity), 0)
   }
 }
 

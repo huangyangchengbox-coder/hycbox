@@ -1,0 +1,15 @@
+<view class="hyc-page">
+  <view class="hyc-card">
+    <view class="hyc-title">管理者登录</view>
+    <view class="hyc-sub">超级管理员可添加管理员账号</view>
+
+    <view class="picker-label">账号</view>
+    <input class="hyc-input" placeholder="请输入账号" value="{{username}}" bindinput="onUsernameInput" />
+
+    <view class="picker-label">密码</view>
+    <input class="hyc-input" password placeholder="请输入密码" value="{{password}}" bindinput="onPasswordInput" />
+
+    <button class="hyc-btn-primary" bindtap="submitLogin" loading="{{loading}}">登录</button>
+    <button class="hyc-btn-plain" bindtap="goBack">返回</button>
+  </view>
+</view>

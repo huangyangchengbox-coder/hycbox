@@ -1,64 +1,131 @@
-<view class="hyc-page">
-  <view class="hyc-card stats-card">
-    <view class="stats-row">
-      <view class="stat-item">
-        <view class="hyc-stat-num">{{stats.pendingCount}}</view>
-        <view class="hyc-sub">待配送户数</view>
+<view class="page">
+  <view class="stats-card">
+    <view class="stats">
+      <view class="stat">
+        <view class="num">{{stats.pendingCount}}</view>
+        <view class="label">待配送户</view>
       </view>
-      <view class="stat-item">
-        <view class="hyc-stat-num">{{stats.pendingBags}}</view>
-        <view class="hyc-sub">待配送袋数</view>
+      <view class="stat">
+        <view class="num">{{stats.pendingBags}}</view>
+        <view class="label">待配送{{qtyUnit}}</view>
       </view>
-      <view class="stat-item">
-        <view class="hyc-stat-num">{{stats.completedCount}}</view>
-        <view class="hyc-sub">已完成</view>
+      <view class="stat">
+        <view class="num">{{stats.completedCount}}</view>
+        <view class="label">已完成户</view>
+      </view>
+      <view class="stat">
+        <view class="num">{{stats.completedBags}}</view>
+        <view class="label">已完成{{qtyUnit}}</view>
+      </view>
+    </view>
+    <view class="stats stats-extra">
+      <view class="stat">
+        <view class="num warn">{{stats.extraCount}}</view>
+        <view class="label">超申请户</view>
+      </view>
+      <view class="stat">
+        <view class="num warn">{{stats.extraBags}}</view>
+        <view class="label">超出申请{{qtyUnit}}</view>
       </view>
     </view>
   </view>
+  <view class="status">{{statusText}}</view>
 
-  <view class="hyc-card">
-    <view class="picker-label">选择发布批次</view>
+  <view class="card picker-card">
     <picker mode="selector" range="{{pubTitles}}" value="{{pubIndex}}" bindchange="onPubChange">
-      <view class="picker-value">{{pubTitles[pubIndex] || '请选择'}}</view>
+      <view class="picker">{{pubTitles[pubIndex] || '请选择批次'}}</view>
     </picker>
   </view>
 
-  <view class="hyc-card building-group" wx:for="{{buildingGroups}}" wx:key="buildingName">
-    <view class="hyc-row" bindtap="toggleGroup" data-index="{{index}}">
-      <view>
-        <view class="hyc-title" style="font-size:30rpx">{{item.phaseName}} {{item.buildingName}}</view>
-        <view class="hyc-sub">{{item.orderCount}} 户 · 共 {{item.totalBags}} 袋</view>
+  <view wx:if="{{hasGroups}}">
+    <view class="unit-block" wx:for="{{buildingGroups}}" wx:key="groupKey">
+      <view class="unit-head">
+        <view class="unit-head-main" bindtap="toggleGroup" data-index="{{index}}">
+          <text class="unit-title">{{item.phaseName}}{{item.buildingName}} {{item.unit}}单元</text>
+          <text class="unit-meta">{{item.orderCount}}户 · {{item.totalBags}}{{qtyUnit}} {{item.expanded ? '▾' : '▸'}}</text>
+        </view>
+        <view class="unit-batch" catchtap="deliverUnit" data-index="{{index}}">整单元送达</view>
       </view>
-      <text class="expand-icon">{{item.expanded ? '▼' : '▶'}}</text>
-    </view>
-
-    <view wx:if="{{item.expanded}}">
-      <view class="order-item" wx:for="{{item.orders}}" wx:for-item="order" wx:key="id">
-        <view class="hyc-row">
-          <view>
-            <view>{{order.roomLabel}}</view>
-            <view class="hyc-sub">{{order.userName}} · {{order.quantity}} 袋 · {{order.createdAt}}</view>
-          </view>
-          <button
-            size="mini"
-            class="hyc-btn-primary mini-btn"
-            data-id="{{order.id}}"
-            bindtap="completeOrder"
-          >
-            已送达
-          </button>
+      <view class="room-grid" wx:if="{{item.expanded}}">
+        <view
+          class="room-chip {{order.selected ? 'selected' : ''}} {{order.remark ? 'has-remark' : ''}}"
+          wx:for="{{item.orders}}"
+          wx:for-item="order"
+          wx:for-index="oindex"
+          wx:key="id"
+          data-gid="{{index}}"
+          data-oindex="{{oindex}}"
+          data-oid="{{order.id}}"
+          catchtap="toggleSelect"
+        >
+          <view
+            class="remark-badge"
+            wx:if="{{order.remark}}"
+            data-gid="{{index}}"
+            data-oindex="{{oindex}}"
+            catchtap="showRemark"
+          >!</view>
+          <text class="qty-badge">{{order.quantity}}</text>
+          <text class="room-no">{{order.roomNo}}</text>
+          <text class="room-name" wx:if="{{order.userName}}">{{order.userName}}</text>
+          <text class="room-remark" wx:if="{{order.remark}}">{{order.remark}}</text>
         </view>
       </view>
     </view>
   </view>
 
-  <view class="hyc-empty" wx:if="{{!loading && buildingGroups.length === 0}}">
-    暂无待配送订单
+  <view class="empty" wx:if="{{!loading && !hasGroups}}">{{emptyHint || '暂无待配送订单'}}</view>
+
+  <view class="batch-bar" wx:if="{{selectedCount > 0 && !showConfirm}}">
+    <view class="batch-info">已选 {{selectedCount}} 户 · {{selectedBags}} {{qtyUnit}}</view>
+    <view class="batch-actions">
+      <view class="batch-clear" bindtap="clearSelection">清空</view>
+      <view class="batch-confirm" bindtap="openConfirm">确认送达</view>
+    </view>
   </view>
 
-  <view class="hyc-bottom-bar">
-    <view class="hyc-bottom-item" bindtap="goPublish">发布</view>
-    <view class="hyc-bottom-item active">配送管理</view>
-    <view class="hyc-bottom-item" bindtap="switchRole">切换身份</view>
+  <!-- 确认送达：可调整每户袋数 -->
+  <view class="mask" wx:if="{{showConfirm}}" catchtouchmove="noop" bindtap="closeConfirm"></view>
+  <view class="confirm-panel" wx:if="{{showConfirm}}" catchtap="noop">
+    <view class="confirm-title">确认送达（可改每户数量，默认=申请数）</view>
+    <scroll-view scroll-y class="confirm-list" enable-flex="{{true}}">
+      <view class="confirm-item" wx:for="{{confirmList}}" wx:key="id">
+        <view class="confirm-row">
+          <text class="confirm-room">{{item.roomNo}}</text>
+          <text class="confirm-name" wx:if="{{item.userName}}">{{item.userName}}</text>
+        </view>
+        <view class="confirm-remark" wx:if="{{item.remark}}">备注：{{item.remark}}</view>
+        <view class="confirm-qty-row">
+          <text class="confirm-qty-label">送达（申请{{item.quantity}}{{item.qtyUnit}}）</text>
+          <view class="qty-ctrl">
+            <view class="qty-btn" data-index="{{index}}" bindtap="decDeliverQty">−</view>
+            <text class="qty-num">{{item.deliverQty}}</text>
+            <view class="qty-btn" data-index="{{index}}" bindtap="incDeliverQty">+</view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+    <view class="confirm-footer">
+      <text class="confirm-total">共 {{confirmCount}} 户 · {{confirmBags}} {{qtyUnit}}</text>
+      <view class="confirm-actions">
+        <view class="batch-clear" bindtap="closeConfirm">取消</view>
+        <view class="batch-confirm" bindtap="submitConfirm">提交送达</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 备注全文提示 -->
+  <view class="remark-mask" wx:if="{{remarkTip.show}}" catchtouchmove="noop" bindtap="hideRemark"></view>
+  <view class="remark-tip" wx:if="{{remarkTip.show}}" catchtap="noop">
+    <view class="remark-tip-title">{{remarkTip.roomNo}} 备注</view>
+    <view class="remark-tip-name" wx:if="{{remarkTip.userName}}">{{remarkTip.userName}}</view>
+    <view class="remark-tip-content">{{remarkTip.content}}</view>
+    <view class="remark-tip-ok" bindtap="hideRemark">知道了</view>
+  </view>
+
+  <view class="tabbar">
+    <view class="tab" bindtap="goPublish">发布</view>
+    <view class="tab on">配送</view>
+    <view class="tab" bindtap="goMine">我的</view>
   </view>
 </view>

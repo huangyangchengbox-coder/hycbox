@@ -1,9 +1,56 @@
 @import "../../common.wxss";
 
+.head-row {
+  align-items: flex-start;
+  margin-top: 0;
+}
+
+.mini-add {
+  margin: 0 !important;
+  padding: 0 20rpx !important;
+  font-size: 24rpx !important;
+  line-height: 2 !important;
+}
+
+.cancel-btn {
+  margin: 0 !important;
+  padding: 0 20rpx !important;
+  font-size: 24rpx !important;
+  line-height: 2 !important;
+  background: #fff !important;
+  color: #666 !important;
+  border: 1rpx solid #ddd !important;
+}
+
+.form-wrap {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.28s ease, opacity 0.22s ease;
+}
+
+.form-wrap.form-open {
+  max-height: 1100rpx;
+  opacity: 1;
+  margin-top: 8rpx;
+}
+
+.form-inner {
+  padding-top: 8rpx;
+}
+
 .picker-label {
   font-size: 26rpx;
   color: #666;
   margin-top: 20rpx;
+}
+
+.picker-value {
+  background: #f7f8fa;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  margin-top: 8rpx;
+  font-size: 28rpx;
 }
 
 .upload-area {
@@ -22,11 +69,36 @@
   border: 2rpx dashed #ddd;
 }
 
+.save-btn {
+  margin-top: 28rpx;
+}
+
 .pub-item {
-  padding: 20rpx 0;
+  padding: 24rpx 0;
   border-bottom: 1rpx solid #f0f0f0;
 }
 
 .pub-item:last-child {
   border-bottom: none;
+}
+
+.pub-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.pub-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16rpx;
+}
+
+.end-btn {
+  padding: 10rpx 28rpx;
+  font-size: 24rpx;
+  line-height: 1.4;
+  color: #fff;
+  background: #fa541c;
+  border-radius: 8rpx;
 }

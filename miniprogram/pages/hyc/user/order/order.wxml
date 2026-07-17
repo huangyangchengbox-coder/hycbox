@@ -1,7 +1,7 @@
 <view class="hyc-page">
   <view class="hyc-card" wx:if="{{publication}}">
     <view class="hyc-title">{{publication.title}}</view>
-    <view class="hyc-sub">剩余 {{publication.remainBags}} 袋</view>
+    <view class="hyc-sub">剩余 {{publication.remainBags}} {{publication.unit || '袋'}}</view>
   </view>
 
   <view class="hyc-card">
@@ -48,11 +48,14 @@
   </view>
 
   <view class="hyc-card">
-    <view class="hyc-title">领取信息</view>
+    <view class="hyc-title">派送信息</view>
     <view class="picker-label">您的称呼</view>
     <input class="hyc-input" placeholder="如 张先生" value="{{userName}}" bindinput="onNameInput" />
 
-    <view class="picker-label">领取袋数</view>
+    <view class="picker-label">备注（选填）</view>
+    <input class="hyc-input" placeholder="如 放门口 / 晚上再送" maxlength="50" value="{{remark}}" bindinput="onRemarkInput" />
+
+    <view class="picker-label">需要数量（{{publication.unit || '袋'}}）</view>
     <view class="quantity-row">
       <button size="mini" bindtap="changeQuantity" data-delta="-1">-</button>
       <text class="quantity-num">{{quantity}}</text>
@@ -65,5 +68,5 @@
     <view class="hyc-title" style="font-size:30rpx">{{selectedRoom.label}}</view>
   </view>
 
-  <button class="hyc-btn-primary submit-btn" bindtap="submitOrder">提交领取</button>
+  <button class="hyc-btn-primary submit-btn" bindtap="submitOrder">提交登记派送</button>
 </view>

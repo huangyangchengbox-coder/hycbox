@@ -2,23 +2,77 @@ const config = require('./config')
 const mockStore = require('./mockStore')
 const buildingHelper = require('../data/buildingHelper')
 
+function getAdminToken() {
+  const app = getApp()
+  return (app && app.globalData && app.globalData.adminToken) || wx.getStorageSync('hyc_admin_token') || ''
+}
+
+function adminHeader(extra) {
+  const header = Object.assign({ 'Content-Type': 'application/json' }, extra || {})
+  const token = getAdminToken()
+  if (token) {
+    header['X-Admin-Token'] = token
+  }
+  return header
+}
+
 function request(options) {
+  const method = (options.method || 'GET').toUpperCase()
+  let url = `${config.baseUrl}${options.url}`
+  let data = options.data || {}
+
+  // GET：参数拼到 URL；不要带 json Content-Type，避免部分基础库异常
+  const header = {}
+  if (options.admin) {
+    const token = getAdminToken()
+    if (token) {
+      header['X-Admin-Token'] = token
+    }
+  }
+  if (method !== 'GET') {
+    header['Content-Type'] = 'application/json'
+  }
+  if (options.header) {
+    Object.assign(header, options.header)
+  }
+
+  if (method === 'GET' && data && typeof data === 'object') {
+    const qs = Object.keys(data)
+      .filter((k) => data[k] !== undefined && data[k] !== null && data[k] !== '')
+      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(data[k])}`)
+      .join('&')
+    if (qs) {
+      url += (url.indexOf('?') >= 0 ? '&' : '?') + qs
+    }
+    data = {}
+  }
+
   return new Promise((resolve, reject) => {
     wx.request({
-      url: `${config.baseUrl}${options.url}`,
-      method: options.method || 'GET',
-      data: options.data || {},
-      header: options.header || { 'Content-Type': 'application/json' },
+      url,
+      method,
+      data,
+      header,
       timeout: config.timeout,
       success(res) {
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve(res.data)
+          const body = res.data
+          if (typeof body === 'string') {
+            try {
+              resolve(JSON.parse(body))
+            } catch (e) {
+              reject(new Error('响应解析失败'))
+            }
+            return
+          }
+          resolve(body || {})
         } else {
-          reject(new Error((res.data && res.data.message) || '请求失败'))
+          reject(new Error((res.data && res.data.message) || ('请求失败 ' + res.statusCode)))
         }
       },
       fail(err) {
-        reject(err)
+        const msg = (err && (err.errMsg || err.message)) || '网络请求失败'
+        reject(new Error(msg))
       }
     })
   })
@@ -38,42 +92,74 @@ function wrapMock(promiseFn) {
 
 function getUserId() {
   const app = getApp()
-  if (app.globalData.userId) {
+  if (app && app.globalData && app.globalData.userId) {
     return app.globalData.userId
   }
-  let userId = wx.getStorageSync('hyc_user_id')
+  // 优先微信 openid
+  let userId = wx.getStorageSync('hyc_openid') || wx.getStorageSync('hyc_user_id')
   if (!userId) {
     userId = `user_${Date.now()}`
     wx.setStorageSync('hyc_user_id', userId)
   }
-  app.globalData.userId = userId
+  if (app && app.globalData) {
+    app.globalData.userId = userId
+  }
   return userId
 }
 
 const api = {
-  /** GET /community/info */
+  /** POST /admin/login  body: { username, password } */
+  adminLogin(username, password) {
+    if (config.useMock) {
+      return wrapMock(() => {
+        if ((username || '').trim() !== 'hyc' || (password || '').trim() !== '@Hyc314') {
+          throw new Error('账号或密码错误')
+        }
+        return {
+          code: 0,
+          data: {
+            token: 'mock_admin_' + Date.now(),
+            role: 'super',
+            adminId: 'adm_hyc',
+            username: 'hyc',
+            displayName: '超级管理员',
+            superAdmin: true,
+            expireAt: Date.now() + 30 * 24 * 60 * 60 * 1000
+          }
+        }
+      })
+    }
+    return request({ url: '/admin/login', method: 'POST', data: { username, password } })
+  },
+
+  /** GET /admin/users 超级管理员 */
+  listAdminUsers() {
+    return request({ url: '/admin/users', admin: true })
+  },
+
+  /** POST /admin/users 超级管理员添加管理员 */
+  createAdminUser(data) {
+    return request({ url: '/admin/users', method: 'POST', data, admin: true })
+  },
+
+  deleteAdminUser(id) {
+    return request({ url: `/admin/users/${id}`, method: 'DELETE', data: {}, admin: true })
+  },
+
   getCommunityInfo() {
     if (config.useMock) {
-      return wrapMock(() => ({
-        code: 0,
-        data: buildingHelper.getCommunityInfo()
-      }))
+      return wrapMock(() => ({ code: 0, data: buildingHelper.getCommunityInfo() }))
     }
     return request({ url: '/community/info' })
   },
 
-  /** GET /community/phases */
   getPhases() {
     if (config.useMock) {
-      return wrapMock(() => ({
-        code: 0,
-        data: buildingHelper.getPhases()
-      }))
+      return wrapMock(() => ({ code: 0, data: buildingHelper.getPhases() }))
     }
     return request({ url: '/community/phases' })
   },
 
-  /** GET /community/rooms?phaseId=&buildingId=&unit= */
   getRooms(params) {
     if (config.useMock) {
       return wrapMock(() => ({
@@ -84,78 +170,71 @@ const api = {
     return request({ url: '/community/rooms', data: params })
   },
 
-  /** GET /community/rooms/search?keyword= */
   searchRooms(keyword) {
     if (config.useMock) {
-      return wrapMock(() => ({
-        code: 0,
-        data: buildingHelper.searchRooms(keyword)
-      }))
+      return wrapMock(() => ({ code: 0, data: buildingHelper.searchRooms(keyword) }))
     }
     return request({ url: '/community/rooms/search', data: { keyword } })
   },
 
-  /** GET /publications */
+  /** 用户端：全部发布 */
   listPublications() {
     if (config.useMock) {
-      return wrapMock(() => ({
-        code: 0,
-        data: mockStore.listPublications()
-      }))
+      return wrapMock(() => ({ code: 0, data: mockStore.listPublications() }))
     }
     return request({ url: '/publications' })
   },
 
-  /** POST /publications  body: { title, imageUrl, totalBags } */
-  createPublication(data) {
+  /** 管理者端：仅自己的发布 */
+  listAdminPublications() {
     if (config.useMock) {
-      return wrapMock(() => ({
-        code: 0,
-        data: mockStore.createPublication(data)
-      }))
+      return wrapMock(() => ({ code: 0, data: mockStore.listPublications() }))
     }
-    return request({ url: '/publications', method: 'POST', data })
+    return request({ url: '/admin/publications', admin: true })
   },
 
-  /** POST /orders  body: { publicationId, roomId, quantity, userName } */
+  createPublication(data) {
+    if (config.useMock) {
+      return wrapMock(() => ({ code: 0, data: mockStore.createPublication(data) }))
+    }
+    return request({ url: '/publications', method: 'POST', data, admin: true })
+  },
+
+  /** 结束活动 */
+  endPublication(id) {
+    return request({ url: `/publications/${id}/end`, method: 'PUT', data: {}, admin: true })
+  },
+
   createOrder(data) {
     const payload = Object.assign({}, data, { userId: getUserId() })
     if (config.useMock) {
-      return wrapMock(() => ({
-        code: 0,
-        data: mockStore.createOrder(payload)
-      }))
+      return wrapMock(() => ({ code: 0, data: mockStore.createOrder(payload) }))
     }
     return request({ url: '/orders', method: 'POST', data: payload })
   },
 
-  /** GET /orders?status=&publicationId= */
   listOrders(params) {
     const query = Object.assign({}, params || {})
     if (!query.userId && getApp().globalData.role === 'user') {
       query.userId = getUserId()
     }
     if (config.useMock) {
-      return wrapMock(() => ({
-        code: 0,
-        data: mockStore.listOrders(query)
-      }))
+      return wrapMock(() => ({ code: 0, data: mockStore.listOrders(query) }))
     }
     return request({ url: '/orders', data: query })
   },
 
-  /** PUT /orders/:id/complete */
-  completeOrder(orderId) {
+  completeOrder(orderId, deliveredQuantity) {
+    const data = { deliveredQuantity }
     if (config.useMock) {
       return wrapMock(() => ({
         code: 0,
-        data: mockStore.completeOrder(orderId)
+        data: mockStore.completeOrder(orderId, deliveredQuantity)
       }))
     }
-    return request({ url: `/orders/${orderId}/complete`, method: 'PUT' })
+    return request({ url: `/orders/${orderId}/complete`, method: 'PUT', data, admin: true })
   },
 
-  /** GET /admin/orders/group-by-building?publicationId= */
   groupPendingByBuilding(publicationId) {
     if (config.useMock) {
       return wrapMock(() => ({
@@ -163,36 +242,37 @@ const api = {
         data: mockStore.groupPendingByBuilding(publicationId)
       }))
     }
-    return request({ url: '/admin/orders/group-by-building', data: { publicationId } })
+    const data = {}
+    if (publicationId && publicationId !== 'all') {
+      data.publicationId = publicationId
+    }
+    return request({ url: '/admin/orders/group-by-building', data, admin: true })
   },
 
-  /** GET /admin/stats?publicationId= */
   getAdminStats(publicationId) {
     if (config.useMock) {
-      return wrapMock(() => ({
-        code: 0,
-        data: mockStore.getAdminStats(publicationId)
-      }))
+      return wrapMock(() => ({ code: 0, data: mockStore.getAdminStats(publicationId) }))
     }
-    return request({ url: '/admin/stats', data: { publicationId } })
+    const data = {}
+    if (publicationId && publicationId !== 'all') {
+      data.publicationId = publicationId
+    }
+    return request({ url: '/admin/stats', data, admin: true })
   },
 
-  /** POST /upload  上传图片到服务器，返回公网 URL */
   uploadImage(filePath) {
     if (config.useMock) {
-      return wrapMock(() => ({
-        code: 0,
-        data: { url: filePath }
-      }))
+      return wrapMock(() => ({ code: 0, data: { url: filePath } }))
     }
     return new Promise((resolve, reject) => {
-      console.log('uploadImage ->', `${config.baseUrl}/upload`, filePath)
       wx.uploadFile({
         url: `${config.baseUrl}/upload`,
         filePath,
         name: 'file',
+        header: {
+          'X-Admin-Token': getAdminToken()
+        },
         success(res) {
-          console.log('uploadImage response', res.statusCode, res.data)
           if (res.statusCode < 200 || res.statusCode >= 300) {
             reject(new Error('上传失败: HTTP ' + res.statusCode))
             return
@@ -208,10 +288,7 @@ const api = {
             reject(new Error('上传响应解析失败'))
           }
         },
-        fail(err) {
-          console.error('uploadImage fail', err)
-          reject(err)
-        }
+        fail: reject
       })
     })
   }

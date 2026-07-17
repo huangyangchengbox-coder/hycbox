@@ -1,37 +1,76 @@
 <view class="hyc-page">
   <view class="hyc-card">
-    <view class="hyc-title">发布新水果</view>
-
-    <view class="picker-label">水果名称</view>
-    <input class="hyc-input" placeholder="如 新鲜苹果" value="{{title}}" bindinput="onTitleInput" />
-
-    <view class="picker-label">数量（袋）</view>
-    <input class="hyc-input" type="number" placeholder="请输入总袋数" value="{{totalBags}}" bindinput="onBagsInput" />
-
-    <view class="picker-label">图片</view>
-    <view class="upload-area" bindtap="chooseImage">
-      <image wx:if="{{imageUrl}}" class="hyc-fruit-img" src="{{imageUrl}}" mode="aspectFill" />
-      <view wx:else class="upload-placeholder">+ 点击上传图片</view>
+    <view class="hyc-row head-row">
+      <view>
+        <view class="hyc-title">发布管理</view>
+        <view class="hyc-sub">当前账号：{{adminName}}{{isSuperAdmin ? '（超级管理员）' : ''}}</view>
+      </view>
+      <button
+        size="mini"
+        class="{{showForm ? 'cancel-btn' : 'hyc-btn-primary mini-add'}}"
+        bindtap="toggleForm"
+      >{{showForm ? '收起' : '发布新物品'}}</button>
     </view>
 
-    <button class="hyc-btn-primary" bindtap="submitPublish">发布</button>
+    <view class="form-wrap {{showForm ? 'form-open' : ''}}">
+      <view class="form-inner">
+        <view class="picker-label">物品名称</view>
+        <input class="hyc-input" placeholder="如 新鲜苹果" value="{{title}}" bindinput="onTitleInput" />
+
+        <view class="picker-label">计量单位</view>
+        <picker mode="selector" range="{{unitOptions}}" value="{{unitIndex}}" bindchange="onUnitChange">
+          <view class="picker-value">{{unitOptions[unitIndex]}}</view>
+        </picker>
+        <input
+          wx:if="{{unitIndex === unitOtherIndex}}"
+          class="hyc-input"
+          placeholder="请输入单位，如 捆 / 盒"
+          value="{{customUnit}}"
+          bindinput="onCustomUnitInput"
+        />
+
+        <view class="picker-label">数量（{{currentUnit}}）</view>
+        <input class="hyc-input" type="number" placeholder="请输入总数量" value="{{totalBags}}" bindinput="onBagsInput" />
+
+        <view class="picker-label">图片</view>
+        <view class="upload-area" bindtap="chooseImage">
+          <image wx:if="{{imageUrl}}" class="hyc-fruit-img" src="{{imageUrl}}" mode="aspectFill" />
+          <view wx:else class="upload-placeholder">+ 点击上传图片</view>
+        </view>
+
+        <button class="hyc-btn-primary save-btn" bindtap="submitPublish">发布</button>
+      </view>
+    </view>
   </view>
 
   <view class="hyc-card">
     <view class="hyc-title">当前发布</view>
     <view class="pub-item" wx:for="{{publications}}" wx:key="id">
       <view class="hyc-row">
-        <text>{{item.title}}</text>
-        <text class="hyc-sub">剩余 {{item.remainBags}}/{{item.totalBags}}</text>
+        <text class="pub-title">{{item.title}}</text>
+        <text class="hyc-tag {{item.status === 'ended' ? 'hyc-tag-done' : 'hyc-tag-pending'}}">
+          {{item.status === 'ended' ? '已结束' : '进行中'}}
+        </text>
       </view>
-      <view class="hyc-sub">{{item.createdAt}}</view>
+      <view class="hyc-row">
+        <text class="hyc-sub">剩余 {{item.remainBags}}/{{item.totalBags}} {{item.unit || '袋'}}</text>
+        <text class="hyc-sub">{{item.createdAt}}</text>
+      </view>
+      <view class="pub-actions" wx:if="{{item.status !== 'ended'}}">
+        <view
+          class="end-btn"
+          data-id="{{item.id}}"
+          data-title="{{item.title}}"
+          bindtap="endActivity"
+        >结束活动</view>
+      </view>
     </view>
     <view class="hyc-empty" wx:if="{{publications.length === 0}}">暂无发布</view>
   </view>
 
   <view class="hyc-bottom-bar">
     <view class="hyc-bottom-item active">发布</view>
-    <view class="hyc-bottom-item" bindtap="goDelivery">配送管理</view>
-    <view class="hyc-bottom-item" bindtap="switchRole">切换身份</view>
+    <view class="hyc-bottom-item" bindtap="goDelivery">配送</view>
+    <view class="hyc-bottom-item" bindtap="goMine">我的</view>
   </view>
 </view>

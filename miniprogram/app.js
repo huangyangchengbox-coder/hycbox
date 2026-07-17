@@ -4,32 +4,6 @@ global.isDemo = false
 App({
 
   onLaunch(opts, data) {
-    // const that = this;
-    // const canIUseSetBackgroundFetchToken = wx.canIUse('setBackgroundFetchToken')
-    // if (canIUseSetBackgroundFetchToken) {
-    //   wx.setBackgroundFetchToken({
-    //     token: 'getBackgroundFetchToken',
-    //   })
-    // }
-    // if (wx.getBackgroundFetchData) {
-    //   wx.getBackgroundFetchData({
-    //     fetchType: 'pre',
-    //     success(res) {
-    //       that.globalData.backgroundFetchData  = res;
-    //       console.log('读取预拉取数据成功')
-    //     },
-    //     fail() {
-    //       console.log('读取预拉取数据失败')
-    //       wx.showToast({
-    //         title: '无缓存数据',
-    //         icon: 'none'
-    //       })
-    //     },
-    //     complete() {
-    //       console.log('结束读取')
-    //     }
-    //   })
-    // }
     console.log('App Launch', opts)
     if (data && data.path) {
       wx.navigateTo({
@@ -44,12 +18,36 @@ App({
         traceUser: true,
       })
     }
+    this.bootstrapWxSession()
   },
 
-  
+  /** 关联微信 openid，并按上次角色进入 */
+  bootstrapWxSession() {
+    const wxSession = require('./services/wxSession')
+    const adminSession = require('./services/adminSession')
+    const adminEntry = require('./services/adminEntry')
+    wxSession.ensureWxSession().then((session) => {
+      console.log('wx session ok', session.lastRole, session.openid)
+      const lastRole = session.lastRole || wx.getStorageSync('hyc_role') || 'user'
+      if (lastRole === 'admin' && adminSession.isLoggedIn()) {
+        adminSession.switchToAdmin()
+        adminEntry.goAdminHome(true)
+      } else if (lastRole === 'admin' && !adminSession.isLoggedIn()) {
+        wx.reLaunch({ url: '/pages/hyc/admin/login/login' })
+      } else {
+        adminEntry.goUserHome(true)
+      }
+    }).catch((err) => {
+      console.warn('wx session failed, fallback local role', err)
+      const lastRole = wx.getStorageSync('hyc_role') || 'user'
+      if (lastRole === 'admin' && adminSession.isLoggedIn()) {
+        adminEntry.goAdminHome(true)
+      }
+    })
+  },
+
   onShow(opts) {
     console.log('App Show', opts)
-    // console.log(wx.getSystemInfoSync())
   },
   onHide() {
     console.log('App Hide')
@@ -57,68 +55,43 @@ App({
   onThemeChange({ theme }) {
     this.globalData.theme = theme
     themeListeners.forEach((listener) => {
-        listener(theme)
+      listener(theme)
     })
   },
   watchThemeChange(listener) {
-      if (themeListeners.indexOf(listener) < 0) {
-          themeListeners.push(listener)
-      }
+    if (themeListeners.indexOf(listener) < 0) {
+      themeListeners.push(listener)
+    }
   },
   unWatchThemeChange(listener) {
-      const index = themeListeners.indexOf(listener)
-      if (index > -1) {
-          themeListeners.splice(index, 1)
-      }
+    const index = themeListeners.indexOf(listener)
+    if (index > -1) {
+      themeListeners.splice(index, 1)
+    }
   },
   globalData: {
     theme: wx.getSystemInfoSync().theme,
     hasLogin: false,
-    openid: null,
-    userId: wx.getStorageSync('hyc_user_id') || '',
-    role: wx.getStorageSync('hyc_role') || '',
+    openid: wx.getStorageSync('hyc_openid') || null,
+    userId: wx.getStorageSync('hyc_openid') || wx.getStorageSync('hyc_user_id') || '',
+    role: wx.getStorageSync('hyc_role') || 'user',
+    adminToken: wx.getStorageSync('hyc_admin_token') || '',
+    adminId: wx.getStorageSync('hyc_admin_id') || '',
+    adminName: wx.getStorageSync('hyc_admin_name') || '',
+    isSuperAdmin: wx.getStorageSync('hyc_is_super_admin') === '1',
     iconTabbar: '/page/weui/example/images/icon_tabbar.png',
   },
-  // lazy loading openid
   getUserOpenId(callback) {
     const self = this
-
     if (self.globalData.openid) {
       callback(null, self.globalData.openid)
-    } else {
-      wx.login({
-        success(data) {
-          wx.cloud.callFunction({
-            name: 'login',
-            data: {
-              action: 'openid'
-            },
-            success: res => {
-              console.log('拉取openid成功', res)
-              self.globalData.openid = res.result.openid
-              callback(null, self.globalData.openid)
-            },
-            fail: err => {
-              console.log('拉取用户openid失败，将无法正常使用开放接口等服务', res)
-              callback(res)
-            }
-          })
-        },
-        fail(err) {
-          console.log('wx.login 接口调用失败，将无法正常使用开放接口等服务', err)
-          callback(err)
-        }
-      })
+      return
     }
-  },
-  // 通过云函数获取用户 openid，支持回调或 Promise
-  getUserOpenIdViaCloud() {
-    return wx.cloud.callFunction({
-      name: 'wxContext',
-      data: {}
-    }).then(res => {
-      this.globalData.openid = res.result.openid
-      return res.result.openid
+    const wxSession = require('./services/wxSession')
+    wxSession.ensureWxSession().then((session) => {
+      callback(null, session.openid)
+    }).catch((err) => {
+      callback(err)
     })
   }
 })

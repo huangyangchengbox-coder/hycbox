@@ -4,8 +4,8 @@
  */
 module.exports = {
   useMock: false,
-  baseUrl: 'https://hychyr.top/api',
-  timeout: 10000,
-  /** 管理者口令（Mock 模式简单鉴权，正式环境走后端） */
-  adminPasscode: '888888'
+  // 本地调试
+  baseUrl: 'http://127.0.0.1:8080/api',
+  // 线上：'http://8.152.99.189:8080/api'
+  timeout: 20000
 }

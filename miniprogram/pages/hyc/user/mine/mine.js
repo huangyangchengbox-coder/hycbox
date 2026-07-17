@@ -24,10 +24,10 @@ Page({
   },
 
   goHome() {
-    wx.redirectTo({ url: '/pages/hyc/user/home/home' })
+    wx.redirectTo({ url: '/pages/hyc/user/home/home?stay=1' })
   },
 
-  switchRole() {
-    wx.redirectTo({ url: '/pages/hyc/index' })
+  goProfile() {
+    wx.redirectTo({ url: '/pages/hyc/user/profile/profile' })
   }
 })
