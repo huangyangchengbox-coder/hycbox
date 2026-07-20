@@ -1,11 +1,15 @@
 const api = require('../../../../services/api')
 const communityPref = require('../../../../services/communityPref')
+const addressCascade = require('../../../../services/addressCascade')
 
 Page({
   data: {
     publicationId: '',
     publication: null,
     communityId: '',
+    addressLabel: '',
+    // 临时改址面板；关闭时不影响默认地址
+    editingAddress: false,
     phases: [],
     phaseNames: [],
     phaseIndex: 0,
@@ -25,18 +29,49 @@ Page({
   },
 
   onLoad(options) {
-    const pref = communityPref.getPref() || communityPref.getDefault()
+    const pref = communityPref.getPref()
+    if (!pref || !pref.roomId) {
+      wx.redirectTo({ url: '/pages/hyc/user/community/community' })
+      return
+    }
+    this.defaultPref = pref
     this.setData({
       publicationId: options.publicationId || '',
-      communityId: pref.communityId
+      communityId: pref.communityId,
+      addressLabel: communityPref.formatLabel(pref)
     })
-    this.prefPhaseId = pref.phaseId || ''
+    addressCascade.bindAddressCascade(this, {
+      getCommunityId: () => this.data.communityId
+    })
     this.loadPublication()
-    this.loadPhases()
+    this.applyDefaultRoom(pref)
+  },
+
+  /** 用默认地址构造选中房间，不打开编辑面板 */
+  applyDefaultRoom(pref) {
+    this.setData({
+      selectedRoom: {
+        id: pref.roomId,
+        communityId: pref.communityId,
+        communityName: pref.communityName,
+        phaseId: pref.phaseId,
+        phaseName: pref.phaseName,
+        buildingId: pref.buildingId,
+        buildingName: pref.buildingName,
+        unit: pref.unit,
+        roomNo: pref.roomNo,
+        label: pref.roomLabel || communityPref.formatLabel(pref)
+      },
+      addressLabel: communityPref.formatLabel(pref),
+      editingAddress: false
+    })
   },
 
   loadPublication() {
-    const pref = communityPref.getPref() || communityPref.getDefault()
+    const pref = this.defaultPref || communityPref.getPref()
+    if (!pref) {
+      return
+    }
     api.listPublications({
       communityId: pref.communityId,
       phaseId: pref.phaseId || undefined
@@ -48,102 +83,42 @@ Page({
     })
   },
 
-  loadPhases() {
-    api.getPhases(this.data.communityId).then(res => {
-      if (res.code === 0) {
-        const phases = res.data || []
-        let phaseIndex = 0
-        if (this.prefPhaseId) {
-          const idx = phases.findIndex(p => p.id === this.prefPhaseId)
-          if (idx >= 0) {
-            phaseIndex = idx
-          }
-        }
-        this.setData({
-          phases,
-          phaseNames: phases.map(item => item.name)
-        })
-        if (phases.length > 0) {
-          this.refreshBuildings(phaseIndex)
-        }
-      }
+  /** 打开临时改址：仅影响本次登记 */
+  openEditAddress() {
+    const pref = this.defaultPref || communityPref.getPref() || {}
+    this.setData({ editingAddress: true })
+    this.loadPhasesForAddress({
+      phaseId: (this.data.selectedRoom && this.data.selectedRoom.phaseId) || pref.phaseId,
+      buildingId: (this.data.selectedRoom && this.data.selectedRoom.buildingId) || pref.buildingId,
+      unit: (this.data.selectedRoom && this.data.selectedRoom.unit) || pref.unit,
+      roomId: (this.data.selectedRoom && this.data.selectedRoom.id) || pref.roomId
     })
   },
 
-  refreshBuildings(phaseIndex) {
-    const phase = this.data.phases[phaseIndex]
-    if (!phase) {
+  /** 收起临时改址面板，保留当前选中房间（仍不写默认） */
+  closeEditAddress() {
+    if (!this.data.selectedRoom) {
+      wx.showToast({ title: '请选择门牌', icon: 'none' })
       return
     }
-    const buildingNames = phase.buildings.map(item => item.name)
     this.setData({
-      phaseIndex,
-      buildingNames,
-      buildingIndex: 0
+      editingAddress: false,
+      addressLabel: this.data.selectedRoom.label,
+      searchKeyword: '',
+      searchResults: []
     })
-    this.refreshUnits(0)
   },
 
-  refreshUnits(buildingIndex) {
-    const phase = this.data.phases[this.data.phaseIndex]
-    const building = phase && phase.buildings[buildingIndex]
-    if (!building) {
+  /** 恢复为默认地址 */
+  resetToDefault() {
+    const pref = this.defaultPref || communityPref.getPref()
+    if (!pref) {
       return
     }
-    const unitOptions = []
-    for (let i = 1; i <= building.units; i += 1) {
-      unitOptions.push(`${i}单元`)
-    }
+    this.applyDefaultRoom(pref)
     this.setData({
-      buildingIndex,
-      unitOptions,
-      unitIndex: 0
-    })
-    this.loadRooms(building, 1)
-  },
-
-  loadRooms(building, unit) {
-    const phase = this.data.phases[this.data.phaseIndex]
-    api.getRooms({
-      communityId: this.data.communityId,
-      phaseId: phase.id,
-      buildingId: building.id,
-      unit
-    }).then(res => {
-      if (res.code === 0) {
-        const rooms = res.data || []
-        this.setData({
-          rooms,
-          roomLabels: rooms.map(item => item.roomNo || ''),
-          roomIndex: 0,
-          selectedRoom: rooms[0] || null
-        })
-      }
-    })
-  },
-
-  onPhaseChange(e) {
-    this.refreshBuildings(Number(e.detail.value))
-  },
-
-  onBuildingChange(e) {
-    this.refreshUnits(Number(e.detail.value))
-  },
-
-  onUnitChange(e) {
-    const unitIndex = Number(e.detail.value)
-    const phase = this.data.phases[this.data.phaseIndex]
-    const building = phase.buildings[this.data.buildingIndex]
-    const unit = unitIndex + 1
-    this.setData({ unitIndex })
-    this.loadRooms(building, unit)
-  },
-
-  onRoomChange(e) {
-    const roomIndex = Number(e.detail.value)
-    this.setData({
-      roomIndex,
-      selectedRoom: this.data.rooms[roomIndex] || null
+      searchKeyword: '',
+      searchResults: []
     })
   },
 
@@ -164,9 +139,12 @@ Page({
   selectSearchResult(e) {
     const index = e.currentTarget.dataset.index
     const room = this.data.searchResults[index]
+    // 搜索结果只改本次登记地址
     this.setData({
       selectedRoom: room,
-      searchResults: []
+      addressLabel: room.label,
+      searchResults: [],
+      searchKeyword: ''
     })
   },
 
@@ -207,6 +185,7 @@ Page({
     }
 
     wx.showLoading({ title: '提交中' })
+    console.log('[order] 提交登记，临时地址不写默认', selectedRoom.id)
     api.createOrder({
       publicationId,
       roomId: selectedRoom.id,

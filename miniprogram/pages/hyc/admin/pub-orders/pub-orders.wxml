@@ -1,0 +1,60 @@
+<view class="hyc-page">
+  <view class="hyc-card">
+    <view class="hyc-title">{{title || '登记订单'}}</view>
+    <view class="hyc-sub">共 {{orders.length}} 单 · 待配送 {{pendingCount}} · 已送达 {{completedCount}}</view>
+    <view class="summary-row">
+      <view class="summary-item">
+        <text class="summary-num">{{totalNeed}}</text>
+        <text class="summary-label">需要{{qtyUnit}}</text>
+      </view>
+      <view class="summary-item">
+        <text class="summary-num">{{totalDelivered}}</text>
+        <text class="summary-label">最终{{qtyUnit}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="hyc-card order-card" wx:for="{{orders}}" wx:key="id">
+    <view class="hyc-row order-head">
+      <text class="addr">{{item.address}}</text>
+      <text class="hyc-tag {{item.status === 'completed' ? 'hyc-tag-done' : 'hyc-tag-pending'}}">
+        {{item.statusText}}
+      </text>
+    </view>
+
+    <view class="meta-row">
+      <text class="meta-label">需要数目</text>
+      <text class="meta-value">{{item.quantity}} {{item.qtyUnit || qtyUnit}}</text>
+    </view>
+    <view class="meta-row">
+      <text class="meta-label">最终数目</text>
+      <text class="meta-value {{item.status === 'completed' ? '' : 'muted'}}">
+        {{item.finalQtyText}}
+        <text wx:if="{{item.status === 'completed'}}"> {{item.qtyUnit || qtyUnit}}</text>
+      </text>
+    </view>
+    <view class="meta-row" wx:if="{{item.extraQuantity > 0}}">
+      <text class="meta-label">超出申请</text>
+      <text class="meta-value warn">+{{item.extraQuantity}} {{item.qtyUnit || qtyUnit}}</text>
+    </view>
+    <view class="meta-row">
+      <text class="meta-label">登记时间</text>
+      <text class="meta-value">{{item.createdAtText}}</text>
+    </view>
+    <view class="meta-row">
+      <text class="meta-label">送达时间</text>
+      <text class="meta-value {{item.deliveredAt ? '' : 'muted'}}">{{item.deliveredAtText}}</text>
+    </view>
+    <view class="meta-row" wx:if="{{item.userName}}">
+      <text class="meta-label">称呼</text>
+      <text class="meta-value">{{item.userName}}</text>
+    </view>
+    <view class="meta-row" wx:if="{{item.remark}}">
+      <text class="meta-label">备注</text>
+      <text class="meta-value">{{item.remark}}</text>
+    </view>
+  </view>
+
+  <view class="hyc-empty" wx:if="{{loading}}">加载中...</view>
+  <view class="hyc-empty" wx:if="{{!loading && orders.length === 0}}">暂无登记订单</view>
+</view>

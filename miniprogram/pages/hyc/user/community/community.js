@@ -1,6 +1,7 @@
 const api = require('../../../../services/api')
 const communityPref = require('../../../../services/communityPref')
 const buildingHelper = require('../../../../data/buildingHelper')
+const addressCascade = require('../../../../services/addressCascade')
 
 Page({
   data: {
@@ -11,6 +12,14 @@ Page({
     phaseNames: [],
     phaseIndex: 0,
     hasPhases: false,
+    buildingNames: [],
+    buildingIndex: 0,
+    unitOptions: [],
+    unitIndex: 0,
+    rooms: [],
+    roomLabels: [],
+    roomIndex: 0,
+    selectedRoom: null,
     loading: true,
     fromChange: false
   },
@@ -18,6 +27,12 @@ Page({
   onLoad(options) {
     this.fromChange = !!(options && options.change === '1')
     this.setData({ fromChange: this.fromChange })
+    addressCascade.bindAddressCascade(this, {
+      getCommunityId: () => {
+        const community = this.data.communities[this.data.communityIndex]
+        return community ? community.id : buildingHelper.getDefaultCommunityId()
+      }
+    })
     // 先用内置默认小区铺底，避免接口慢/失败时空白
     this.applyList(buildingHelper.listCommunities())
     this.loadCommunities()
@@ -37,7 +52,6 @@ Page({
 
   applyList(list) {
     if (!list || list.length === 0) {
-      // 极端兜底：硬编码宜昌·恒大名都
       list = [{
         id: 'hengda_mingdu',
         name: '宜昌·恒大名都',
@@ -61,40 +75,28 @@ Page({
       communityIndex,
       loading: false
     })
-    this.applyCommunity(communityIndex, pref.phaseId, list)
+    this.applyCommunity(communityIndex, pref, list)
   },
 
-  applyCommunity(communityIndex, preferPhaseId, listOverride) {
+  applyCommunity(communityIndex, prefer, listOverride) {
     const list = listOverride || this.data.communities
     const community = list[communityIndex]
     if (!community) {
       return
     }
-    const phases = community.phases || []
-    const hasPhases = !!community.hasPhases && phases.length > 0
-    let phaseIndex = 0
-    if (hasPhases && preferPhaseId) {
-      const idx = phases.findIndex(p => p.id === preferPhaseId)
-      if (idx >= 0) {
-        phaseIndex = idx
-      }
-    }
+    const phasesMeta = community.phases || []
+    const hasPhases = !!community.hasPhases && phasesMeta.length > 0
     this.setData({
       communityIndex,
-      phases,
-      phaseNames: phases.map(p => p.name),
-      phaseIndex,
       hasPhases
     })
+    // 拉完整楼栋数据并按偏好回填
+    this.loadPhasesForAddress(prefer || {})
   },
 
   onCommunityChange(e) {
     const communityIndex = Number(e.detail.value)
-    this.applyCommunity(communityIndex, '')
-  },
-
-  onPhaseChange(e) {
-    this.setData({ phaseIndex: Number(e.detail.value) })
+    this.applyCommunity(communityIndex, {})
   },
 
   confirm() {
@@ -107,32 +109,23 @@ Page({
       wx.showToast({ title: '该小区暂无期数', icon: 'none' })
       return
     }
-    let phaseId = ''
-    let phaseName = ''
-    if (this.data.hasPhases) {
-      const phase = this.data.phases[this.data.phaseIndex]
-      if (!phase) {
-        wx.showToast({ title: '请选择期数', icon: 'none' })
-        return
-      }
-      phaseId = phase.id
-      phaseName = phase.name
+    if (!this.data.selectedRoom) {
+      wx.showToast({ title: '请选择门牌号', icon: 'none' })
+      return
     }
-    communityPref.savePref({
-      communityId: community.id,
-      communityName: community.name,
-      phaseId,
-      phaseName,
-      hasPhases: this.data.hasPhases
-    })
+    const addressPref = this.buildAddressPref(community)
+    communityPref.savePref(addressPref)
+    console.log('[community] 默认地址已保存', addressPref.roomLabel || addressPref.roomId)
     wx.showToast({ title: '已保存', icon: 'success' })
     setTimeout(() => {
       if (this.fromChange) {
-        wx.navigateBack({ fail: () => {
-          wx.redirectTo({ url: '/pages/hyc/user/home/home?stay=1' })
-        }})
+        wx.navigateBack({
+          fail: () => {
+            wx.redirectTo({ url: '/pages/hyc/user/mine/mine' })
+          }
+        })
       } else {
-        wx.redirectTo({ url: '/pages/hyc/user/home/home?stay=1' })
+        wx.redirectTo({ url: '/pages/hyc/user/mine/mine' })
       }
     }, 400)
   }

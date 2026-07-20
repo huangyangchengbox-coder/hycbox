@@ -16,9 +16,19 @@
   border-bottom: none;
 }
 
+.menu-main {
+  flex: 1;
+  padding-right: 16rpx;
+  min-width: 0;
+}
+
 .menu-title {
   font-size: 30rpx;
   color: #1a1a1a;
+}
+
+.menu-tip {
+  margin-top: 4rpx;
 }
 
 .menu-arrow {

@@ -1,7 +1,7 @@
 <view class="hyc-page">
   <view class="hyc-card">
-    <view class="hyc-title">{{fromChange ? '修改小区' : '选择你的小区'}}</view>
-    <view class="hyc-sub">选好后会记住，下次无需再选；可随时在「我的」里修改</view>
+    <view class="hyc-title">{{fromChange ? '修改我的地址' : '选择你的地址'}}</view>
+    <view class="hyc-sub">选好后会记住，下次无需再选；登记时可临时改，默认地址在「我的」里改</view>
   </view>
 
   <view class="hyc-card" wx:if="{{!loading}}">
@@ -17,6 +17,23 @@
       </picker>
     </block>
     <view wx:else class="hyc-sub tip-no-phase">该小区暂无分期</view>
+
+    <view class="picker-label">楼栋</view>
+    <picker mode="selector" range="{{buildingNames}}" value="{{buildingIndex}}" bindchange="onBuildingChange">
+      <view class="picker-value">{{buildingNames[buildingIndex] || '请选择楼栋'}}</view>
+    </picker>
+
+    <view class="picker-label">单元</view>
+    <picker mode="selector" range="{{unitOptions}}" value="{{unitIndex}}" bindchange="onUnitChange">
+      <view class="picker-value">{{unitOptions[unitIndex] || '请选择单元'}}</view>
+    </picker>
+
+    <view class="picker-label">房间号</view>
+    <picker mode="selector" range="{{roomLabels}}" value="{{roomIndex}}" bindchange="onRoomChange">
+      <view class="picker-value">{{roomLabels[roomIndex] || '请选择房间号'}}</view>
+    </picker>
+
+    <view class="hyc-sub tip-selected" wx:if="{{selectedRoom}}">已选：{{selectedRoom.label}}</view>
 
     <button class="hyc-btn-primary save-btn" bindtap="confirm">确认</button>
   </view>

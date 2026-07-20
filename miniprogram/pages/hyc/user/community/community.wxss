@@ -19,6 +19,10 @@
   margin-top: 24rpx;
 }
 
+.tip-selected {
+  margin-top: 24rpx;
+}
+
 .save-btn {
   margin-top: 48rpx;
 }

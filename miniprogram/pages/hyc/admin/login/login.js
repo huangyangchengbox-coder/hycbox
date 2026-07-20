@@ -9,7 +9,7 @@ Page({
   },
 
   onShow() {
-    // 有效 token 直接进管理页（有待派送则进配送）
+    // 有效 token 直接进管理发布页
     if (adminSession.isLoggedIn()) {
       require('../../../../services/adminEntry').goAdminHome()
     }
@@ -51,6 +51,6 @@ Page({
   },
 
   goBack() {
-    wx.redirectTo({ url: '/pages/hyc/user/home/home' })
+    wx.reLaunch({ url: '/pages/hyc/hub/hub' })
   }
 })

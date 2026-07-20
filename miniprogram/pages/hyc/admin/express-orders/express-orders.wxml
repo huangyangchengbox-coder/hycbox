@@ -1,0 +1,121 @@
+<view class="hyc-page">
+  <view class="hyc-card">
+    <view class="hyc-row">
+      <view>
+        <view class="hyc-title">{{title}}</view>
+        <view class="hyc-sub">先核实收款，再发货</view>
+      </view>
+      <view class="link-btn" bindtap="goShipped">已发货列表 ›</view>
+    </view>
+    <view class="tab-row">
+      <view class="tab-item {{tab === 'verify' ? 'on' : ''}}" data-tab="verify" bindtap="switchTab">收款核实</view>
+      <view class="tab-item {{tab === 'ship' ? 'on' : ''}}" data-tab="ship" bindtap="switchTab">待发货</view>
+    </view>
+  </view>
+
+  <!-- 收款核实 -->
+  <block wx:if="{{tab === 'verify'}}">
+    <view class="hyc-card" wx:for="{{verifyGroups}}" wx:key="province">
+      <view class="province-head">{{item.province}} · {{item.orderCount}}单 · {{item.totalQuantity}}{{qtyUnit}}</view>
+      <view class="order-item" wx:for="{{item.orders}}" wx:for-item="order" wx:key="id">
+        <view class="hyc-row">
+          <text class="name">{{order.userName}}</text>
+          <text class="qty">{{order.quantity}} {{order.qtyUnit || qtyUnit}}</text>
+        </view>
+        <view class="hyc-sub">{{order.phone}}</view>
+        <view class="hyc-sub">{{order.address}}</view>
+        <view class="hyc-sub">登记：{{order.createdAt}}</view>
+        <view class="pay-edit-row">
+          <text class="pay-edit-label">核实金额（参考 ¥{{order.expectAmount}}）</text>
+          <view class="qty-ctrl">
+            <view
+              class="qty-btn"
+              data-province="{{item.province}}"
+              data-id="{{order.id}}"
+              data-delta="-1"
+              bindtap="changeVerifyPayAmount"
+            >−</view>
+            <view class="pay-amount-edit">
+              <text class="pay-yen">¥</text>
+              <input
+                class="pay-amount-input"
+                type="digit"
+                value="{{order.payAmount}}"
+                data-province="{{item.province}}"
+                data-id="{{order.id}}"
+                bindinput="onVerifyPayAmount"
+              />
+            </view>
+            <view
+              class="qty-btn"
+              data-province="{{item.province}}"
+              data-id="{{order.id}}"
+              data-delta="1"
+              bindtap="changeVerifyPayAmount"
+            >+</view>
+          </view>
+        </view>
+        <view class="pay-method-row">
+          <view
+            class="pay-chip {{order.payMethod === 'wechat' ? 'on' : ''}}"
+            data-province="{{item.province}}"
+            data-id="{{order.id}}"
+            data-method="wechat"
+            bindtap="onVerifyPayMethod"
+          >微信</view>
+          <view
+            class="pay-chip {{order.payMethod === 'alipay' ? 'on' : ''}}"
+            data-province="{{item.province}}"
+            data-id="{{order.id}}"
+            data-method="alipay"
+            bindtap="onVerifyPayMethod"
+          >支付宝</view>
+        </view>
+        <view class="ship-row">
+          <button
+            size="mini"
+            class="hyc-btn-primary ship-btn"
+            data-id="{{order.id}}"
+            data-province="{{item.province}}"
+            bindtap="verifyPay"
+            disabled="{{verifyingId === order.id}}"
+          >核实收款</button>
+        </view>
+      </view>
+    </view>
+    <view class="hyc-empty" wx:if="{{!loading && verifyGroups.length === 0}}">暂无待核实订单</view>
+  </block>
+
+  <!-- 待发货（已核实） -->
+  <block wx:if="{{tab === 'ship'}}">
+    <view class="hyc-card export-bar" wx:if="{{shipGroups.length > 0}}">
+      <view class="hyc-sub">导出格式：地址 手机号 昵称（每行一条）</view>
+      <button size="mini" class="hyc-btn-plain export-btn" bindtap="exportShipTxt">导出 TXT</button>
+    </view>
+    <view class="hyc-card" wx:for="{{shipGroups}}" wx:key="province">
+      <view class="province-head">{{item.province}} · {{item.orderCount}}单 · {{item.totalQuantity}}{{qtyUnit}}</view>
+      <view class="order-item" wx:for="{{item.orders}}" wx:for-item="order" wx:key="id">
+        <view class="hyc-row">
+          <text class="name">{{order.userName}}</text>
+          <text class="qty">{{order.quantity}} {{order.qtyUnit || qtyUnit}}</text>
+        </view>
+        <view class="hyc-sub">{{order.phone}}</view>
+        <view class="hyc-sub">{{order.address}}</view>
+        <view class="hyc-sub">收款 ¥{{order.payAmount}} · {{order.payMethod === 'alipay' ? '支付宝' : '微信'}}</view>
+        <view class="hyc-sub">核实：{{order.payVerifiedAt || order.createdAt}}</view>
+        <view class="ship-row">
+          <button
+            size="mini"
+            class="hyc-btn-primary ship-btn"
+            data-id="{{order.id}}"
+            bindtap="shipOrder"
+            disabled="{{shippingId === order.id}}"
+          >发货</button>
+        </view>
+      </view>
+    </view>
+    <view class="hyc-empty" wx:if="{{!loading && shipGroups.length === 0}}">暂无待发货订单</view>
+  </block>
+
+  <view class="hyc-empty" wx:if="{{loading}}">加载中...</view>
+</view>

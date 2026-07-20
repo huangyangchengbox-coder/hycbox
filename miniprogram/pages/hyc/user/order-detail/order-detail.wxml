@@ -1,0 +1,22 @@
+<view class="hyc-page" wx:if="{{order}}">
+  <view class="hyc-card">
+    <view class="hyc-row">
+      <view class="hyc-title">{{order.publicationTitle || '派送登记'}}</view>
+      <text class="hyc-tag {{order.status === 'pending' ? 'hyc-tag-pending' : 'hyc-tag-done'}}">
+        {{order.statusText}}
+      </text>
+    </view>
+    <view class="hyc-sub">地址：{{order.roomLabel}}</view>
+    <view class="hyc-sub">登记数量：{{order.quantity}} {{order.qtyUnit || '袋'}}</view>
+    <view class="hyc-sub" wx:if="{{order.status === 'completed' && order.deliveredQuantity != null}}">
+      实际送达：{{order.deliveredQuantity}} {{order.qtyUnit || '袋'}}
+      <text wx:if="{{order.extraQuantity > 0}}">（超出 {{order.extraQuantity}}）</text>
+    </view>
+    <view class="hyc-sub" wx:if="{{order.remark}}">备注：{{order.remark}}</view>
+    <view class="hyc-sub">登记时间：{{order.createdAt}}</view>
+    <view class="hyc-sub" wx:if="{{order.deliveredAt}}">送达时间：{{order.deliveredAt}}</view>
+  </view>
+</view>
+
+<view class="hyc-empty" wx:if="{{loading}}">加载中...</view>
+<view class="hyc-empty" wx:if="{{!loading && !order}}">订单不存在</view>

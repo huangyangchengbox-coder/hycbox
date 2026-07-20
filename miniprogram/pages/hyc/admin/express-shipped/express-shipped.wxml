@@ -1,0 +1,49 @@
+<view class="hyc-page">
+  <view class="hyc-card">
+    <view class="hyc-title">{{title}}</view>
+    <view class="hyc-sub">登记 {{registerOrders.length}} 单 · 已发货 {{shippedOrders.length}} 单</view>
+    <view class="tab-row">
+      <view class="tab-item {{tab === 'register' ? 'on' : ''}}" data-tab="register" bindtap="switchTab">登记列表</view>
+      <view class="tab-item {{tab === 'shipped' ? 'on' : ''}}" data-tab="shipped" bindtap="switchTab">已发货列表</view>
+    </view>
+  </view>
+
+  <!-- 登记列表：全部登记 + 当前状态 -->
+  <block wx:if="{{tab === 'register'}}">
+    <view class="hyc-card order-card" wx:for="{{registerOrders}}" wx:key="id" data-id="{{item.id}}" bindtap="goDetail">
+      <view class="hyc-row">
+        <text class="name">{{item.userName}} · {{item.province}}</text>
+        <text class="hyc-tag {{item.status === 'shipped' ? 'hyc-tag-done' : 'hyc-tag-pending'}}">
+          {{item.statusText}}
+        </text>
+      </view>
+      <view class="hyc-sub">{{item.phone}} · {{item.quantity}} {{item.qtyUnit || qtyUnit}}</view>
+      <view class="hyc-sub">{{item.address}}</view>
+      <view class="hyc-sub">登记：{{item.createdAt || '-'}}</view>
+      <view class="hyc-sub" wx:if="{{item.payAmount != null}}">
+        收款：¥{{item.payAmount}} · {{item.payMethod === 'alipay' ? '支付宝' : (item.payMethod === 'wechat' ? '微信' : '-')}}
+      </view>
+      <view class="detail-hint">查看详情 ›</view>
+    </view>
+    <view class="hyc-empty" wx:if="{{!loading && registerOrders.length === 0}}">暂无登记订单</view>
+  </block>
+
+  <!-- 已发货列表：原有功能，进详情可填售后 -->
+  <block wx:if="{{tab === 'shipped'}}">
+    <view class="hyc-card tip-card">
+      <view class="hyc-sub">共 {{shippedOrders.length}} 单，点击进入详情可填售后</view>
+    </view>
+    <view class="hyc-card order-card" wx:for="{{shippedOrders}}" wx:key="id" data-id="{{item.id}}" bindtap="goDetail">
+      <view class="hyc-row">
+        <text class="name">{{item.userName}} · {{item.province}}</text>
+        <text class="menu-arrow">›</text>
+      </view>
+      <view class="hyc-sub">{{item.phone}} · {{item.quantity}} {{item.qtyUnit || qtyUnit}}</view>
+      <view class="hyc-sub">{{item.address}}</view>
+      <view class="hyc-sub">发货：{{item.deliveredAt || '-'}}</view>
+    </view>
+    <view class="hyc-empty" wx:if="{{!loading && shippedOrders.length === 0}}">暂无已发货订单</view>
+  </block>
+
+  <view class="hyc-empty" wx:if="{{loading}}">加载中...</view>
+</view>

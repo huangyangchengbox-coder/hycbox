@@ -1,20 +1,30 @@
 {
   "pages": [
+    "pages/hyc/hub/hub",
     "pages/hyc/user/home/home",
     "pages/hyc/user/community/community",
     "pages/hyc/user/order/order",
     "pages/hyc/user/mine/mine",
+    "pages/hyc/user/order-detail/order-detail",
     "pages/hyc/user/profile/profile",
+    "pages/hyc/express/home/home",
+    "pages/hyc/express/order/order",
+    "pages/hyc/express/mine/mine",
+    "pages/hyc/express/detail/detail",
     "pages/hyc/index",
     "pages/hyc/admin/login/login",
     "pages/hyc/admin/publish/publish",
+    "pages/hyc/admin/pub-orders/pub-orders",
+    "pages/hyc/admin/express-orders/express-orders",
+    "pages/hyc/admin/express-shipped/express-shipped",
+    "pages/hyc/admin/express-detail/express-detail",
     "pages/hyc/admin/delivery/delivery",
     "pages/hyc/admin/managers/managers",
     "pages/hyc/admin/mine/mine"
   ],
   "window": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "恒大名都邻里信息备忘录",
+    "navigationBarTitleText": "备忘录",
     "navigationBarBackgroundColor": "#ffffff",
     "backgroundColor": "#f5f6f8"
   },

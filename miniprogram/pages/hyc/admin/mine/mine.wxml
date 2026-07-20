@@ -23,7 +23,6 @@
 
   <view class="hyc-bottom-bar">
     <view class="hyc-bottom-item" bindtap="goPublish">发布</view>
-    <view class="hyc-bottom-item" bindtap="goDelivery">配送</view>
     <view class="hyc-bottom-item active">我的</view>
   </view>
 </view>

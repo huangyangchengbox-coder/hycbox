@@ -1,1 +1,49 @@
 @import "../../common.wxss";
+
+.community-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx;
+}
+
+.community-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.community-label {
+  font-size: 30rpx;
+  color: #1a1a1a;
+  font-weight: 500;
+}
+
+.menu-arrow {
+  font-size: 40rpx;
+  color: #ccc;
+  line-height: 1;
+}
+
+.section-title {
+  margin: 8rpx 24rpx 0;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.order-card {
+  position: relative;
+}
+
+.detail-hint {
+  margin-top: 12rpx;
+  text-align: right;
+  font-size: 24rpx;
+  color: #2f6bff;
+}
+
+.hyc-empty.soft {
+  padding: 24rpx;
+  color: #999;
+}

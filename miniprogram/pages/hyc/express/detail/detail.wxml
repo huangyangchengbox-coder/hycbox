@@ -1,0 +1,52 @@
+<view class="hyc-page" wx:if="{{order}}">
+  <view class="hyc-card">
+    <view class="hyc-row">
+      <view class="hyc-title">{{order.publicationTitle || '物流登记'}}</view>
+      <text class="hyc-tag {{order.status === 'shipped' ? 'hyc-tag-done' : 'hyc-tag-pending'}}">
+        {{order.statusText}}
+      </text>
+    </view>
+    <view class="hyc-sub">收件人：{{order.userName}}</view>
+    <view class="hyc-sub">电话：{{order.phone}}</view>
+    <view class="hyc-sub">地址：{{order.province}} {{order.address}}</view>
+    <view class="hyc-sub">数量：{{order.quantity}} {{order.qtyUnit || '袋'}}</view>
+    <view class="hyc-sub">登记时间：{{order.createdAt}}</view>
+    <view class="hyc-sub" wx:if="{{order.payAmount != null}}">
+      收款：¥{{order.payAmount}}{{order.payMethodText ? ' · ' + order.payMethodText : ''}}
+    </view>
+    <view class="hyc-sub" wx:if="{{order.payVerifiedAt}}">核实时间：{{order.payVerifiedAt}}</view>
+    <view class="hyc-sub" wx:if="{{order.deliveredAt}}">发货时间：{{order.deliveredAt}}</view>
+  </view>
+
+  <view class="hyc-card" wx:if="{{order.shipImages && order.shipImages.length}}">
+    <view class="hyc-title">发货凭证（{{order.shipImages.length}}张）</view>
+    <view class="img-row">
+      <image
+        class="thumb"
+        wx:for="{{order.shipImages}}"
+        wx:key="*this"
+        src="{{item}}"
+        mode="aspectFill"
+        data-url="{{item}}"
+        bindtap="previewShip"
+      />
+    </view>
+  </view>
+
+  <view class="hyc-card" wx:if="{{order.afterSaleRemark || (order.afterSaleImages && order.afterSaleImages.length)}}">
+    <view class="hyc-title">售后信息</view>
+    <view class="hyc-sub" wx:if="{{order.afterSaleRemark}}">{{order.afterSaleRemark}}</view>
+    <view class="img-row" wx:if="{{order.afterSaleImages && order.afterSaleImages.length}}">
+      <image
+        class="thumb"
+        wx:for="{{order.afterSaleImages}}"
+        wx:key="*this"
+        src="{{item}}"
+        mode="aspectFill"
+      />
+    </view>
+  </view>
+</view>
+
+<view class="hyc-empty" wx:if="{{loading}}">加载中...</view>
+<view class="hyc-empty" wx:if="{{!loading && !order}}">订单不存在</view>

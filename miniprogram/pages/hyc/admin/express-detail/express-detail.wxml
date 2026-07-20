@@ -1,0 +1,47 @@
+<view class="hyc-page" wx:if="{{order}}">
+  <view class="hyc-card">
+    <view class="hyc-title">{{order.userName}}</view>
+    <view class="hyc-sub">{{order.province}} · {{order.phone}}</view>
+    <view class="hyc-sub">{{order.address}}</view>
+    <view class="hyc-sub">数量 {{order.quantity}} {{order.qtyUnit || '袋'}}</view>
+    <view class="hyc-sub">登记：{{order.createdAt}}</view>
+    <view class="hyc-sub">发货：{{order.deliveredAt || '-'}}</view>
+  </view>
+
+  <view class="hyc-card" wx:if="{{order.shipImages && order.shipImages.length}}">
+    <view class="hyc-title">发货凭证（{{order.shipImages.length}}张）</view>
+    <view class="img-row">
+      <image
+        class="thumb"
+        wx:for="{{order.shipImages}}"
+        wx:key="*this"
+        src="{{item}}"
+        mode="aspectFill"
+        data-url="{{item}}"
+        bindtap="previewShip"
+      />
+    </view>
+  </view>
+
+  <view class="hyc-card">
+    <view class="hyc-title">售后备注</view>
+    <textarea
+      class="remark-area"
+      placeholder="填写售后说明"
+      maxlength="200"
+      value="{{afterSaleRemark}}"
+      bindinput="onRemarkInput"
+    />
+    <view class="picker-label">售后图片</view>
+    <view class="img-row">
+      <view class="img-wrap" wx:for="{{afterSaleImages}}" wx:key="*this">
+        <image class="thumb" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewAfter" />
+        <view class="img-del" data-index="{{index}}" catchtap="removeAfterImage">×</view>
+      </view>
+      <view class="img-add" bindtap="addAfterImage">+</view>
+    </view>
+    <button class="hyc-btn-primary save-btn" bindtap="saveAfterSale" disabled="{{saving}}">保存售后</button>
+  </view>
+</view>
+
+<view class="hyc-empty" wx:if="{{loading}}">加载中...</view>

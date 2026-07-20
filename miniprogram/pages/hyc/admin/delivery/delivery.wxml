@@ -31,10 +31,8 @@
   </view>
   <view class="status">{{statusText}}</view>
 
-  <view class="card picker-card">
-    <picker mode="selector" range="{{pubTitles}}" value="{{pubIndex}}" bindchange="onPubChange">
-      <view class="picker">{{pubTitles[pubIndex] || '请选择批次'}}</view>
-    </picker>
+  <view class="card picker-card" wx:if="{{currentPubTitle}}">
+    <view class="current-tip">{{currentPubTitle}}</view>
   </view>
 
   <view wx:if="{{hasGroups}}">
@@ -84,10 +82,10 @@
     </view>
   </view>
 
-  <!-- 确认送达：可调整每户袋数 -->
+  <!-- 确认送达：可调整每户数量 + 收款 -->
   <view class="mask" wx:if="{{showConfirm}}" catchtouchmove="noop" bindtap="closeConfirm"></view>
   <view class="confirm-panel" wx:if="{{showConfirm}}" catchtap="noop">
-    <view class="confirm-title">确认送达（可改每户数量，默认=申请数）</view>
+    <view class="confirm-title">确认送达（可改数量与收款金额）</view>
     <scroll-view scroll-y class="confirm-list" enable-flex="{{true}}">
       <view class="confirm-item" wx:for="{{confirmList}}" wx:key="id">
         <view class="confirm-row">
@@ -103,10 +101,44 @@
             <view class="qty-btn" data-index="{{index}}" bindtap="incDeliverQty">+</view>
           </view>
         </view>
+        <view class="confirm-pay-row">
+          <text class="confirm-qty-label">收款（参考 ¥{{item.expectAmount}}）</text>
+          <view class="qty-ctrl">
+            <view class="qty-btn" data-index="{{index}}" data-delta="-1" bindtap="changePayAmount">−</view>
+            <view class="pay-amount-edit">
+              <text class="pay-yen">¥</text>
+              <input
+                class="pay-amount-input"
+                type="digit"
+                value="{{item.payAmount}}"
+                data-index="{{index}}"
+                bindinput="onPayAmountInput"
+              />
+            </view>
+            <view class="qty-btn" data-index="{{index}}" data-delta="1" bindtap="changePayAmount">+</view>
+          </view>
+        </view>
+        <view class="pay-method-row">
+          <view
+            class="pay-chip {{item.payMethod === 'wechat' ? 'on' : ''}}"
+            data-index="{{index}}"
+            data-method="wechat"
+            bindtap="onPayMethodTap"
+          >微信</view>
+          <view
+            class="pay-chip {{item.payMethod === 'alipay' ? 'on' : ''}}"
+            data-index="{{index}}"
+            data-method="alipay"
+            bindtap="onPayMethodTap"
+          >支付宝</view>
+        </view>
       </view>
     </scroll-view>
     <view class="confirm-footer">
-      <text class="confirm-total">共 {{confirmCount}} 户 · {{confirmBags}} {{qtyUnit}}</text>
+      <view class="confirm-total-wrap">
+        <text class="confirm-total">共 {{confirmCount}} 户 · {{confirmBags}} {{qtyUnit}}</text>
+        <text class="confirm-pay-total">收款合计 ¥{{confirmPayTotal}}</text>
+      </view>
       <view class="confirm-actions">
         <view class="batch-clear" bindtap="closeConfirm">取消</view>
         <view class="batch-confirm" bindtap="submitConfirm">提交送达</view>
@@ -124,8 +156,6 @@
   </view>
 
   <view class="tabbar">
-    <view class="tab" bindtap="goPublish">发布</view>
-    <view class="tab on">配送</view>
-    <view class="tab" bindtap="goMine">我的</view>
+    <view class="tab on" bindtap="goPublish">返回发布</view>
   </view>
 </view>

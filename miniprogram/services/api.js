@@ -246,8 +246,81 @@ const api = {
     return request({ url: '/orders', data: query })
   },
 
-  completeOrder(orderId, deliveredQuantity) {
+  /** 管理者：某次发布下全部登记订单 */
+  listAdminOrders(publicationId) {
+    if (config.useMock) {
+      return wrapMock(() => ({
+        code: 0,
+        data: mockStore.listOrders({ publicationId })
+      }))
+    }
+    return request({
+      url: '/admin/orders',
+      data: { publicationId },
+      admin: true
+    })
+  },
+
+  /** 物流中国：按省分组待发货 */
+  groupPendingByProvince(publicationId) {
+    return request({
+      url: '/admin/orders/group-by-province',
+      data: { publicationId },
+      admin: true
+    })
+  },
+
+  getOrderDetail(orderId) {
+    return request({ url: `/orders/${orderId}` })
+  },
+
+  shipOrder(orderId, shipImageUrls) {
+    const urls = Array.isArray(shipImageUrls)
+      ? shipImageUrls
+      : (shipImageUrls ? [shipImageUrls] : [])
+    return request({
+      url: `/orders/${orderId}/ship`,
+      method: 'PUT',
+      data: {
+        shipImageUrls: urls,
+        shipImageUrl: urls[0] || ''
+      },
+      admin: true
+    })
+  },
+
+  /** 物流中国：收款核实（pending → paid） */
+  verifyPay(orderId, payAmount, payMethod) {
+    return request({
+      url: `/orders/${orderId}/verify-pay`,
+      method: 'PUT',
+      data: { payAmount, payMethod },
+      admin: true
+    })
+  },
+
+  /** 物流中国：待收款核实（按省） */
+  groupPayVerifyByProvince(publicationId) {
+    return request({
+      url: '/admin/orders/group-pay-verify',
+      data: { publicationId },
+      admin: true
+    })
+  },
+
+  updateAfterSale(orderId, afterSaleRemark, afterSaleImages) {
+    return request({
+      url: `/orders/${orderId}/after-sale`,
+      method: 'PUT',
+      data: { afterSaleRemark, afterSaleImages },
+      admin: true
+    })
+  },
+
+  completeOrder(orderId, deliveredQuantity, payAmount, payMethod) {
     const data = { deliveredQuantity }
+    if (payAmount != null && payAmount !== '') data.payAmount = payAmount
+    if (payMethod) data.payMethod = payMethod
     if (config.useMock) {
       return wrapMock(() => ({
         code: 0,

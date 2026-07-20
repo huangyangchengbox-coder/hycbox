@@ -30,7 +30,7 @@
 }
 
 .form-wrap.form-open {
-  max-height: 1600rpx;
+  max-height: 2000rpx;
   opacity: 1;
   margin-top: 8rpx;
 }
@@ -81,6 +81,10 @@
   padding: 8rpx 0;
 }
 
+.tip-nation {
+  margin-top: 16rpx;
+}
+
 .pub-item {
   padding: 24rpx 0;
   border-bottom: 1rpx solid #f0f0f0;
@@ -98,12 +102,54 @@
 
 .pub-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 12rpx;
   margin-top: 16rpx;
 }
 
+.scope-tag {
+  display: inline-block;
+  margin-right: 8rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  font-size: 20rpx;
+}
+
+.scope-tag.community {
+  background: #e8f8ef;
+  color: #07c160;
+}
+
+.scope-tag.nation {
+  background: #eef3ff;
+  color: #2f6bff;
+}
+
+.action-btn {
+  padding: 10rpx 24rpx;
+  font-size: 24rpx;
+  line-height: 1.4;
+  color: #fff;
+  border-radius: 8rpx;
+}
+
+.deliver-btn {
+  background: #07c160;
+}
+
+.ship-btn {
+  background: #2f6bff;
+}
+
+.detail-btn {
+  background: #fff;
+  color: #666;
+  border: 1rpx solid #ddd;
+}
+
 .end-btn {
-  padding: 10rpx 28rpx;
+  padding: 10rpx 24rpx;
   font-size: 24rpx;
   line-height: 1.4;
   color: #fff;

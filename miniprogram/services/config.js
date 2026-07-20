@@ -1,11 +1,11 @@
 /**
- * 服务配置：切换 Mock / 真实后端
- * 部署后端后，将 useMock 改为 false 并填写 baseUrl
+ * 服务配置
+ * 本地调试：连本机 8090；上线改回公网 IP 或域名
  */
 module.exports = {
   useMock: false,
-  // 线上服务器
-  baseUrl: 'http://8.152.99.189:8080/api',
-  // 本地调试：'http://127.0.0.1:8080/api'
+  // 本地：'http://127.0.0.1:8090/api'
+  // 线上：'http://8.152.99.189/api'
+  baseUrl: 'http://8.152.99.189/api',
   timeout: 20000
 }

@@ -63,7 +63,10 @@ Page({
     pubTitles: ['全部待配送'],
     pubIndex: 0,
     publications: [],
-    currentPubId: 'all',
+    pubList: [],
+    currentPubId: '',
+    currentPubTitle: '',
+    currentScope: 'community',
     qtyUnit: '份',
     selectedCount: 0,
     selectedBags: 0,
@@ -71,6 +74,7 @@ Page({
     confirmList: [],
     confirmCount: 0,
     confirmBags: 0,
+    confirmPayTotal: '0.00',
     remarkTip: {
       show: false,
       roomNo: '',
@@ -89,8 +93,20 @@ Page({
 
   noop: function () {},
 
-  onLoad: function () {
-    console.log('[delivery] onLoad')
+  onLoad: function (options) {
+    console.log('[delivery] onLoad', options)
+    const publicationId = (options && options.publicationId) || ''
+    const title = options && options.title ? decodeURIComponent(options.title) : '配送'
+    const unit = options && options.unit ? decodeURIComponent(options.unit) : '袋'
+    this.entryPubId = publicationId
+    this.setData({
+      currentPubId: publicationId,
+      currentPubTitle: title,
+      qtyUnit: unit
+    })
+    if (title) {
+      wx.setNavigationBarTitle({ title: title })
+    }
   },
 
   onShow: function () {
@@ -110,11 +126,20 @@ Page({
       wx.redirectTo({ url: '/pages/hyc/admin/login/login' })
       return
     }
+    if (!this.entryPubId && !this.data.currentPubId) {
+      this.setData({
+        loading: false,
+        statusText: '请从发布列表进入配送',
+        emptyHint: '请从发布列表点击「配送」进入'
+      })
+      return
+    }
     this.loadAll()
   },
 
   loadAll: function () {
     const that = this
+    const publicationId = this.entryPubId || this.data.currentPubId
     this.setData({
       loading: true,
       statusText: '正在加载配送数据…',
@@ -122,33 +147,14 @@ Page({
       showConfirm: false,
       confirmList: []
     })
-    Promise.all([
-      requestGet('/admin/publications', null, 15000).catch(function (err) {
-        return { code: -1, message: err.message }
-      }),
-      requestGet('/admin/stats', null, 15000).catch(function (err) {
-        return { code: -1, message: err.message }
-      })
-    ]).then(function (results) {
-      const pubRes = results[0] || {}
-      const statsRes = results[1] || {}
-      if (that.needRelogin(pubRes) || that.needRelogin(statsRes)) {
+    const statsData = publicationId ? { publicationId: publicationId } : null
+    requestGet('/admin/stats', statsData, 15000).then(function (statsRes) {
+      if (that.needRelogin(statsRes)) {
         return
-      }
-      const publications = (pubRes.code === 0 && pubRes.data) ? pubRes.data : []
-      const pubTitles = ['全部待配送']
-      for (let i = 0; i < publications.length; i++) {
-        const p = publications[i]
-        const u = p.unit || '袋'
-        pubTitles.push((p.title || '未命名') + '（剩余' + (p.remainBags || 0) + u + '）')
       }
       const stats = (statsRes.code === 0 && statsRes.data) ? statsRes.data : that.data.stats
       that.setData({
-        publications: publications,
-        pubTitles: pubTitles,
-        pubIndex: 0,
-        currentPubId: 'all',
-        qtyUnit: '份',
+        currentPubId: publicationId,
         stats: {
           pendingCount: stats.pendingCount || 0,
           pendingBags: stats.pendingBags || 0,
@@ -159,7 +165,7 @@ Page({
         },
         statusText: '正在加载楼栋配送列表…'
       })
-      that.loadGroups('all')
+      that.loadGroups(publicationId)
     }).catch(function (err) {
       const msg = (err && err.message) || '加载失败'
       that.setData({
@@ -196,6 +202,7 @@ Page({
               quantity: qty,
               deliverQty: qty,
               qtyUnit: o.qtyUnit || '袋',
+              unitPrice: o.unitPrice != null ? Number(o.unitPrice) : 0,
               remark: o.remark || '',
               selected: false
             })
@@ -295,24 +302,33 @@ Page({
     return false
   },
 
-  onPubChange: function (e) {
-    const that = this
-    const pubIndex = Number(e.detail.value)
-    let currentPubId = 'all'
-    let qtyUnit = '份'
-    if (pubIndex > 0 && this.data.publications[pubIndex - 1]) {
-      currentPubId = this.data.publications[pubIndex - 1].id
-      qtyUnit = this.data.publications[pubIndex - 1].unit || '袋'
+  onPubAction: function (e) {
+    const id = e.currentTarget.dataset.id
+    const title = e.currentTarget.dataset.title || ''
+    const unit = e.currentTarget.dataset.unit || '袋'
+    const scope = e.currentTarget.dataset.scope || 'community'
+    if (!id) {
+      return
     }
+    // 全国 → 发货页；小区 → 本页加载配送列表
+    if (scope === 'nationwide') {
+      wx.navigateTo({
+        url: '/pages/hyc/admin/express-orders/express-orders?publicationId=' + id
+          + '&title=' + encodeURIComponent(title)
+          + '&unit=' + encodeURIComponent(unit)
+      })
+      return
+    }
+    const that = this
     this.setData({
-      pubIndex: pubIndex,
-      currentPubId: currentPubId,
-      qtyUnit: qtyUnit,
+      currentPubId: id,
+      currentPubTitle: title,
+      currentScope: 'community',
+      qtyUnit: unit,
       loading: true,
       statusText: '加载中…'
     })
-    const data = currentPubId === 'all' ? null : { publicationId: currentPubId }
-    requestGet('/admin/stats', data, 15000).then(function (statsRes) {
+    requestGet('/admin/stats', { publicationId: id }, 15000).then(function (statsRes) {
       if (statsRes.code === 0 && statsRes.data) {
         that.setData({
           stats: {
@@ -326,7 +342,21 @@ Page({
         })
       }
     }).catch(function () {})
-    this.loadGroups(currentPubId)
+    this.loadGroups(id)
+  },
+
+  onPubChange: function (e) {
+    // 兼容旧逻辑：已改为列表按钮 onPubAction
+    this.onPubAction({
+      currentTarget: {
+        dataset: {
+          id: (this.data.publications[Number(e.detail.value) - 1] || {}).id,
+          title: (this.data.publications[Number(e.detail.value) - 1] || {}).title,
+          unit: (this.data.publications[Number(e.detail.value) - 1] || {}).unit,
+          scope: (this.data.publications[Number(e.detail.value) - 1] || {}).scope
+        }
+      }
+    })
   },
 
   toggleGroup: function (e) {
@@ -461,6 +491,21 @@ Page({
     })
   },
 
+  /** 收款金额 = 单价 × 实送数量 */
+  calcPayAmount: function (unitPrice, qty) {
+    const p = Number(unitPrice) || 0
+    const q = Number(qty) || 0
+    return (Math.round(p * q * 100) / 100).toFixed(2)
+  },
+
+  sumConfirmPay: function (list) {
+    let total = 0
+    for (let i = 0; i < list.length; i++) {
+      total += Number(list[i].payAmount) || 0
+    }
+    return (Math.round(total * 100) / 100).toFixed(2)
+  },
+
   openConfirm: function () {
     const selected = this.getSelectedOrders()
     if (!selected.length) {
@@ -473,6 +518,8 @@ Page({
       const o = selected[i]
       const qty = Number(o.quantity) || 0
       const deliverQty = qty
+      const unitPrice = Number(o.unitPrice) || 0
+      const expectAmount = this.calcPayAmount(unitPrice, deliverQty)
       confirmBags += deliverQty
       confirmList.push({
         id: o.id,
@@ -481,19 +528,73 @@ Page({
         remark: o.remark || '',
         quantity: qty,
         deliverQty: deliverQty,
-        qtyUnit: o.qtyUnit || this.data.qtyUnit || '袋'
+        qtyUnit: o.qtyUnit || this.data.qtyUnit || '袋',
+        unitPrice: unitPrice,
+        expectAmount: expectAmount,
+        payAmount: expectAmount,
+        payMethod: 'wechat'
       })
     }
     this.setData({
       showConfirm: true,
       confirmList: confirmList,
       confirmCount: confirmList.length,
-      confirmBags: confirmBags
+      confirmBags: confirmBags,
+      confirmPayTotal: this.sumConfirmPay(confirmList)
     })
   },
 
   closeConfirm: function () {
     this.setData({ showConfirm: false })
+  },
+
+  onPayMethodTap: function (e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const method = e.currentTarget.dataset.method
+    if (!method || Number.isNaN(index)) {
+      return
+    }
+    const patch = {}
+    patch['confirmList[' + index + '].payMethod'] = method
+    this.setData(patch)
+  },
+
+  /** 手动调整收款金额 */
+  onPayAmountInput: function (e) {
+    const index = Number(e.currentTarget.dataset.index)
+    if (Number.isNaN(index) || !this.data.confirmList[index]) {
+      return
+    }
+    const value = (e.detail.value || '').trim()
+    const list = this.data.confirmList.slice()
+    list[index] = Object.assign({}, list[index], { payAmount: value })
+    this.setData({
+      ['confirmList[' + index + '].payAmount']: value,
+      confirmPayTotal: this.sumConfirmPay(list)
+    })
+  },
+
+  /** 点击加减调整收款金额（步进 1 元） */
+  changePayAmount: function (e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const delta = Number(e.currentTarget.dataset.delta) || 0
+    const list = this.data.confirmList || []
+    if (!list[index] || !delta) {
+      return
+    }
+    const cur = Number(list[index].payAmount)
+    const base = Number.isNaN(cur) ? 0 : cur
+    let next = Math.round((base + delta) * 100) / 100
+    if (next < 0) {
+      next = 0
+    }
+    const value = next.toFixed(2)
+    const nextList = list.slice()
+    nextList[index] = Object.assign({}, list[index], { payAmount: value })
+    this.setData({
+      ['confirmList[' + index + '].payAmount']: value,
+      confirmPayTotal: this.sumConfirmPay(nextList)
+    })
   },
 
   decDeliverQty: function (e) {
@@ -529,9 +630,19 @@ Page({
         duration: 1200
       })
     }
+    const payAmount = this.calcPayAmount(item.unitPrice, next)
     const patch = {}
     patch['confirmList[' + index + '].deliverQty'] = next
+    patch['confirmList[' + index + '].expectAmount'] = payAmount
+    patch['confirmList[' + index + '].payAmount'] = payAmount
     patch.confirmBags = this.data.confirmBags - cur + next
+    const nextList = list.slice()
+    nextList[index] = Object.assign({}, item, {
+      deliverQty: next,
+      expectAmount: payAmount,
+      payAmount: payAmount
+    })
+    patch.confirmPayTotal = this.sumConfirmPay(nextList)
     this.setData(patch)
   },
 
@@ -540,11 +651,19 @@ Page({
     if (!list.length) {
       return
     }
+    for (let i = 0; i < list.length; i++) {
+      const amount = Number(list[i].payAmount)
+      if (list[i].payAmount === '' || Number.isNaN(amount) || amount < 0) {
+        wx.showToast({ title: '请填写有效收款金额', icon: 'none' })
+        return
+      }
+    }
     const that = this
     const unit = this.data.qtyUnit || '份'
     wx.showModal({
       title: '提交送达',
-      content: '确认送达 ' + list.length + ' 户，共 ' + this.data.confirmBags + ' ' + unit + '？',
+      content: '确认送达 ' + list.length + ' 户，共 ' + this.data.confirmBags + ' ' + unit
+        + '，收款 ¥' + (this.data.confirmPayTotal || '0.00') + '？',
       success: function (modalRes) {
         if (!modalRes.confirm) {
           return
@@ -578,7 +697,7 @@ Page({
       const order = orders[index]
       index += 1
       const delivered = order.deliverQty !== undefined ? Number(order.deliverQty) : (Number(order.quantity) || 1)
-      that.requestComplete(order.id, delivered).then(function () {
+      that.requestComplete(order.id, delivered, order.payAmount, order.payMethod || 'wechat').then(function () {
         ok += 1
         next()
       }).catch(function (err) {
@@ -589,7 +708,7 @@ Page({
     next()
   },
 
-  requestComplete: function (orderId, deliveredQuantity) {
+  requestComplete: function (orderId, deliveredQuantity, payAmount, payMethod) {
     const token = getToken()
     return new Promise(function (resolve, reject) {
       wx.request({
@@ -599,7 +718,11 @@ Page({
           'Content-Type': 'application/json',
           'X-Admin-Token': token
         },
-        data: { deliveredQuantity: deliveredQuantity },
+        data: {
+          deliveredQuantity: deliveredQuantity,
+          payAmount: payAmount != null ? Number(payAmount) : undefined,
+          payMethod: payMethod || 'wechat'
+        },
         success: function (res) {
           const body = res.data || {}
           if (body.code === 0) {

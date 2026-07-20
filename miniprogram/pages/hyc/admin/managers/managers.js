@@ -201,10 +201,6 @@ Page({
     wx.redirectTo({ url: '/pages/hyc/admin/publish/publish' })
   },
 
-  goDelivery() {
-    wx.redirectTo({ url: '/pages/hyc/admin/delivery/delivery' })
-  },
-
   goMine() {
     wx.redirectTo({ url: '/pages/hyc/admin/mine/mine' })
   }

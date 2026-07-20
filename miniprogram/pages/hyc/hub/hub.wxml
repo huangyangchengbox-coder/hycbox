@@ -1,0 +1,21 @@
+<view class="hub-page">
+  <view class="hub-hero">
+    <view class="hub-brand">备忘录</view>
+    <view class="hub-sub">选择你要使用的服务</view>
+  </view>
+
+  <view class="hub-grid">
+    <view class="hub-card" bindtap="goFlash">
+      <view class="hub-icon house">⌂</view>
+      <view class="hub-title">小区闪送</view>
+      <view class="hub-desc">邻里相间，闪电配送</view>
+    </view>
+    <view class="hub-card" bindtap="goExpress">
+      <view class="hub-icon box">▤</view>
+      <view class="hub-title">物流中国</view>
+      <view class="hub-desc">快速记录，全国发货</view>
+    </view>
+  </view>
+
+  <view class="hub-footer" bindtap="goProfile">我的 / 管理者入口 ›</view>
+</view>

@@ -7,6 +7,7 @@ Page({
     showForm: false,
     title: '',
     totalBags: '',
+    unitPrice: '',
     imageUrl: '',
     unitOptions: ['袋', '箱', '个', '份', '件', '其他'],
     unitIndex: 0,
@@ -22,6 +23,10 @@ Page({
     hasPhases: false,
     /** 面向全部期 */
     allPhases: true,
+    /** community | nationwide */
+    scope: 'community',
+    scopeOptions: ['小区闪送', '物流中国（全国）'],
+    scopeIndex: 0,
     publications: [],
     adminName: '',
     isSuperAdmin: false
@@ -106,6 +111,14 @@ Page({
     this.setData({ allPhases: !!e.detail.value })
   },
 
+  onScopeChange(e) {
+    const scopeIndex = Number(e.detail.value)
+    this.setData({
+      scopeIndex,
+      scope: scopeIndex === 1 ? 'nationwide' : 'community'
+    })
+  },
+
   loadPublications() {
     api.listAdminPublications().then(res => {
       if (res.code === 0) {
@@ -132,6 +145,7 @@ Page({
       showForm,
       title: showForm ? this.data.title : '',
       totalBags: showForm ? this.data.totalBags : '',
+      unitPrice: showForm ? this.data.unitPrice : '',
       imageUrl: showForm ? this.data.imageUrl : '',
       unitIndex: showForm ? this.data.unitIndex : 0,
       customUnit: showForm ? this.data.customUnit : '',
@@ -146,6 +160,10 @@ Page({
 
   onBagsInput(e) {
     this.setData({ totalBags: e.detail.value })
+  },
+
+  onUnitPriceInput(e) {
+    this.setData({ unitPrice: e.detail.value })
   },
 
   onUnitChange(e) {
@@ -198,16 +216,12 @@ Page({
 
   submitPublish() {
     const {
-      title, totalBags, imageUrl, communities, communityIndex,
-      hasPhases, allPhases, phases, phaseIndex
+      title, totalBags, unitPrice, imageUrl, communities, communityIndex,
+      hasPhases, allPhases, phases, phaseIndex, scope
     } = this.data
     const bags = Number(totalBags)
+    const price = Number(unitPrice)
     const unit = this.resolveUnit()
-    const community = communities[communityIndex]
-    if (!community) {
-      wx.showToast({ title: '请选择小区', icon: 'none' })
-      return
-    }
     if (!title.trim()) {
       wx.showToast({ title: '请填写名称', icon: 'none' })
       return
@@ -220,30 +234,45 @@ Page({
       wx.showToast({ title: '请填写有效数量', icon: 'none' })
       return
     }
-
-    let phaseId
-    let phaseName = ''
-    if (hasPhases && !allPhases) {
-      const phase = phases[phaseIndex]
-      if (!phase) {
-        wx.showToast({ title: '请选择期数', icon: 'none' })
-        return
-      }
-      phaseId = phase.id
-      phaseName = phase.name
+    if (unitPrice === '' || Number.isNaN(price) || price < 0) {
+      wx.showToast({ title: '请填写单价', icon: 'none' })
+      return
     }
 
-    wx.showLoading({ title: '发布中' })
-    api.createPublication({
+    const payload = {
       title: title.trim(),
       totalBags: bags,
       unit: unit,
+      unitPrice: price,
       imageUrl,
-      communityId: community.id,
-      communityName: community.name,
-      phaseId: phaseId || undefined,
-      phaseName: phaseName || undefined
-    }).then(res => {
+      scope: scope || 'community'
+    }
+
+    if (scope !== 'nationwide') {
+      const community = communities[communityIndex]
+      if (!community) {
+        wx.showToast({ title: '请选择小区', icon: 'none' })
+        return
+      }
+      let phaseId
+      let phaseName = ''
+      if (hasPhases && !allPhases) {
+        const phase = phases[phaseIndex]
+        if (!phase) {
+          wx.showToast({ title: '请选择期数', icon: 'none' })
+          return
+        }
+        phaseId = phase.id
+        phaseName = phase.name
+      }
+      payload.communityId = community.id
+      payload.communityName = community.name
+      payload.phaseId = phaseId || undefined
+      payload.phaseName = phaseName || undefined
+    }
+
+    wx.showLoading({ title: '发布中' })
+    api.createPublication(payload).then(res => {
       wx.hideLoading()
       if (res.code === 0) {
         wx.showToast({ title: '发布成功', icon: 'success' })
@@ -251,11 +280,14 @@ Page({
           showForm: false,
           title: '',
           totalBags: '',
+          unitPrice: '',
           imageUrl: '',
           unitIndex: 0,
           customUnit: '',
           currentUnit: '袋',
-          allPhases: true
+          allPhases: true,
+          scope: 'community',
+          scopeIndex: 0
         })
         this.loadPublications()
       } else {
@@ -264,6 +296,45 @@ Page({
     }).catch(err => {
       wx.hideLoading()
       wx.showToast({ title: err.message || '发布失败', icon: 'none' })
+    })
+  },
+
+  goDeliverOrShip(e) {
+    const id = e.currentTarget.dataset.id
+    const title = e.currentTarget.dataset.title || ''
+    const unit = e.currentTarget.dataset.unit || '袋'
+    const scope = e.currentTarget.dataset.scope || 'community'
+    if (!id) {
+      return
+    }
+    if (scope === 'nationwide') {
+      wx.navigateTo({
+        url: `/pages/hyc/admin/express-orders/express-orders?publicationId=${id}&title=${encodeURIComponent(title)}&unit=${encodeURIComponent(unit)}`
+      })
+      return
+    }
+    wx.navigateTo({
+      url: `/pages/hyc/admin/delivery/delivery?publicationId=${id}&title=${encodeURIComponent(title)}&unit=${encodeURIComponent(unit)}`
+    })
+  },
+
+  goPubOrders(e) {
+    const id = e.currentTarget.dataset.id
+    const title = e.currentTarget.dataset.title || ''
+    const unit = e.currentTarget.dataset.unit || '袋'
+    const scope = e.currentTarget.dataset.scope || 'community'
+    if (!id) {
+      return
+    }
+    // 全国：登记明细（登记列表 + 已发货列表）；小区：登记列表
+    if (scope === 'nationwide') {
+      wx.navigateTo({
+        url: `/pages/hyc/admin/express-shipped/express-shipped?publicationId=${id}&title=${encodeURIComponent(title)}&unit=${encodeURIComponent(unit)}`
+      })
+      return
+    }
+    wx.navigateTo({
+      url: `/pages/hyc/admin/pub-orders/pub-orders?publicationId=${id}&title=${encodeURIComponent(title)}&unit=${encodeURIComponent(unit)}`
     })
   },
 
@@ -292,10 +363,6 @@ Page({
         })
       }
     })
-  },
-
-  goDelivery() {
-    wx.redirectTo({ url: '/pages/hyc/admin/delivery/delivery' })
   },
 
   goMine() {

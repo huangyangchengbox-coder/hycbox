@@ -1,0 +1,24 @@
+@import "../../common.wxss";
+
+.section-title {
+  margin: 8rpx 24rpx 0;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.order-card {
+  position: relative;
+}
+
+.detail-hint {
+  margin-top: 12rpx;
+  text-align: right;
+  font-size: 24rpx;
+  color: #2f6bff;
+}
+
+.hyc-empty.soft {
+  padding: 24rpx;
+  color: #999;
+}

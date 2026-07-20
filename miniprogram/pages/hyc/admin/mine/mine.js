@@ -21,10 +21,6 @@ Page({
     wx.redirectTo({ url: '/pages/hyc/admin/publish/publish' })
   },
 
-  goDelivery() {
-    wx.redirectTo({ url: '/pages/hyc/admin/delivery/delivery' })
-  },
-
   goManagers() {
     wx.redirectTo({ url: '/pages/hyc/admin/managers/managers' })
   },

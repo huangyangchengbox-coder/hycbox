@@ -2,7 +2,7 @@
   <view class="hyc-card community-bar" bindtap="goChangeCommunity" wx:if="{{communityLabel}}">
     <view class="community-main">
       <text class="community-label">{{communityLabel}}</text>
-      <text class="hyc-sub">点击可修改</text>
+      <text class="hyc-sub">默认地址可在「我的」修改</text>
     </view>
     <text class="menu-arrow">›</text>
   </view>
@@ -32,7 +32,8 @@
   </view>
 
   <view class="hyc-bottom-bar">
-    <view class="hyc-bottom-item active">首页</view>
+    <view class="hyc-bottom-item" bindtap="goHub">模块</view>
+    <view class="hyc-bottom-item active">闪送首页</view>
     <view class="hyc-bottom-item" bindtap="goMine">我的订单</view>
     <view class="hyc-bottom-item" bindtap="goProfile">我的</view>
   </view>

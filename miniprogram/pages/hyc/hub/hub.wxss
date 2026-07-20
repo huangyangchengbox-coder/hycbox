@@ -1,0 +1,76 @@
+.hub-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 80rpx 40rpx 60rpx;
+  background: linear-gradient(165deg, #e8f5ee 0%, #f5f6f8 42%, #eef2f7 100%);
+}
+
+.hub-hero {
+  margin-bottom: 64rpx;
+}
+
+.hub-brand {
+  font-size: 52rpx;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: 2rpx;
+}
+
+.hub-sub {
+  margin-top: 12rpx;
+  font-size: 28rpx;
+  color: #666;
+}
+
+.hub-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 28rpx;
+}
+
+.hub-card {
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 40rpx 36rpx;
+  box-shadow: 0 8rpx 28rpx rgba(0, 0, 0, 0.05);
+}
+
+.hub-icon {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48rpx;
+  margin-bottom: 20rpx;
+}
+
+.hub-icon.house {
+  background: #e8f8ef;
+  color: #07c160;
+}
+
+.hub-icon.box {
+  background: #eef3ff;
+  color: #2f6bff;
+}
+
+.hub-title {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.hub-desc {
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  color: #888;
+}
+
+.hub-footer {
+  margin-top: 72rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #07c160;
+}

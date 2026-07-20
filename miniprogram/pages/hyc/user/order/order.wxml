@@ -5,46 +5,59 @@
   </view>
 
   <view class="hyc-card">
-    <view class="hyc-title">选择地址</view>
-
-    <view class="picker-label">期数</view>
-    <picker mode="selector" range="{{phaseNames}}" value="{{phaseIndex}}" bindchange="onPhaseChange">
-      <view class="picker-value">{{phaseNames[phaseIndex] || '请选择期数'}}</view>
-    </picker>
-
-    <view class="picker-label">楼栋</view>
-    <picker mode="selector" range="{{buildingNames}}" value="{{buildingIndex}}" bindchange="onBuildingChange">
-      <view class="picker-value">{{buildingNames[buildingIndex] || '请选择楼栋'}}</view>
-    </picker>
-
-    <view class="picker-label">单元</view>
-    <picker mode="selector" range="{{unitOptions}}" value="{{unitIndex}}" bindchange="onUnitChange">
-      <view class="picker-value">{{unitOptions[unitIndex] || '请选择单元'}}</view>
-    </picker>
-
-    <view class="picker-label">门牌号</view>
-    <picker mode="selector" range="{{roomLabels}}" value="{{roomIndex}}" bindchange="onRoomChange">
-      <view class="picker-value">{{roomLabels[roomIndex] || '请选择门牌'}}</view>
-    </picker>
-
-    <view class="divider">或搜索门牌</view>
-    <input
-      class="hyc-input"
-      placeholder="输入楼栋/门牌号搜索，如 2号楼 1501"
-      value="{{searchKeyword}}"
-      bindinput="onSearchInput"
-    />
-    <view class="hyc-search-result" wx:if="{{searchResults.length > 0}}">
-      <view
-        class="hyc-search-item {{selectedRoom && selectedRoom.id === item.id ? 'active' : ''}}"
-        wx:for="{{searchResults}}"
-        wx:key="id"
-        data-index="{{index}}"
-        bindtap="selectSearchResult"
-      >
-        {{item.label}}
+    <view class="hyc-row address-head">
+      <view class="hyc-title">派送地址</view>
+      <view class="address-actions">
+        <text class="link-btn" wx:if="{{!editingAddress}}" bindtap="openEditAddress">修改</text>
+        <text class="link-btn" wx:if="{{editingAddress}}" bindtap="closeEditAddress">完成</text>
+        <text class="link-btn muted" wx:if="{{editingAddress}}" bindtap="resetToDefault">恢复默认</text>
       </view>
     </view>
+    <view class="hyc-sub tip-temp" wx:if="{{editingAddress}}">此处修改仅本次有效，不会改默认地址</view>
+    <view class="address-default" wx:if="{{!editingAddress}}">{{addressLabel || '未选择地址'}}</view>
+
+    <block wx:if="{{editingAddress}}">
+      <view class="picker-label">期数</view>
+      <picker mode="selector" range="{{phaseNames}}" value="{{phaseIndex}}" bindchange="onPhaseChange">
+        <view class="picker-value">{{phaseNames[phaseIndex] || '请选择期数'}}</view>
+      </picker>
+
+      <view class="picker-label">楼栋</view>
+      <picker mode="selector" range="{{buildingNames}}" value="{{buildingIndex}}" bindchange="onBuildingChange">
+        <view class="picker-value">{{buildingNames[buildingIndex] || '请选择楼栋'}}</view>
+      </picker>
+
+      <view class="picker-label">单元</view>
+      <picker mode="selector" range="{{unitOptions}}" value="{{unitIndex}}" bindchange="onUnitChange">
+        <view class="picker-value">{{unitOptions[unitIndex] || '请选择单元'}}</view>
+      </picker>
+
+      <view class="picker-label">门牌号</view>
+      <picker mode="selector" range="{{roomLabels}}" value="{{roomIndex}}" bindchange="onRoomChange">
+        <view class="picker-value">{{roomLabels[roomIndex] || '请选择门牌'}}</view>
+      </picker>
+
+      <view class="divider">或搜索门牌</view>
+      <input
+        class="hyc-input"
+        placeholder="输入楼栋/门牌号搜索，如 2号楼 1501"
+        value="{{searchKeyword}}"
+        bindinput="onSearchInput"
+      />
+      <view class="hyc-search-result" wx:if="{{searchResults.length > 0}}">
+        <view
+          class="hyc-search-item {{selectedRoom && selectedRoom.id === item.id ? 'active' : ''}}"
+          wx:for="{{searchResults}}"
+          wx:key="id"
+          data-index="{{index}}"
+          bindtap="selectSearchResult"
+        >
+          {{item.label}}
+        </view>
+      </view>
+
+      <view class="hyc-sub tip-selected" wx:if="{{selectedRoom}}">本次使用：{{selectedRoom.label}}</view>
+    </block>
   </view>
 
   <view class="hyc-card">
@@ -61,11 +74,6 @@
       <text class="quantity-num">{{quantity}}</text>
       <button size="mini" bindtap="changeQuantity" data-delta="1">+</button>
     </view>
-  </view>
-
-  <view class="hyc-card" wx:if="{{selectedRoom}}">
-    <view class="hyc-sub">已选地址</view>
-    <view class="hyc-title" style="font-size:30rpx">{{selectedRoom.label}}</view>
   </view>
 
   <button class="hyc-btn-primary submit-btn" bindtap="submitOrder">提交登记派送</button>
