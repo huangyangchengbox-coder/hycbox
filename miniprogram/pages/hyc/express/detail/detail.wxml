@@ -46,6 +46,10 @@
       />
     </view>
   </view>
+
+  <view class="hyc-card" wx:if="{{canCancel}}">
+    <button class="cancel-order-btn" bindtap="cancelOrder">取消订单</button>
+  </view>
 </view>
 
 <view class="hyc-empty" wx:if="{{loading}}">加载中...</view>

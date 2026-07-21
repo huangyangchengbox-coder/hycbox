@@ -184,14 +184,16 @@ Page({
       return
     }
 
-    wx.showLoading({ title: '提交中' })
-    console.log('[order] 提交登记，临时地址不写默认', selectedRoom.id)
-    api.createOrder({
-      publicationId,
-      roomId: selectedRoom.id,
-      quantity,
-      userName: userName.trim(),
-      remark: (remark || '').trim()
+    const userSubscribe = require('../../../../services/userSubscribe')
+    userSubscribe.requestUserOrderSubscribe().then(() => {
+      wx.showLoading({ title: '提交中' })
+      return api.createOrder({
+        publicationId,
+        roomId: selectedRoom.id,
+        quantity,
+        userName: userName.trim(),
+        remark: (remark || '').trim()
+      })
     }).then(res => {
       wx.hideLoading()
       if (res.code === 0) {

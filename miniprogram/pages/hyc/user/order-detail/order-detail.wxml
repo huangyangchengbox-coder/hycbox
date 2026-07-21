@@ -6,7 +6,6 @@
         {{order.statusText}}
       </text>
     </view>
-    <view class="hyc-sub">地址：{{order.roomLabel}}</view>
     <view class="hyc-sub">登记数量：{{order.quantity}} {{order.qtyUnit || '袋'}}</view>
     <view class="hyc-sub" wx:if="{{order.status === 'completed' && order.deliveredQuantity != null}}">
       实际送达：{{order.deliveredQuantity}} {{order.qtyUnit || '袋'}}
@@ -15,6 +14,80 @@
     <view class="hyc-sub" wx:if="{{order.remark}}">备注：{{order.remark}}</view>
     <view class="hyc-sub">登记时间：{{order.createdAt}}</view>
     <view class="hyc-sub" wx:if="{{order.deliveredAt}}">送达时间：{{order.deliveredAt}}</view>
+  </view>
+
+  <view class="hyc-card" wx:if="{{showCourierMap}}">
+    <view class="hyc-title">配送员位置</view>
+    <view class="hyc-sub tip-temp">{{courierTip || '正在获取…'}}</view>
+    <map
+      wx:if="{{courierSharing}}"
+      class="courier-map"
+      latitude="{{mapLatitude}}"
+      longitude="{{mapLongitude}}"
+      scale="16"
+      markers="{{mapMarkers}}"
+      show-location="{{false}}"
+    />
+  </view>
+
+  <view class="hyc-card">
+    <view class="hyc-row address-head">
+      <view class="hyc-title">派送地址</view>
+      <view class="address-actions" wx:if="{{canEditAddress}}">
+        <text class="link-btn" wx:if="{{!editingAddress}}" bindtap="openEditAddress">修改</text>
+        <text class="link-btn" wx:if="{{editingAddress}}" bindtap="closeEditAddress">取消</text>
+      </view>
+    </view>
+    <view class="hyc-sub tip-temp" wx:if="{{editingAddress}}">仅修改本单地址，不会改默认地址</view>
+    <view class="address-default" wx:if="{{!editingAddress}}">{{order.roomLabel || addressLabel || '未选择地址'}}</view>
+
+    <block wx:if="{{editingAddress}}">
+      <view class="picker-label">期数</view>
+      <picker mode="selector" range="{{phaseNames}}" value="{{phaseIndex}}" bindchange="onPhaseChange">
+        <view class="picker-value">{{phaseNames[phaseIndex] || '请选择期数'}}</view>
+      </picker>
+
+      <view class="picker-label">楼栋</view>
+      <picker mode="selector" range="{{buildingNames}}" value="{{buildingIndex}}" bindchange="onBuildingChange">
+        <view class="picker-value">{{buildingNames[buildingIndex] || '请选择楼栋'}}</view>
+      </picker>
+
+      <view class="picker-label">单元</view>
+      <picker mode="selector" range="{{unitOptions}}" value="{{unitIndex}}" bindchange="onUnitChange">
+        <view class="picker-value">{{unitOptions[unitIndex] || '请选择单元'}}</view>
+      </picker>
+
+      <view class="picker-label">门牌号</view>
+      <picker mode="selector" range="{{roomLabels}}" value="{{roomIndex}}" bindchange="onRoomChange">
+        <view class="picker-value">{{roomLabels[roomIndex] || '请选择门牌'}}</view>
+      </picker>
+
+      <view class="divider">或搜索门牌</view>
+      <input
+        class="hyc-input"
+        placeholder="输入楼栋/门牌号搜索，如 2号楼 1501"
+        value="{{searchKeyword}}"
+        bindinput="onSearchInput"
+      />
+      <view class="hyc-search-result" wx:if="{{searchResults.length > 0}}">
+        <view
+          class="hyc-search-item {{selectedRoom && selectedRoom.id === item.id ? 'active' : ''}}"
+          wx:for="{{searchResults}}"
+          wx:key="id"
+          data-index="{{index}}"
+          bindtap="selectSearchResult"
+        >
+          {{item.label}}
+        </view>
+      </view>
+
+      <view class="hyc-sub tip-selected" wx:if="{{selectedRoom}}">将改为：{{selectedRoom.label}}</view>
+      <button class="hyc-btn-primary save-btn" bindtap="saveAddress" disabled="{{saving}}">保存新地址</button>
+    </block>
+  </view>
+
+  <view class="hyc-card" wx:if="{{canCancel}}">
+    <button class="cancel-order-btn" bindtap="cancelOrder">取消订单</button>
   </view>
 </view>
 

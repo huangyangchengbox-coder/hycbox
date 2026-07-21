@@ -1,4 +1,5 @@
 <view class="hyc-page">
+  <admin-notice-bar></admin-notice-bar>
   <view class="hyc-card">
     <view class="hyc-row head-row">
       <view>
@@ -110,6 +111,16 @@
           data-scope="{{item.scope || 'community'}}"
           catchtap="goPubOrders"
         >登记明细</view>
+        <view
+          class="action-btn detail-btn"
+          wx:if="{{item.status !== 'ended'}}"
+          data-id="{{item.id}}"
+          data-title="{{item.title}}"
+          data-price="{{item.unitPrice}}"
+          data-total="{{item.totalBags}}"
+          data-remain="{{item.remainBags}}"
+          catchtap="editPublication"
+        >改价/库存</view>
         <view
           class="end-btn"
           wx:if="{{item.status !== 'ended'}}"

@@ -42,7 +42,7 @@
     <view class="hyc-sub" wx:if="{{item.status === 'completed' && item.deliveredQuantity != null}}">
       实际送达 {{item.deliveredQuantity}} {{item.qtyUnit || '袋'}}
     </view>
-    <view class="detail-hint">查看详情 ›</view>
+    <view class="detail-hint">{{item.status === 'pending' ? '查看/改地址 ›' : '查看详情 ›'}}</view>
   </view>
   <view class="hyc-empty soft" wx:if="{{!loading && orders.length === 0}}">暂无登记记录</view>
   <view class="hyc-empty" wx:if="{{loading}}">加载中...</view>

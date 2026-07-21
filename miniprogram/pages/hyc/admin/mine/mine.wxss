@@ -16,13 +16,20 @@
   border-bottom: none;
 }
 
+.menu-main {
+  flex: 1;
+  min-width: 0;
+  padding-right: 16rpx;
+}
+
 .menu-title {
   font-size: 30rpx;
   color: #1a1a1a;
 }
 
 .menu-arrow {
-  font-size: 40rpx;
-  color: #ccc;
+  flex-shrink: 0;
+  font-size: 28rpx;
+  color: #2f6bff;
   line-height: 1;
 }

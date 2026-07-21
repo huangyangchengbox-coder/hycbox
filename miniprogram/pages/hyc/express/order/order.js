@@ -75,15 +75,18 @@ Page({
       wx.showToast({ title: '数量超出剩余', icon: 'none' })
       return
     }
-    wx.showLoading({ title: '提交中' })
-    api.createOrder({
-      publicationId,
-      quantity,
-      userName: nickname.trim(),
-      phone: phone.trim(),
-      address: address.trim(),
-      province: provinces[provinceIndex],
-      remark: (remark || '').trim()
+    const userSubscribe = require('../../../../services/userSubscribe')
+    userSubscribe.requestUserOrderSubscribe().then(() => {
+      wx.showLoading({ title: '提交中' })
+      return api.createOrder({
+        publicationId,
+        quantity,
+        userName: nickname.trim(),
+        phone: phone.trim(),
+        address: address.trim(),
+        province: provinces[provinceIndex],
+        remark: (remark || '').trim()
+      })
     }).then(res => {
       wx.hideLoading()
       if (res.code === 0) {

@@ -1,0 +1,63 @@
+.notice-bar {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  margin: 0 0 8rpx;
+  padding: 20rpx 24rpx;
+  background: #fff7e6;
+  border-bottom: 1rpx solid #ffe7ba;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.notice-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+}
+
+.notice-badge {
+  flex-shrink: 0;
+  min-width: 36rpx;
+  height: 36rpx;
+  line-height: 36rpx;
+  padding: 0 8rpx;
+  text-align: center;
+  border-radius: 18rpx;
+  background: #fa8c16;
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.notice-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.notice-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #ad6800;
+}
+
+.notice-content {
+  font-size: 24rpx;
+  color: #876800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notice-action {
+  flex-shrink: 0;
+  font-size: 24rpx;
+  color: #2f6bff;
+}

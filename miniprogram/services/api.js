@@ -95,16 +95,35 @@ function getUserId() {
   if (app && app.globalData && app.globalData.userId) {
     return app.globalData.userId
   }
-  // 优先微信 openid
-  let userId = wx.getStorageSync('hyc_openid') || wx.getStorageSync('hyc_user_id')
-  if (!userId) {
-    userId = `user_${Date.now()}`
-    wx.setStorageSync('hyc_user_id', userId)
+  // 仅使用微信 openid，禁止本地伪造 user_* 身份
+  const openid = wx.getStorageSync('hyc_openid')
+  if (openid) {
+    if (app && app.globalData) {
+      app.globalData.userId = openid
+    }
+    return openid
   }
-  if (app && app.globalData) {
-    app.globalData.userId = userId
+  return ''
+}
+
+function requireUserId() {
+  const userId = getUserId()
+  if (!userId) {
+    throw new Error('请先登录微信')
   }
   return userId
+}
+
+/** 兼容分页：{list,total,page,pageSize} → 数组，并保留 pageInfo */
+function normalizeListResponse(res) {
+  if (!res || res.code !== 0 || !res.data || Array.isArray(res.data)) {
+    return res
+  }
+  const pageInfo = res.data
+  return Object.assign({}, res, {
+    data: pageInfo.list || [],
+    pageInfo
+  })
 }
 
 const api = {
@@ -112,21 +131,7 @@ const api = {
   adminLogin(username, password) {
     if (config.useMock) {
       return wrapMock(() => {
-        if ((username || '').trim() !== 'hyc' || (password || '').trim() !== '@Hyc314') {
-          throw new Error('账号或密码错误')
-        }
-        return {
-          code: 0,
-          data: {
-            token: 'mock_admin_' + Date.now(),
-            role: 'super',
-            adminId: 'adm_hyc',
-            username: 'hyc',
-            displayName: '超级管理员',
-            superAdmin: true,
-            expireAt: Date.now() + 30 * 24 * 60 * 60 * 1000
-          }
-        }
+        throw new Error('Mock 已关闭，请连接真实后端')
       })
     }
     return request({ url: '/admin/login', method: 'POST', data: { username, password } })
@@ -200,19 +205,20 @@ const api = {
 
   /** 用户端：按小区/期数筛选发布 */
   listPublications(params) {
-    const query = params || {}
+    const query = Object.assign({ page: 1, pageSize: 50 }, params || {})
     if (config.useMock) {
       return wrapMock(() => ({ code: 0, data: mockStore.listPublications(query) }))
     }
-    return request({ url: '/publications', data: query })
+    return request({ url: '/publications', data: query }).then(normalizeListResponse)
   },
 
   /** 管理者端：仅自己的发布 */
-  listAdminPublications() {
+  listAdminPublications(params) {
+    const query = Object.assign({ page: 1, pageSize: 50 }, params || {})
     if (config.useMock) {
       return wrapMock(() => ({ code: 0, data: mockStore.listPublications() }))
     }
-    return request({ url: '/admin/publications', admin: true })
+    return request({ url: '/admin/publications', data: query, admin: true }).then(normalizeListResponse)
   },
 
   createPublication(data) {
@@ -222,32 +228,57 @@ const api = {
     return request({ url: '/publications', method: 'POST', data, admin: true })
   },
 
+  /** 修改单价/库存/标题 */
+  updatePublication(id, data) {
+    return request({ url: `/publications/${id}`, method: 'PUT', data, admin: true })
+  },
+
   /** 结束活动 */
   endPublication(id) {
     return request({ url: `/publications/${id}/end`, method: 'PUT', data: {}, admin: true })
   },
 
   createOrder(data) {
-    const payload = Object.assign({}, data, { userId: getUserId() })
+    const payload = Object.assign({}, data, { userId: requireUserId() })
     if (config.useMock) {
       return wrapMock(() => ({ code: 0, data: mockStore.createOrder(payload) }))
     }
     return request({ url: '/orders', method: 'POST', data: payload })
   },
 
+  /** 取消待处理订单 */
+  cancelOrder(orderId) {
+    const userId = encodeURIComponent(requireUserId())
+    return request({
+      url: `/orders/${orderId}/cancel?userId=${userId}`,
+      method: 'PUT',
+      data: {}
+    })
+  },
+
+  /** 小区闪送：待配送订单修改门牌 */
+  updateOrderAddress(orderId, roomId) {
+    return request({
+      url: `/orders/${orderId}/address`,
+      method: 'PUT',
+      data: { roomId, userId: requireUserId() }
+    })
+  },
+
   listOrders(params) {
-    const query = Object.assign({}, params || {})
+    const query = Object.assign({ page: 1, pageSize: 50 }, params || {})
     if (!query.userId && getApp().globalData.role === 'user') {
-      query.userId = getUserId()
+      query.userId = requireUserId()
     }
     if (config.useMock) {
       return wrapMock(() => ({ code: 0, data: mockStore.listOrders(query) }))
     }
-    return request({ url: '/orders', data: query })
+    return request({ url: '/orders', data: query }).then(normalizeListResponse)
   },
 
-  /** 管理者：某次发布下全部登记订单 */
-  listAdminOrders(publicationId) {
+  /** 管理者：某次发布下登记订单 */
+  listAdminOrders(publicationId, params) {
+    const query = Object.assign({ publicationId, page: 1, pageSize: 100 }, params || {})
     if (config.useMock) {
       return wrapMock(() => ({
         code: 0,
@@ -256,9 +287,9 @@ const api = {
     }
     return request({
       url: '/admin/orders',
-      data: { publicationId },
+      data: query,
       admin: true
-    })
+    }).then(normalizeListResponse)
   },
 
   /** 物流中国：按省分组待发货 */
@@ -271,7 +302,30 @@ const api = {
   },
 
   getOrderDetail(orderId) {
-    return request({ url: `/orders/${orderId}` })
+    const admin = !!getAdminToken()
+    return request({
+      url: `/orders/${orderId}`,
+      data: admin ? {} : { userId: requireUserId() },
+      admin
+    })
+  },
+
+  /** 用户查看配送员位置 */
+  getCourierLocation(orderId) {
+    return request({
+      url: `/orders/${orderId}/courier-location`,
+      data: { userId: requireUserId() }
+    })
+  },
+
+  /** 管理员上报/停止配送位置 */
+  reportAdminLocation(data) {
+    return request({
+      url: '/admin/location',
+      method: 'POST',
+      data: data || {},
+      admin: true
+    })
   },
 
   shipOrder(orderId, shipImageUrls) {
@@ -353,6 +407,33 @@ const api = {
       data.publicationId = publicationId
     }
     return request({ url: '/admin/stats', data, admin: true })
+  },
+
+  /** 管理端顶部提示：轮询未读通知 */
+  pollAdminNotices() {
+    return request({ url: '/admin/notices', admin: true })
+  },
+
+  /** 管理端：通知全部已读 */
+  markAdminNoticesRead() {
+    return request({ url: '/admin/notices/read-all', method: 'POST', data: {}, admin: true })
+  },
+
+  bindAdminWx(code) {
+    return request({ url: '/admin/wx-bind', method: 'POST', data: { code }, admin: true })
+  },
+
+  grantAdminSubscribe(openid) {
+    return request({
+      url: '/admin/subscribe/grant',
+      method: 'POST',
+      data: { openid: openid || '' },
+      admin: true
+    })
+  },
+
+  getAdminSubscribeStatus() {
+    return request({ url: '/admin/subscribe/status', admin: true })
   },
 
   uploadImage(filePath) {

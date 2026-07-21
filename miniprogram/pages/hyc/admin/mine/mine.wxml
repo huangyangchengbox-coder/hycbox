@@ -1,10 +1,19 @@
 <view class="hyc-page">
+  <admin-notice-bar></admin-notice-bar>
   <view class="hyc-card">
     <view class="hyc-title">我的</view>
     <view class="hyc-sub">当前账号：{{adminName}}{{isSuperAdmin ? '（超级管理员）' : ''}}</view>
   </view>
 
   <view class="hyc-card menu-card">
+    <view class="menu-item" bindtap="onSubscribeTap">
+      <view class="menu-main">
+        <view class="menu-title">微信新单提醒</view>
+        <view class="hyc-sub" wx:if="{{needSubscribe}}">一次性订阅 · 点此开启/续订（推一条需再订一次）</view>
+        <view class="hyc-sub" wx:else>已绑定 · 剩余可推 {{subscribeQuota}} 条，用完请再点续订</view>
+      </view>
+      <text class="menu-arrow">{{needSubscribe ? '开启' : '续订'}}</text>
+    </view>
     <view class="menu-item" bindtap="goUser">
       <view>
         <view class="menu-title">进入用户端</view>

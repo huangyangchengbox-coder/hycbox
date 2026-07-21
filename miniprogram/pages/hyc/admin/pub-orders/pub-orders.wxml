@@ -1,4 +1,5 @@
 <view class="hyc-page">
+  <admin-notice-bar></admin-notice-bar>
   <view class="hyc-card">
     <view class="hyc-title">{{title || '登记订单'}}</view>
     <view class="hyc-sub">共 {{orders.length}} 单 · 待配送 {{pendingCount}} · 已送达 {{completedCount}}</view>

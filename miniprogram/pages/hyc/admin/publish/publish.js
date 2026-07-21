@@ -365,6 +365,54 @@ Page({
     })
   },
 
+  editPublication(e) {
+    const id = e.currentTarget.dataset.id
+    const title = e.currentTarget.dataset.title || ''
+    const price = e.currentTarget.dataset.price
+    const total = e.currentTarget.dataset.total
+    const remain = e.currentTarget.dataset.remain
+    if (!id) return
+    wx.showModal({
+      title: '修改单价',
+      editable: true,
+      placeholderText: String(price != null ? price : ''),
+      success: (priceRes) => {
+        if (!priceRes.confirm) return
+        const unitPrice = (priceRes.content || '').trim()
+        wx.showModal({
+          title: '修改总库存',
+          content: `当前剩余 ${remain}/${total}。新总量不能小于已售。`,
+          editable: true,
+          placeholderText: String(total != null ? total : ''),
+          success: (stockRes) => {
+            if (!stockRes.confirm) return
+            const totalBags = (stockRes.content || '').trim()
+            const payload = {}
+            if (unitPrice !== '') payload.unitPrice = Number(unitPrice)
+            if (totalBags !== '') payload.totalBags = Number(totalBags)
+            if (!Object.keys(payload).length) {
+              wx.showToast({ title: '未修改', icon: 'none' })
+              return
+            }
+            wx.showLoading({ title: '保存中' })
+            api.updatePublication(id, payload).then(res => {
+              wx.hideLoading()
+              if (res.code === 0) {
+                wx.showToast({ title: '已更新', icon: 'success' })
+                this.loadPublications()
+              } else {
+                wx.showToast({ title: res.message || '更新失败', icon: 'none' })
+              }
+            }).catch(err => {
+              wx.hideLoading()
+              wx.showToast({ title: err.message || '更新失败', icon: 'none' })
+            })
+          }
+        })
+      }
+    })
+  },
+
   goMine() {
     wx.redirectTo({ url: '/pages/hyc/admin/mine/mine' })
   }

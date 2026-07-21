@@ -1,0 +1,10 @@
+<view class="notice-bar" wx:if="{{visible}}" bindtap="onTap">
+  <view class="notice-main">
+    <text class="notice-badge" wx:if="{{unreadCount > 0}}">{{unreadCount > 99 ? '99+' : unreadCount}}</text>
+    <view class="notice-text">
+      <text class="notice-title">{{latestTitle}}</text>
+      <text class="notice-content">{{latestContent}}</text>
+    </view>
+  </view>
+  <text class="notice-action">{{needSubscribe ? '续订' : '知道了'}}</text>
+</view>

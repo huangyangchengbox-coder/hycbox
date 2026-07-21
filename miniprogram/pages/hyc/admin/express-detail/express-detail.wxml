@@ -1,3 +1,4 @@
+<admin-notice-bar></admin-notice-bar>
 <view class="hyc-page" wx:if="{{order}}">
   <view class="hyc-card">
     <view class="hyc-title">{{order.userName}}</view>

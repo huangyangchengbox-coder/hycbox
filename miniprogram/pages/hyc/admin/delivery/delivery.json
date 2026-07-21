@@ -1,5 +1,5 @@
 {
   "navigationBarTitleText": "配送管理",
   "backgroundColor": "#f5f6f8",
-  "usingComponents": {}
+  "usingComponents": { "admin-notice-bar": "/components/admin-notice-bar/admin-notice-bar" }
 }

@@ -1,37 +1,73 @@
-# 微信小程序示例
-微信小程序示例源码，欢迎扫描以下小程序码体验。
+# hycBox · 恒大名都水果领取小程序
 
-> 提示：请使用微信开发者工具或微信客户端 6.7.2 及以上版本运行。
+微信小程序前端：小区闪送 + 物流中国，对接后端 [hycBoxServer](../hycBoxServer)。
 
-<img width="200" src="https://res.wx.qq.com/op_res/QqOF7ydl0dkpq-orpebXL-gBspr08VjoFOFGrWvKF9IULLhfT9XhnsSKlvc0gI8d">
+## 功能概览
 
-## 使用
+| 端 | 能力 |
+|----|------|
+| **入口 Hub** | 小区闪送 / 物流中国 分流 |
+| **用户 · 闪送** | 选小区门牌、登记领取、待配送改地址、取消订单、订单进度订阅 |
+| **用户 · 物流** | 全国下单（手机/地址/省）、查发货凭证、取消待核实单、进度订阅 |
+| **管理端** | 登录、发布/改价改库存/结束活动、按楼栋配送、物流核款发货售后、管理员账号、订阅通知条 |
 
-```
-cd demo
-npm i
-cd miniprogram
-npm i
-```
-完成上述步骤后，使用微信开发者工具，点击【工具-构建npm】
-
-使用[微信开发者工具](https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html)打开该示例代码，云开发环境搭建请参考[云开发示例说明](https://github.com/wechat-miniprogram/miniprogram-demo/blob/master/miniprogram/page/cloud/README.md)。
-
-
-## 贡献
-
-如果你有 bug 反馈或其他任何建议，欢迎提 issue 给我们。
-
-如果你愿意一起来完善小程序示例，欢迎通过 PR 的方式贡献代码。为了保证代码风格的统一，在编写代码之前，请在项目根目录运行以下命令安装依赖：
+## 目录结构
 
 ```
-npm install
-```
-同时，确保你的代码可以通过 Lint 检查：
-```
-npm run lint
+miniprogram/
+├── pages/hyc/
+│   ├── hub/                 # 入口
+│   ├── user/                # 小区闪送
+│   ├── express/             # 物流中国
+│   └── admin/               # 管理端
+├── components/
+│   └── admin-notice-bar/    # 管理端未读通知 + 订阅引导
+├── services/
+│   ├── api.js               # 统一 API
+│   ├── config.js            # baseUrl 等
+│   ├── wxSession.js         # 微信登录
+│   ├── adminSession.js      # 管理员 token
+│   ├── adminSubscribe.js    # 管理员订阅消息
+│   └── userSubscribe.js     # 用户订单进度订阅
+└── data/                    # 楼栋/省份等静态数据
 ```
 
-## 截图
+## 本地运行
 
-<img width="375" src="https://res.wx.qq.com/op_res/0_vsSii5DaG-1hoXcqmBCT_tPShgSPKi3_FBVuVj1tu1ZdZD8lwYNrSQm3mdswI2">
+1. 安装 [微信开发者工具](https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html)
+2. 导入本仓库根目录（或 `miniprogram` 所在工程）
+3. 修改接口地址：`miniprogram/services/config.js`
+
+```js
+module.exports = {
+  useMock: false,
+  // 本地后端：http://127.0.0.1:8090/api
+  // 线上 IP（备案前）：http://8.152.99.189/api
+  // 备案后域名：https://hychyr.top/api
+  baseUrl: 'http://8.152.99.189/api',
+  timeout: 20000
+}
+```
+
+4. 开发阶段如需 HTTP / IP：开发者工具勾选「不校验合法域名」
+5. 确保后端已启动（见 hycBoxServer README）
+
+## 与后端约定（摘要）
+
+- 用户身份：微信 `openid`（禁止伪造 `user_*`）
+- 管理员：请求头 `X-Admin-Token`
+- 列表接口返回分页 `{ list, total, page, pageSize }`，`api.js` 已兼容解包为数组
+- 下单前会拉起一次性订阅授权，便于推送配送/发货进度
+
+## 发布小程序
+
+1. 确认 `config.js` 指向正式 API
+2. 公众平台配置 request / uploadFile 合法域名（正式版需 HTTPS 域名备案通过后）
+3. 开发者工具：上传 → 提交审核
+
+## 相关仓库
+
+| 仓库 | 说明 |
+|------|------|
+| **hycBox**（本仓库） | 微信小程序 |
+| **hycBoxServer** | Spring Boot 后端、部署与运维脚本 |

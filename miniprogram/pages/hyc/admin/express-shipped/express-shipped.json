@@ -1,4 +1,4 @@
 {
   "navigationBarTitleText": "登记明细",
-  "usingComponents": {}
+  "usingComponents": { "admin-notice-bar": "/components/admin-notice-bar/admin-notice-bar" }
 }

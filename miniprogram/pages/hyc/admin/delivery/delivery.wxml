@@ -1,4 +1,5 @@
 <view class="page">
+  <admin-notice-bar></admin-notice-bar>
   <view class="stats-card">
     <view class="stats">
       <view class="stat">
@@ -30,6 +31,7 @@
     </view>
   </view>
   <view class="status">{{statusText}}</view>
+  <view class="loc-tip" wx:if="{{locationTip}}">{{locationTip}}</view>
 
   <view class="card picker-card" wx:if="{{currentPubTitle}}">
     <view class="current-tip">{{currentPubTitle}}</view>

@@ -28,6 +28,14 @@
     "navigationBarBackgroundColor": "#ffffff",
     "backgroundColor": "#f5f6f8"
   },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于配送时向邻居展示您的实时位置"
+    }
+  },
+  "requiredPrivateInfos": [
+    "getLocation"
+  ],
   "networkTimeout": {
     "request": 10000,
     "connectSocket": 10000,

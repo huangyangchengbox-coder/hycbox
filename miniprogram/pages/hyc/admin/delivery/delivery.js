@@ -58,6 +58,7 @@ Page({
     loading: true,
     statusText: '正在加载配送数据…',
     emptyHint: '',
+    locationTip: '',
     hasGroups: false,
     buildingGroups: [],
     pubTitles: ['全部待配送'],
@@ -135,6 +136,61 @@ Page({
       return
     }
     this.loadAll()
+    this.startLocationShare()
+  },
+
+  onHide: function () {
+    this.stopLocationShare()
+  },
+
+  onUnload: function () {
+    this.stopLocationShare()
+  },
+
+  /** 配送页可见时上报位置，用户订单详情可在地图看到 */
+  startLocationShare: function () {
+    const that = this
+    this.stopLocationShare(false)
+    this._locSharing = true
+    const report = function () {
+      if (!that._locSharing) return
+      wx.getLocation({
+        type: 'gcj02',
+        isHighAccuracy: true,
+        success: function (res) {
+          that._postLocation(true, res.latitude, res.longitude)
+          that.setData({ locationTip: '正在向邻居分享配送位置…' })
+        },
+        fail: function (err) {
+          console.warn('[delivery] getLocation fail', err)
+          that.setData({ locationTip: '未授权定位，邻居看不到您的位置' })
+        }
+      })
+    }
+    report()
+    this._locTimer = setInterval(report, 12000)
+  },
+
+  stopLocationShare: function (notifyServer) {
+    this._locSharing = false
+    if (this._locTimer) {
+      clearInterval(this._locTimer)
+      this._locTimer = null
+    }
+    if (notifyServer === false) return
+    this._postLocation(false, null, null)
+    this.setData({ locationTip: '' })
+  },
+
+  _postLocation: function (sharing, latitude, longitude) {
+    const api = require('../../../../services/api')
+    api.reportAdminLocation({
+      sharing: !!sharing,
+      latitude: latitude,
+      longitude: longitude
+    }).catch(function (err) {
+      console.warn('[delivery] report location', err && err.message)
+    })
   },
 
   loadAll: function () {

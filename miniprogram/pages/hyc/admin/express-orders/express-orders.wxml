@@ -1,4 +1,5 @@
 <view class="hyc-page">
+  <admin-notice-bar></admin-notice-bar>
   <view class="hyc-card">
     <view class="hyc-row">
       <view>
