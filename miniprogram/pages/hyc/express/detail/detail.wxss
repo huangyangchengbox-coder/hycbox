@@ -7,9 +7,48 @@
   margin-top: 16rpx;
 }
 
+.thumb-wrap {
+  width: 160rpx;
+}
+
 .thumb {
   width: 160rpx;
   height: 160rpx;
   border-radius: 12rpx;
   background: #f5f6f8;
+  display: block;
+}
+
+.download-btn {
+  margin-top: 8rpx;
+  width: 160rpx !important;
+  padding: 0 !important;
+  font-size: 22rpx !important;
+  line-height: 1.8 !important;
+  background: #f7f8fa;
+  color: #2f6bff;
+}
+
+.ship-tip {
+  margin-top: 8rpx;
+  color: #8a5a00;
+  background: #fff8e8;
+  border-radius: 8rpx;
+  padding: 12rpx 16rpx;
+  line-height: 1.5;
+}
+
+.download-all-btn {
+  margin-top: 20rpx;
+  background: #07c160;
+  color: #fff;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+}
+
+.cancel-order-btn {
+  background: #fff;
+  color: #fa541c;
+  border: 1rpx solid #ffbb96;
+  border-radius: 12rpx;
 }

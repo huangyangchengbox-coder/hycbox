@@ -9,19 +9,25 @@
     <view class="hyc-sub">发货：{{order.deliveredAt || '-'}}</view>
   </view>
 
-  <view class="hyc-card" wx:if="{{order.shipImages && order.shipImages.length}}">
-    <view class="hyc-title">发货凭证（{{order.shipImages.length}}张）</view>
+  <view class="hyc-card">
+    <view class="hyc-title">发货凭证（{{shipImages.length}}张）</view>
+    <view class="hyc-sub tip-ship">可删除错误凭证，重新拍照或从相册上传后保存</view>
     <view class="img-row">
-      <image
-        class="thumb"
-        wx:for="{{order.shipImages}}"
-        wx:key="*this"
-        src="{{item}}"
-        mode="aspectFill"
-        data-url="{{item}}"
-        bindtap="previewShip"
-      />
+      <view class="img-wrap" wx:for="{{shipImages}}" wx:key="*this">
+        <image class="thumb" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewShip" />
+        <view class="img-del" data-index="{{index}}" catchtap="removeShipImage">×</view>
+      </view>
+      <view class="img-add" wx:if="{{shipImages.length < 9}}" bindtap="addShipImage">+</view>
     </view>
+    <view class="ship-actions">
+      <button class="action-btn" size="mini" bindtap="addShipImage" data-source="camera">拍照</button>
+      <button class="action-btn" size="mini" bindtap="addShipImage" data-source="album">相册上传</button>
+    </view>
+    <button
+      class="hyc-btn-primary save-btn"
+      bindtap="saveShipImages"
+      disabled="{{savingShip || !shipDirty}}"
+    >保存发货凭证</button>
   </view>
 
   <view class="hyc-card">

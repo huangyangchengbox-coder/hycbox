@@ -343,6 +343,22 @@ const api = {
     })
   },
 
+  /** 已发货：更新发货凭证（删图 / 重拍 / 补传） */
+  updateShipImages(orderId, shipImageUrls) {
+    const urls = Array.isArray(shipImageUrls)
+      ? shipImageUrls
+      : (shipImageUrls ? [shipImageUrls] : [])
+    return request({
+      url: `/orders/${orderId}/ship-images`,
+      method: 'PUT',
+      data: {
+        shipImageUrls: urls,
+        shipImageUrl: urls[0] || ''
+      },
+      admin: true
+    })
+  },
+
   /** 物流中国：收款核实（pending → paid） */
   verifyPay(orderId, payAmount, payMethod) {
     return request({

@@ -5,10 +5,13 @@ Page({
   data: {
     orderId: '',
     order: null,
+    shipImages: [],
+    shipDirty: false,
     afterSaleRemark: '',
     afterSaleImages: [],
     loading: true,
-    saving: false
+    saving: false,
+    savingShip: false
   },
 
   onLoad(options) {
@@ -32,6 +35,8 @@ Page({
         const order = res.data
         this.setData({
           order,
+          shipImages: order.shipImages || (order.shipImageUrl ? [order.shipImageUrl] : []),
+          shipDirty: false,
           afterSaleRemark: order.afterSaleRemark || '',
           afterSaleImages: order.afterSaleImages || [],
           loading: false
@@ -52,9 +57,8 @@ Page({
 
   previewShip(e) {
     const current = (e && e.currentTarget && e.currentTarget.dataset.url)
-      || (this.data.order && this.data.order.shipImageUrl)
-    const urls = (this.data.order && this.data.order.shipImages)
-      || (current ? [current] : [])
+      || (this.data.shipImages && this.data.shipImages[0])
+    const urls = this.data.shipImages || []
     if (!urls.length) return
     wx.previewImage({ urls, current: current || urls[0] })
   },
@@ -63,6 +67,83 @@ Page({
     const url = e.currentTarget.dataset.url
     const urls = this.data.afterSaleImages || []
     wx.previewImage({ urls, current: url })
+  },
+
+  removeShipImage(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const list = (this.data.shipImages || []).slice()
+    if (index < 0 || index >= list.length) return
+    list.splice(index, 1)
+    this.setData({ shipImages: list, shipDirty: true })
+  },
+
+  addShipImage(e) {
+    const source = e && e.currentTarget && e.currentTarget.dataset.source
+    const remain = 9 - (this.data.shipImages || []).length
+    if (remain <= 0) {
+      wx.showToast({ title: '最多 9 张', icon: 'none' })
+      return
+    }
+    const sourceType = source === 'camera'
+      ? ['camera']
+      : (source === 'album' ? ['album'] : ['album', 'camera'])
+    wx.chooseMedia({
+      count: remain,
+      mediaType: ['image'],
+      sourceType,
+      success: (res) => {
+        const files = res.tempFiles || []
+        if (!files.length) return
+        wx.showLoading({ title: '上传中' })
+        Promise.all(files.map(f => api.uploadImage(f.tempFilePath))).then(results => {
+          wx.hideLoading()
+          const urls = results
+            .filter(r => r.code === 0 && r.data && r.data.url)
+            .map(r => r.data.url)
+          if (!urls.length) {
+            wx.showToast({ title: '上传失败', icon: 'none' })
+            return
+          }
+          this.setData({
+            shipImages: (this.data.shipImages || []).concat(urls).slice(0, 9),
+            shipDirty: true
+          })
+        }).catch(err => {
+          wx.hideLoading()
+          wx.showToast({ title: err.message || '上传失败', icon: 'none' })
+        })
+      }
+    })
+  },
+
+  saveShipImages() {
+    if (this.data.savingShip) return
+    const shipImages = this.data.shipImages || []
+    if (!shipImages.length) {
+      wx.showToast({ title: '请至少保留一张发货凭证', icon: 'none' })
+      return
+    }
+    this.setData({ savingShip: true })
+    wx.showLoading({ title: '保存中' })
+    api.updateShipImages(this.data.orderId, shipImages).then(res => {
+      wx.hideLoading()
+      this.setData({ savingShip: false })
+      if (res.code !== 0) {
+        wx.showToast({ title: res.message || '保存失败', icon: 'none' })
+        return
+      }
+      const order = res.data || this.data.order
+      this.setData({
+        order,
+        shipImages: order.shipImages || shipImages,
+        shipDirty: false
+      })
+      wx.showToast({ title: '发货凭证已更新', icon: 'success' })
+    }).catch(err => {
+      wx.hideLoading()
+      this.setData({ savingShip: false })
+      wx.showToast({ title: err.message || '保存失败', icon: 'none' })
+    })
   },
 
   addAfterImage() {

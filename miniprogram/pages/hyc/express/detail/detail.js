@@ -55,6 +55,113 @@ Page({
     wx.previewImage({ urls, current: current || urls[0] })
   },
 
+  downloadShipImage(e) {
+    const url = e && e.currentTarget && e.currentTarget.dataset.url
+    if (!url) return
+    this.saveImageToAlbum(url).then(() => {
+      this.showScanTip(1)
+    }).catch(err => {
+      wx.showToast({ title: (err && err.message) || '下载失败', icon: 'none' })
+    })
+  },
+
+  downloadAllShipImages() {
+    const urls = (this.data.order && this.data.order.shipImages) || []
+    if (!urls.length) return
+    wx.showLoading({ title: '下载中' })
+    let ok = 0
+    const run = (i) => {
+      if (i >= urls.length) {
+        wx.hideLoading()
+        if (ok > 0) {
+          this.showScanTip(ok)
+        } else {
+          wx.showToast({ title: '下载失败', icon: 'none' })
+        }
+        return
+      }
+      this.saveImageToAlbum(urls[i]).then(() => {
+        ok += 1
+        run(i + 1)
+      }).catch(() => {
+        run(i + 1)
+      })
+    }
+    run(0)
+  },
+
+  /** 下载网络图并写入系统相册（需相册权限） */
+  saveImageToAlbum(url) {
+    return this.ensureAlbumAuth().then(() => new Promise((resolve, reject) => {
+      wx.downloadFile({
+        url,
+        success(res) {
+          if (res.statusCode !== 200 || !res.tempFilePath) {
+            reject(new Error('下载失败'))
+            return
+          }
+          wx.saveImageToPhotosAlbum({
+            filePath: res.tempFilePath,
+            success: () => resolve(),
+            fail: (err) => reject(new Error((err && err.errMsg) || '保存失败'))
+          })
+        },
+        fail: () => reject(new Error('下载失败'))
+      })
+    }))
+  },
+
+  ensureAlbumAuth() {
+    return new Promise((resolve, reject) => {
+      wx.getSetting({
+        success(setting) {
+          if (setting.authSetting['scope.writePhotosAlbum']) {
+            resolve()
+            return
+          }
+          wx.authorize({
+            scope: 'scope.writePhotosAlbum',
+            success: () => resolve(),
+            fail: () => {
+              wx.showModal({
+                title: '需要相册权限',
+                content: '请允许保存到相册，以便下载发货凭证并用微信扫一扫识别物流。',
+                confirmText: '去设置',
+                success(modalRes) {
+                  if (!modalRes.confirm) {
+                    reject(new Error('未授权相册'))
+                    return
+                  }
+                  wx.openSetting({
+                    success(openRes) {
+                      if (openRes.authSetting && openRes.authSetting['scope.writePhotosAlbum']) {
+                        resolve()
+                      } else {
+                        reject(new Error('未授权相册'))
+                      }
+                    },
+                    fail: () => reject(new Error('未授权相册'))
+                  })
+                }
+              })
+            }
+          })
+        },
+        fail: () => reject(new Error('无法获取权限'))
+      })
+    })
+  },
+
+  showScanTip(count) {
+    const n = count > 1 ? `${count} 张` : ''
+    wx.showModal({
+      title: '已保存到相册',
+      content: `${n}发货凭证已下载。请打开微信「扫一扫」→ 点右下角「相册」选中该图识别，即可查看物流详情。`,
+      showCancel: false,
+      confirmText: '知道了'
+    })
+  },
+
   cancelOrder() {
     if (!this.data.canCancel || !this.orderId) return
     wx.showModal({

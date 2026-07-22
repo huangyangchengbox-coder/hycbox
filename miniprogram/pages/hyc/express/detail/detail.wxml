@@ -20,17 +20,32 @@
 
   <view class="hyc-card" wx:if="{{order.shipImages && order.shipImages.length}}">
     <view class="hyc-title">发货凭证（{{order.shipImages.length}}张）</view>
-    <view class="img-row">
-      <image
-        class="thumb"
-        wx:for="{{order.shipImages}}"
-        wx:key="*this"
-        src="{{item}}"
-        mode="aspectFill"
-        data-url="{{item}}"
-        bindtap="previewShip"
-      />
+    <view class="hyc-sub ship-tip">
+      请下载到手机相册后，打开微信「扫一扫」→「相册」识别快递单，即可查看物流详情。
     </view>
+    <view class="img-row">
+      <view class="thumb-wrap" wx:for="{{order.shipImages}}" wx:key="*this">
+        <image
+          class="thumb"
+          src="{{item}}"
+          mode="aspectFill"
+          data-url="{{item}}"
+          bindtap="previewShip"
+          show-menu-by-longpress
+        />
+        <button
+          class="download-btn"
+          size="mini"
+          data-url="{{item}}"
+          catchtap="downloadShipImage"
+        >下载</button>
+      </view>
+    </view>
+    <button
+      class="download-all-btn"
+      wx:if="{{order.shipImages.length > 1}}"
+      bindtap="downloadAllShipImages"
+    >全部下载到相册</button>
   </view>
 
   <view class="hyc-card" wx:if="{{order.afterSaleRemark || (order.afterSaleImages && order.afterSaleImages.length)}}">
