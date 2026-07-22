@@ -1,0 +1,38 @@
+<view class="hyc-page">
+  <view class="hyc-card" wx:if="{{publication}}">
+    <view class="hyc-title">{{publication.title}}</view>
+    <view class="hyc-sub">剩余 {{publication.remainBags}} {{publication.unit || '袋'}}</view>
+  </view>
+
+  <view class="hyc-card">
+    <view class="hyc-title">登记信息</view>
+
+    <view class="picker-label">联系人</view>
+    <input class="hyc-input" placeholder="请输入联系人姓名" value="{{contactName}}" bindinput="onContactInput" />
+
+    <view class="picker-label">手机号</view>
+    <input class="hyc-input" type="number" maxlength="11" placeholder="请输入手机号" value="{{phone}}" bindinput="onPhoneInput" />
+
+    <view class="picker-label">收货位置</view>
+    <view class="loc-box" bindtap="chooseLocation">
+      <block wx:if="{{locationLat != null}}">
+        <view class="loc-name">{{locationName || '已选位置'}}</view>
+        <view class="loc-addr" wx:if="{{locationAddress}}">{{locationAddress}}</view>
+        <view class="loc-addr">点击可重新选点</view>
+      </block>
+      <view wx:else class="loc-empty">点击地图选点 ›</view>
+    </view>
+
+    <view class="picker-label">备注（选填）</view>
+    <input class="hyc-input" placeholder="如 门口有狗 / 周末在家" maxlength="50" value="{{remark}}" bindinput="onRemarkInput" />
+
+    <view class="picker-label">需要数量（{{publication.unit || '袋'}}）</view>
+    <view class="quantity-row">
+      <button size="mini" bindtap="changeQuantity" data-delta="-1">-</button>
+      <text class="quantity-num">{{quantity}}</text>
+      <button size="mini" bindtap="changeQuantity" data-delta="1">+</button>
+    </view>
+  </view>
+
+  <button class="hyc-btn-primary submit-btn" bindtap="submitOrder">提交登记</button>
+</view>

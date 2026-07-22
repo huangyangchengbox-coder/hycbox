@@ -1,0 +1,27 @@
+<view class="page">
+  <admin-notice-bar></admin-notice-bar>
+  <view class="head-tip" wx:if="{{pubTitle}}">{{pubTitle}} · {{statusText}}</view>
+  <view class="loc-tip" wx:if="{{locationTip}}">{{locationTip}}</view>
+
+  <view class="order-card" wx:for="{{orders}}" wx:key="id">
+    <view class="row-title">{{item.userName || '用户'}} · {{item.quantity}}{{qtyUnit}}</view>
+    <view class="row-sub">{{item.phone}}</view>
+    <view class="row-sub">{{item.displayPlace}}</view>
+    <view class="row-sub" wx:if="{{item.address && item.address !== item.locationName}}">{{item.address}}</view>
+    <view class="row-sub" wx:if="{{item.remark}}">备注：{{item.remark}}</view>
+    <view class="actions">
+      <view class="act act-nav" data-index="{{index}}" bindtap="openNav">导航</view>
+      <view class="act act-call" data-phone="{{item.phone}}" bindtap="callUser">电话</view>
+      <view class="act act-arrive" data-id="{{item.id}}" bindtap="notifyArrive">到门口</view>
+      <view class="act act-done" data-id="{{item.id}}" data-qty="{{item.quantity}}" bindtap="completeOne">送达</view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!loading && orders.length === 0}}">暂无待配送订单</view>
+  <view class="empty" wx:if="{{loading}}">加载中...</view>
+
+  <view class="bottom-bar">
+    <view class="bottom-btn" bindtap="goPublish">返回发布</view>
+    <view class="bottom-btn" bindtap="loadOrders">刷新</view>
+  </view>
+</view>

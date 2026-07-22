@@ -1,0 +1,16 @@
+@import "../../common.wxss";
+
+.cancel-order-btn {
+  background: #fff;
+  color: #fa541c;
+  border: 1rpx solid #ffbb96;
+  border-radius: 12rpx;
+}
+
+.courier-map {
+  width: 100%;
+  height: 360rpx;
+  margin-top: 16rpx;
+  border-radius: 12rpx;
+  overflow: hidden;
+}

@@ -489,6 +489,49 @@ Page({
     return list
   },
 
+  /** 已选户：发订阅消息「已到门口」 */
+  notifyArriveDoor: function () {
+    const selected = this.getSelectedOrders()
+    if (!selected.length) {
+      wx.showToast({ title: '请先选择门牌', icon: 'none' })
+      return
+    }
+    const that = this
+    const api = require('../../../../services/api')
+    wx.showModal({
+      title: '到门口提醒',
+      content: '将向已选 ' + selected.length + ' 户发送「配送员已到门口」通知（需用户曾授权订阅）',
+      success: function (modalRes) {
+        if (!modalRes.confirm) return
+        wx.showLoading({ title: '发送中' })
+        let ok = 0
+        let fail = 0
+        const run = function (index) {
+          if (index >= selected.length) {
+            wx.hideLoading()
+            that.setData({
+              statusText: '到门口提醒：成功 ' + ok + '，失败 ' + fail
+            })
+            wx.showToast({
+              title: fail ? ('成功' + ok + ' 失败' + fail) : ('已通知 ' + ok + ' 户'),
+              icon: fail ? 'none' : 'success'
+            })
+            return
+          }
+          api.notifyArrivedAtDoor(selected[index].id).then(function (res) {
+            if (res && res.code === 0) ok += 1
+            else fail += 1
+            run(index + 1)
+          }).catch(function () {
+            fail += 1
+            run(index + 1)
+          })
+        }
+        run(0)
+      }
+    })
+  },
+
   clearSelection: function () {
     const groups = this.data.buildingGroups || []
     const patch = {

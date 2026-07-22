@@ -22,6 +22,51 @@
   color: #666;
 }
 
+.weather-card {
+  margin-bottom: 36rpx;
+  padding: 28rpx 32rpx;
+  border-radius: 20rpx;
+  background: linear-gradient(120deg, #e8f4ff 0%, #f0faf4 100%);
+  box-shadow: 0 6rpx 20rpx rgba(47, 107, 255, 0.06);
+}
+
+.weather-main {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+
+.weather-temp {
+  font-size: 56rpx;
+  font-weight: 700;
+  color: #1a1a1a;
+  line-height: 1;
+  min-width: 120rpx;
+}
+
+.weather-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.weather-text {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.weather-extra {
+  font-size: 22rpx;
+  color: #666;
+}
+
+.weather-tip {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: #888;
+}
+
 .hub-grid {
   display: flex;
   flex-direction: column;
@@ -54,6 +99,11 @@
 .hub-icon.box {
   background: #eef3ff;
   color: #2f6bff;
+}
+
+.hub-icon.village {
+  background: #fff7e6;
+  color: #d48806;
 }
 
 .hub-title {

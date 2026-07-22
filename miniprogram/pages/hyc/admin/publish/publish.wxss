@@ -126,6 +126,11 @@
   color: #2f6bff;
 }
 
+.scope-tag.village {
+  background: #fff7e6;
+  color: #d48806;
+}
+
 .action-btn {
   padding: 10rpx 24rpx;
   font-size: 24rpx;

@@ -1,6 +1,6 @@
-# hycBox · 恒大名都水果领取小程序
+# hycBox · 社区水果领取小程序
 
-微信小程序前端：小区闪送 + 物流中国，对接后端 [hycBoxServer](../hycBoxServer)。
+微信小程序前端：小区闪送 + 物流中国，对接后端 [hycBoxServer](../hycBoxServer)。小区与门牌由配置/数据文件维护，不绑定单一社区。
 
 ## 功能概览
 

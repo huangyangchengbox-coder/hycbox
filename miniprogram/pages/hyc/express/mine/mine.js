@@ -25,9 +25,10 @@ Page({
       api.listPublications({ scope: 'nationwide' }),
       api.listOrders()
     ]).then(([pubRes, orderRes]) => {
-      const publications = (pubRes.code === 0 && pubRes.data) ? pubRes.data : []
+      const publications = ((pubRes.code === 0 && pubRes.data) ? pubRes.data : [])
+        .filter(item => item && item.scope === 'nationwide')
       const orders = ((orderRes.code === 0 && orderRes.data) ? orderRes.data : [])
-        .filter(item => item.province || !item.roomId)
+        .filter(item => item.province && item.locationLat == null)
         .map(item => Object.assign({}, item, {
           statusText: statusText(item.status)
         }))

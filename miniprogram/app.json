@@ -11,6 +11,9 @@
     "pages/hyc/express/order/order",
     "pages/hyc/express/mine/mine",
     "pages/hyc/express/detail/detail",
+    "pages/hyc/village/mine/mine",
+    "pages/hyc/village/order/order",
+    "pages/hyc/village/detail/detail",
     "pages/hyc/index",
     "pages/hyc/admin/login/login",
     "pages/hyc/admin/publish/publish",
@@ -19,6 +22,7 @@
     "pages/hyc/admin/express-shipped/express-shipped",
     "pages/hyc/admin/express-detail/express-detail",
     "pages/hyc/admin/delivery/delivery",
+    "pages/hyc/admin/village-delivery/village-delivery",
     "pages/hyc/admin/managers/managers",
     "pages/hyc/admin/mine/mine"
   ],
@@ -30,11 +34,12 @@
   },
   "permission": {
     "scope.userLocation": {
-      "desc": "用于配送时向邻居展示您的实时位置"
+      "desc": "用于展示当前位置天气，以及选择收货位置、配送导航与分享实时位置"
     }
   },
   "requiredPrivateInfos": [
-    "getLocation"
+    "getLocation",
+    "chooseLocation"
   ],
   "networkTimeout": {
     "request": 10000,

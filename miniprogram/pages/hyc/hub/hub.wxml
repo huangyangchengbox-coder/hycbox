@@ -4,6 +4,17 @@
     <view class="hub-sub">选择你要使用的服务</view>
   </view>
 
+  <view class="weather-card" bindtap="onWeatherTap">
+    <view class="weather-main" wx:if="{{weatherText}}">
+      <text class="weather-temp">{{weatherTemp}}</text>
+      <view class="weather-meta">
+        <text class="weather-text">{{weatherText}}</text>
+        <text class="weather-extra" wx:if="{{weatherExtra}}">{{weatherExtra}}</text>
+      </view>
+    </view>
+    <view class="weather-tip">{{weatherTip}}</view>
+  </view>
+
   <view class="hub-grid">
     <view class="hub-card" bindtap="goFlash">
       <view class="hub-icon house">⌂</view>
@@ -14,6 +25,11 @@
       <view class="hub-icon box">▤</view>
       <view class="hub-title">物流中国</view>
       <view class="hub-desc">快速记录，全国发货</view>
+    </view>
+    <view class="hub-card" bindtap="goVillage">
+      <view class="hub-icon village">⌂</view>
+      <view class="hub-title">村村送</view>
+      <view class="hub-desc">选点定位，上门配送</view>
     </view>
   </view>
 

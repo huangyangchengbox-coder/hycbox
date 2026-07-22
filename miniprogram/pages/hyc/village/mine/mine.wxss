@@ -1,0 +1,11 @@
+@import "../../common.wxss";
+
+.order-card {
+  margin-bottom: 16rpx;
+}
+
+.detail-hint {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #07c160;
+}

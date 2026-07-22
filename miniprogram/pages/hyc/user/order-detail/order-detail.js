@@ -1,6 +1,7 @@
 const api = require('../../../../services/api')
 const communityPref = require('../../../../services/communityPref')
 const addressCascade = require('../../../../services/addressCascade')
+const orderStatus = require('../../../../services/orderStatus')
 
 Page({
   data: {
@@ -64,9 +65,7 @@ Page({
       if (res.code !== 0 || !res.data) {
         throw new Error(res.message || '加载失败')
       }
-      const order = res.data
-      order.statusText = order.status === 'completed' ? '已送达'
-        : (order.status === 'cancelled' ? '已取消' : '待配送')
+      const order = orderStatus.withFlashStatus(res.data)
       const canEditAddress = order.status === 'pending' && !!order.roomId
       const canCancel = order.status === 'pending'
       const showCourierMap = canEditAddress
@@ -235,8 +234,7 @@ Page({
         wx.showToast({ title: res.message || '保存失败', icon: 'none' })
         return
       }
-      const next = res.data || {}
-      next.statusText = next.status === 'completed' ? '已送达' : '待配送'
+      const next = orderStatus.withFlashStatus(res.data || {})
       this.setData({
         order: next,
         addressLabel: next.roomLabel || room.label,

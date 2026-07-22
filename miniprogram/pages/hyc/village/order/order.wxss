@@ -1,0 +1,48 @@
+@import "../../common.wxss";
+
+.picker-label {
+  font-size: 26rpx;
+  color: #666;
+  margin-top: 20rpx;
+}
+
+.loc-box {
+  background: #f7f8fa;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  margin-top: 8rpx;
+}
+
+.loc-name {
+  font-size: 28rpx;
+  color: #1a1a1a;
+}
+
+.loc-addr {
+  margin-top: 6rpx;
+  font-size: 24rpx;
+  color: #888;
+}
+
+.loc-empty {
+  font-size: 28rpx;
+  color: #07c160;
+}
+
+.quantity-row {
+  display: flex;
+  align-items: center;
+  margin-top: 16rpx;
+}
+
+.quantity-num {
+  font-size: 40rpx;
+  font-weight: 700;
+  margin: 0 40rpx;
+  min-width: 60rpx;
+  text-align: center;
+}
+
+.submit-btn {
+  margin: 24rpx;
+}

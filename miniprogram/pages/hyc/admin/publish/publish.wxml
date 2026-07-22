@@ -40,7 +40,8 @@
             </block>
           </block>
         </block>
-        <view wx:else class="hyc-sub tip-nation">面向全国用户（物流中国）</view>
+        <view wx:elif="{{scope === 'nationwide'}}" class="hyc-sub tip-nation">面向全国用户（物流中国）</view>
+        <view wx:else class="hyc-sub tip-nation">村村送：用户地图选点，管理员可导航上门</view>
 
         <view class="picker-label">物品名称</view>
         <input class="hyc-input" placeholder="如 新鲜苹果" value="{{title}}" bindinput="onTitleInput" />
@@ -84,10 +85,10 @@
         </text>
       </view>
       <view class="hyc-sub">
-        <text class="scope-tag {{item.scope === 'nationwide' ? 'nation' : 'community'}}">
-          {{item.scope === 'nationwide' ? '全国' : '小区'}}
+        <text class="scope-tag {{item.scope === 'nationwide' ? 'nation' : (item.scope === 'village' ? 'village' : 'community')}}">
+          {{item.scope === 'nationwide' ? '全国' : (item.scope === 'village' ? '村村送' : '小区')}}
         </text>
-        {{item.scope === 'nationwide' ? '物流中国' : ((item.communityName || '') + (item.phaseName ? ' · ' + item.phaseName : ' · 全部期'))}}
+        {{item.scope === 'nationwide' ? '物流中国' : (item.scope === 'village' ? '山村上门配送' : ((item.communityName || '') + (item.phaseName ? ' · ' + item.phaseName : ' · 全部期')))}}
       </view>
       <view class="hyc-row">
         <text class="hyc-sub">剩余 {{item.remainBags}}/{{item.totalBags}} {{item.unit || '袋'}}</text>

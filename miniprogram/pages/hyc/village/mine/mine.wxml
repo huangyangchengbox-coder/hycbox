@@ -1,0 +1,42 @@
+<view class="hyc-page">
+  <view class="section-title">可登记发布</view>
+  <view class="hyc-card" wx:for="{{publications}}" wx:key="id">
+    <image wx:if="{{item.imageUrl}}" class="hyc-fruit-img" src="{{item.imageUrl}}" mode="aspectFill" />
+    <view class="hyc-title" style="margin-top:16rpx">{{item.title}}</view>
+    <view class="hyc-sub">发布人：{{item.adminName || '管理者'}} · {{item.createdAt}}</view>
+    <view class="hyc-row">
+      <text>剩余 <text class="hyc-stat-num">{{item.remainBags}}</text> {{item.unit || '袋'}}</text>
+      <text class="hyc-sub">共 {{item.totalBags}} {{item.unit || '袋'}}</text>
+    </view>
+    <button
+      class="hyc-btn-primary"
+      data-id="{{item.id}}"
+      data-can="{{item.remainBags > 0 ? '1' : '0'}}"
+      bindtap="goOrder"
+      disabled="{{item.remainBags <= 0}}"
+    >
+      {{item.remainBags > 0 ? '登记村村送' : '已领完'}}
+    </button>
+  </view>
+  <view class="hyc-empty soft" wx:if="{{!loading && publications.length === 0}}">暂无可登记发布</view>
+
+  <view class="section-title">我的登记</view>
+  <view class="hyc-card order-card" wx:for="{{orders}}" wx:key="id" bindtap="goDetail" data-id="{{item.id}}">
+    <view class="hyc-row">
+      <text class="hyc-title" style="font-size:30rpx">{{item.publicationTitle || item.locationName || '村村送'}}</text>
+      <text class="hyc-tag {{item.statusTagClass}}">{{item.statusText}}</text>
+    </view>
+    <view class="hyc-sub">{{item.userName}} · {{item.phone}}</view>
+    <view class="hyc-sub">{{item.locationName || item.address}}</view>
+    <view class="hyc-sub">登记 {{item.quantity}} {{item.qtyUnit || '袋'}} · {{item.createdAt}}</view>
+    <view class="detail-hint">查看详情 ›</view>
+  </view>
+  <view class="hyc-empty soft" wx:if="{{!loading && orders.length === 0}}">暂无登记记录</view>
+  <view class="hyc-empty" wx:if="{{loading}}">加载中...</view>
+
+  <view class="hyc-bottom-bar">
+    <view class="hyc-bottom-item" bindtap="goHome">首页</view>
+    <view class="hyc-bottom-item active">村村送</view>
+    <view class="hyc-bottom-item" bindtap="goProfile">我的</view>
+  </view>
+</view>

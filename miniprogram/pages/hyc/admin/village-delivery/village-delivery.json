@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "村村送配送",
+  "usingComponents": {
+    "admin-notice-bar": "/components/admin-notice-bar/admin-notice-bar"
+  }
+}

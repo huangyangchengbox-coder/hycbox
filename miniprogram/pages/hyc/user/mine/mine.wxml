@@ -33,7 +33,7 @@
   <view class="hyc-card order-card" wx:for="{{orders}}" wx:key="id" bindtap="goDetail" data-id="{{item.id}}">
     <view class="hyc-row">
       <text class="hyc-title" style="font-size:30rpx">{{item.publicationTitle || item.roomLabel || '派送登记'}}</text>
-      <text class="hyc-tag {{item.status === 'pending' ? 'hyc-tag-pending' : 'hyc-tag-done'}}">
+      <text class="hyc-tag {{item.statusTagClass}}">
         {{item.statusText}}
       </text>
     </view>

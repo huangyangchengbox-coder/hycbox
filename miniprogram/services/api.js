@@ -384,6 +384,23 @@ const api = {
     return request({ url: `/orders/${orderId}/complete`, method: 'PUT', data, admin: true })
   },
 
+  /** 首页天气：经纬度由 wx.getLocation 提供 */
+  getWeather(latitude, longitude) {
+    return request({
+      url: '/weather',
+      data: { latitude, longitude }
+    })
+  },
+
+  /** 管理员：通知用户配送员已到门口（订阅消息） */
+  notifyArrivedAtDoor(orderId) {
+    return request({
+      url: `/orders/${orderId}/arrive-door`,
+      method: 'PUT',
+      admin: true
+    })
+  },
+
   groupPendingByBuilding(publicationId) {
     if (config.useMock) {
       return wrapMock(() => ({

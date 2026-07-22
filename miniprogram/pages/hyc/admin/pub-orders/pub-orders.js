@@ -72,17 +72,26 @@ Page({
     const building = (item.phaseName || '') + (item.buildingName || '')
     const unit = item.unit != null ? item.unit + '单元' : ''
     const addressParts = [building, unit, item.roomNo || ''].filter(Boolean)
-    const address = addressParts.length
+    let address = addressParts.length
       ? addressParts.join(' ')
-      : (item.roomLabel || '未知门牌')
+      : (item.roomLabel || '')
+    // 村村送无门牌：展示选点与电话
+    if (!address && item.locationLat != null) {
+      address = (item.locationName || item.address || '地图选点')
+        + (item.phone ? ' · ' + item.phone : '')
+    }
+    if (!address) {
+      address = '未知地址'
+    }
     const done = item.status === 'completed'
+    const cancelled = item.status === 'cancelled'
     const finalQty = done
       ? (item.deliveredQuantity != null ? item.deliveredQuantity : item.quantity)
       : null
     return Object.assign({}, item, {
       address,
       finalQtyText: finalQty != null ? String(finalQty) : '-',
-      statusText: done ? '已送达' : '待配送',
+      statusText: cancelled ? '已取消' : (done ? '已送达' : '待配送'),
       createdAtText: item.createdAt || '-',
       deliveredAtText: item.deliveredAt || '-'
     })

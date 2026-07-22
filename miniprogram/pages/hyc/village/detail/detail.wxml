@@ -1,0 +1,43 @@
+<view class="hyc-page" wx:if="{{order}}">
+  <view class="hyc-card">
+    <view class="hyc-row">
+      <view class="hyc-title">{{order.publicationTitle || '村村送'}}</view>
+      <text class="hyc-tag {{order.statusTagClass}}">{{order.statusText}}</text>
+    </view>
+    <view class="hyc-sub">联系人：{{order.userName}}</view>
+    <view class="hyc-sub">电话：{{order.phone}}</view>
+    <view class="hyc-sub">位置：{{order.locationName || order.address}}</view>
+    <view class="hyc-sub" wx:if="{{order.address && order.address !== order.locationName}}">地址：{{order.address}}</view>
+    <view class="hyc-sub">数量：{{order.quantity}} {{order.qtyUnit || '袋'}}</view>
+    <view class="hyc-sub" wx:if="{{order.remark}}">备注：{{order.remark}}</view>
+    <view class="hyc-sub">登记时间：{{order.createdAt}}</view>
+    <view class="hyc-sub" wx:if="{{order.deliveredAt}}">送达时间：{{order.deliveredAt}}</view>
+    <button
+      wx:if="{{order.locationLat != null}}"
+      class="hyc-btn-primary"
+      style="margin-top:20rpx"
+      bindtap="openMyLocation"
+    >在地图中查看收货点</button>
+  </view>
+
+  <view class="hyc-card" wx:if="{{showCourierMap}}">
+    <view class="hyc-title">配送员位置</view>
+    <view class="hyc-sub">{{courierTip || '正在获取…'}}</view>
+    <map
+      wx:if="{{courierSharing}}"
+      class="courier-map"
+      latitude="{{mapLatitude}}"
+      longitude="{{mapLongitude}}"
+      scale="16"
+      markers="{{mapMarkers}}"
+      show-location="{{false}}"
+    />
+  </view>
+
+  <view class="hyc-card" wx:if="{{canCancel}}">
+    <button class="cancel-order-btn" bindtap="cancelOrder">取消订单</button>
+  </view>
+</view>
+
+<view class="hyc-empty" wx:if="{{loading}}">加载中...</view>
+<view class="hyc-empty" wx:if="{{!loading && !order}}">订单不存在</view>

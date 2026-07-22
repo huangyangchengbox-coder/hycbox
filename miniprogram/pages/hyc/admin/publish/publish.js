@@ -23,9 +23,9 @@ Page({
     hasPhases: false,
     /** 面向全部期 */
     allPhases: true,
-    /** community | nationwide */
+    /** community | nationwide | village */
     scope: 'community',
-    scopeOptions: ['小区闪送', '物流中国（全国）'],
+    scopeOptions: ['小区闪送', '物流中国（全国）', '村村送'],
     scopeIndex: 0,
     publications: [],
     adminName: '',
@@ -113,9 +113,12 @@ Page({
 
   onScopeChange(e) {
     const scopeIndex = Number(e.detail.value)
+    let scope = 'community'
+    if (scopeIndex === 1) scope = 'nationwide'
+    if (scopeIndex === 2) scope = 'village'
     this.setData({
       scopeIndex,
-      scope: scopeIndex === 1 ? 'nationwide' : 'community'
+      scope
     })
   },
 
@@ -248,7 +251,7 @@ Page({
       scope: scope || 'community'
     }
 
-    if (scope !== 'nationwide') {
+    if (scope === 'community') {
       const community = communities[communityIndex]
       if (!community) {
         wx.showToast({ title: '请选择小区', icon: 'none' })
@@ -310,6 +313,12 @@ Page({
     if (scope === 'nationwide') {
       wx.navigateTo({
         url: `/pages/hyc/admin/express-orders/express-orders?publicationId=${id}&title=${encodeURIComponent(title)}&unit=${encodeURIComponent(unit)}`
+      })
+      return
+    }
+    if (scope === 'village') {
+      wx.navigateTo({
+        url: `/pages/hyc/admin/village-delivery/village-delivery?publicationId=${id}&title=${encodeURIComponent(title)}&unit=${encodeURIComponent(unit)}`
       })
       return
     }

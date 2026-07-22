@@ -406,6 +406,16 @@
   padding: 12rpx 20rpx;
 }
 
+.batch-arrive {
+  margin-left: 8rpx;
+  background: #fff7e6;
+  color: #d48806;
+  font-size: 26rpx;
+  padding: 14rpx 20rpx;
+  border-radius: 10rpx;
+  border: 1rpx solid #ffd591;
+}
+
 .batch-confirm {
   margin-left: 8rpx;
   background: #07c160;
