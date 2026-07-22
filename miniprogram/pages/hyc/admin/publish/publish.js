@@ -8,7 +8,7 @@ Page({
     title: '',
     totalBags: '',
     unitPrice: '',
-    imageUrl: '',
+    imageUrls: [],
     unitOptions: ['袋', '箱', '个', '份', '件', '其他'],
     unitIndex: 0,
     unitOtherIndex: 5,
@@ -19,10 +19,9 @@ Page({
     communityIndex: 0,
     phases: [],
     phaseNames: [],
-    phaseIndex: 0,
+    /** 各期勾选：{ id, name, checked } */
+    phaseChecks: [],
     hasPhases: false,
-    /** 面向全部期 */
-    allPhases: true,
     /** community | nationwide | village */
     scope: 'community',
     scopeOptions: ['小区闪送', '物流中国（全国）', '村村送'],
@@ -90,9 +89,8 @@ Page({
       communityIndex,
       phases,
       phaseNames: phases.map(p => p.name),
-      phaseIndex: 0,
-      hasPhases,
-      allPhases: hasPhases
+      phaseChecks: phases.map(p => ({ id: p.id, name: p.name, checked: true })),
+      hasPhases
     })
   },
 
@@ -100,15 +98,13 @@ Page({
     this.applyCommunity(Number(e.detail.value))
   },
 
-  onPhaseChange(e) {
-    this.setData({
-      phaseIndex: Number(e.detail.value),
-      allPhases: false
-    })
-  },
-
-  onAllPhasesSwitch(e) {
-    this.setData({ allPhases: !!e.detail.value })
+  onPhaseChecksChange(e) {
+    const selected = {}
+    ;(e.detail.value || []).forEach(id => { selected[id] = true })
+    const phaseChecks = (this.data.phaseChecks || []).map(item => Object.assign({}, item, {
+      checked: !!selected[item.id]
+    }))
+    this.setData({ phaseChecks })
   },
 
   onScopeChange(e) {
@@ -149,11 +145,10 @@ Page({
       title: showForm ? this.data.title : '',
       totalBags: showForm ? this.data.totalBags : '',
       unitPrice: showForm ? this.data.unitPrice : '',
-      imageUrl: showForm ? this.data.imageUrl : '',
+      imageUrls: showForm ? this.data.imageUrls : [],
       unitIndex: showForm ? this.data.unitIndex : 0,
       customUnit: showForm ? this.data.customUnit : '',
-      currentUnit: showForm ? this.data.currentUnit : '袋',
-      allPhases: showForm ? this.data.allPhases : true
+      currentUnit: showForm ? this.data.currentUnit : '袋'
     })
   },
 
@@ -194,20 +189,33 @@ Page({
   },
 
   chooseImage() {
+    const remain = 9 - (this.data.imageUrls || []).length
+    if (remain <= 0) {
+      wx.showToast({ title: '最多 9 张图', icon: 'none' })
+      return
+    }
     wx.chooseMedia({
-      count: 1,
+      count: remain,
       mediaType: ['image'],
       success: (res) => {
-        const filePath = res.tempFiles[0].tempFilePath
+        const files = (res.tempFiles || []).map(f => f.tempFilePath).filter(Boolean)
+        if (!files.length) return
         wx.showLoading({ title: '上传中' })
-        api.uploadImage(filePath).then(uploadRes => {
+        Promise.all(files.map(path => api.uploadImage(path))).then(results => {
           wx.hideLoading()
-          if (uploadRes.code === 0 && uploadRes.data && uploadRes.data.url) {
-            this.setData({ imageUrl: uploadRes.data.url })
-            wx.showToast({ title: '上传成功', icon: 'success' })
-          } else {
-            wx.showToast({ title: (uploadRes && uploadRes.message) || '上传失败', icon: 'none' })
+          const urls = results
+            .filter(r => r && r.code === 0 && r.data && r.data.url)
+            .map(r => r.data.url)
+          if (!urls.length) {
+            wx.showToast({ title: '上传失败', icon: 'none' })
+            return
           }
+          const imageUrls = (this.data.imageUrls || []).concat(urls).slice(0, 9)
+          this.setData({ imageUrls })
+          wx.showToast({
+            title: urls.length < files.length ? `已上传 ${urls.length} 张` : '上传成功',
+            icon: 'success'
+          })
         }).catch(err => {
           wx.hideLoading()
           console.error('uploadImage failed', err)
@@ -217,10 +225,25 @@ Page({
     })
   },
 
+  removeImage(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const imageUrls = (this.data.imageUrls || []).slice()
+    if (index < 0 || index >= imageUrls.length) return
+    imageUrls.splice(index, 1)
+    this.setData({ imageUrls })
+  },
+
+  previewImages(e) {
+    const current = e.currentTarget.dataset.url
+    const urls = this.data.imageUrls || []
+    if (!urls.length) return
+    wx.previewImage({ urls, current: current || urls[0] })
+  },
+
   submitPublish() {
     const {
-      title, totalBags, unitPrice, imageUrl, communities, communityIndex,
-      hasPhases, allPhases, phases, phaseIndex, scope
+      title, totalBags, unitPrice, imageUrls, communities, communityIndex,
+      hasPhases, phaseChecks, scope
     } = this.data
     const bags = Number(totalBags)
     const price = Number(unitPrice)
@@ -242,60 +265,74 @@ Page({
       return
     }
 
-    const payload = {
+    const basePayload = {
       title: title.trim(),
       totalBags: bags,
       unit: unit,
       unitPrice: price,
-      imageUrl,
+      imageUrls: imageUrls || [],
+      imageUrl: (imageUrls && imageUrls[0]) || '',
       scope: scope || 'community'
     }
 
+    /** 按勾选期组装发布请求：全选=一期不限；多选=各期各发一条 */
+    const payloads = []
     if (scope === 'community') {
       const community = communities[communityIndex]
       if (!community) {
         wx.showToast({ title: '请选择小区', icon: 'none' })
         return
       }
-      let phaseId
-      let phaseName = ''
-      if (hasPhases && !allPhases) {
-        const phase = phases[phaseIndex]
-        if (!phase) {
-          wx.showToast({ title: '请选择期数', icon: 'none' })
-          return
-        }
-        phaseId = phase.id
-        phaseName = phase.name
+      const selected = (phaseChecks || []).filter(p => p.checked)
+      if (hasPhases && selected.length === 0) {
+        wx.showToast({ title: '请至少勾选一期', icon: 'none' })
+        return
       }
-      payload.communityId = community.id
-      payload.communityName = community.name
-      payload.phaseId = phaseId || undefined
-      payload.phaseName = phaseName || undefined
+      const allSelected = hasPhases && selected.length === phaseChecks.length
+      if (!hasPhases || allSelected) {
+        payloads.push(Object.assign({}, basePayload, {
+          communityId: community.id,
+          communityName: community.name
+        }))
+      } else {
+        selected.forEach(phase => {
+          payloads.push(Object.assign({}, basePayload, {
+            communityId: community.id,
+            communityName: community.name,
+            phaseId: phase.id,
+            phaseName: phase.name
+          }))
+        })
+      }
+    } else {
+      payloads.push(basePayload)
     }
 
     wx.showLoading({ title: '发布中' })
-    api.createPublication(payload).then(res => {
+    Promise.all(payloads.map(p => api.createPublication(p))).then(results => {
       wx.hideLoading()
-      if (res.code === 0) {
-        wx.showToast({ title: '发布成功', icon: 'success' })
-        this.setData({
-          showForm: false,
-          title: '',
-          totalBags: '',
-          unitPrice: '',
-          imageUrl: '',
-          unitIndex: 0,
-          customUnit: '',
-          currentUnit: '袋',
-          allPhases: true,
-          scope: 'community',
-          scopeIndex: 0
-        })
-        this.loadPublications()
-      } else {
-        wx.showToast({ title: res.message || '发布失败', icon: 'none' })
+      const fail = results.find(res => !res || res.code !== 0)
+      if (fail) {
+        wx.showToast({ title: (fail && fail.message) || '发布失败', icon: 'none' })
+        return
       }
+      wx.showToast({ title: payloads.length > 1 ? `已发布 ${payloads.length} 期` : '发布成功', icon: 'success' })
+      const phaseChecksReset = (this.data.phaseChecks || []).map(p => Object.assign({}, p, { checked: true }))
+      this.setData({
+        showForm: false,
+        title: '',
+        totalBags: '',
+        unitPrice: '',
+        imageUrl: '',
+        unitIndex: 0,
+        customUnit: '',
+        currentUnit: '袋',
+        imageUrls: [],
+        phaseChecks: phaseChecksReset,
+        scope: 'community',
+        scopeIndex: 0
+      })
+      this.loadPublications()
     }).catch(err => {
       wx.hideLoading()
       wx.showToast({ title: err.message || '发布失败', icon: 'none' })

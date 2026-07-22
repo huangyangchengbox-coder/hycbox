@@ -1,5 +1,6 @@
 const api = require('../../../../services/api')
 const orderStatus = require('../../../../services/orderStatus')
+const publicationImages = require('../../../../services/publicationImages')
 
 Page({
   data: {
@@ -21,8 +22,10 @@ Page({
       api.listOrders()
     ]).then(([pubRes, orderRes]) => {
       // 仅展示管理员发布的村村送；旧接口若误回其他 scope 也过滤掉
-      const publications = ((pubRes.code === 0 && pubRes.data) ? pubRes.data : [])
-        .filter(item => item && item.scope === 'village')
+      const publications = publicationImages.normalizePublicationList(
+        ((pubRes.code === 0 && pubRes.data) ? pubRes.data : [])
+          .filter(item => item && item.scope === 'village')
+      )
       const orders = ((orderRes.code === 0 && orderRes.data) ? orderRes.data : [])
         .filter(item => item.locationLat != null && item.locationLng != null)
         .map(item => orderStatus.withFlashStatus(item))
@@ -42,6 +45,13 @@ Page({
       return
     }
     wx.navigateTo({ url: `/pages/hyc/village/order/order?publicationId=${id}` })
+  },
+
+  previewPubImages(e) {
+    const id = e.currentTarget.dataset.id
+    const current = e.currentTarget.dataset.url
+    const item = (this.data.publications || []).find(p => p.id === id)
+    publicationImages.previewPublicationImages(item, current)
   },
 
   goDetail(e) {

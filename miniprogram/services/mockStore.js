@@ -88,7 +88,8 @@ function createPublication(payload) {
   const item = {
     id: nextId('pub'),
     title: payload.title || '水果',
-    imageUrl: payload.imageUrl || '',
+    imageUrl: (payload.imageUrls && payload.imageUrls[0]) || payload.imageUrl || '',
+    images: payload.imageUrls || (payload.imageUrl ? [payload.imageUrl] : []),
     totalBags: payload.totalBags,
     remainBags: payload.totalBags,
     unit: payload.unit || '袋',

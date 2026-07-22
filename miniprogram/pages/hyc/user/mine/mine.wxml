@@ -9,7 +9,29 @@
 
   <view class="section-title">可登记发布</view>
   <view class="hyc-card" wx:for="{{publications}}" wx:key="id">
-    <image wx:if="{{item.imageUrl}}" class="hyc-fruit-img" src="{{item.imageUrl}}" mode="aspectFill" />
+    <block wx:if="{{item.images.length > 1}}">
+      <swiper class="hyc-fruit-swiper" indicator-dots circular>
+        <swiper-item wx:for="{{item.images}}" wx:for-item="img" wx:key="*this">
+          <image
+            class="hyc-fruit-img"
+            src="{{img}}"
+            mode="aspectFill"
+            data-id="{{item.id}}"
+            data-url="{{img}}"
+            bindtap="previewPubImages"
+          />
+        </swiper-item>
+      </swiper>
+    </block>
+    <image
+      wx:elif="{{item.imageUrl}}"
+      class="hyc-fruit-img"
+      src="{{item.imageUrl}}"
+      mode="aspectFill"
+      data-id="{{item.id}}"
+      data-url="{{item.imageUrl}}"
+      bindtap="previewPubImages"
+    />
     <view class="hyc-title" style="margin-top:16rpx">{{item.title}}</view>
     <view class="hyc-sub" wx:if="{{item.phaseName}}">{{item.communityName}} · {{item.phaseName}}</view>
     <view class="hyc-sub">发布人：{{item.adminName || '管理者'}} · {{item.createdAt}}</view>

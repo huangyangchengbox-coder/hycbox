@@ -2,6 +2,7 @@ const api = require('../../../../services/api')
 const communityPref = require('../../../../services/communityPref')
 const addressCascade = require('../../../../services/addressCascade')
 const orderStatus = require('../../../../services/orderStatus')
+const courierMapTrack = require('../../../../services/courierMapTrack')
 
 Page({
   data: {
@@ -17,6 +18,8 @@ Page({
     mapLatitude: 30.57,
     mapLongitude: 114.30,
     mapMarkers: [],
+    mapPolylines: [],
+    mapIncludePoints: [],
     communityId: '',
     addressLabel: '',
     phases: [],
@@ -36,11 +39,19 @@ Page({
 
   onLoad(options) {
     this.orderId = (options && options.id) || ''
+    this._userDest = null
     const pref = communityPref.getPref() || communityPref.getDefault()
     this.setData({ communityId: pref.communityId })
     addressCascade.bindAddressCascade(this, {
       getCommunityId: () => this.data.communityId
     })
+    // 小区闪送门牌无坐标：用当前用户定位当收货点，画出「箱子→你」路线
+    this._courierTrack = courierMapTrack.createCourierMapTrack(this, {
+      getOrderId: () => this.orderId,
+      isActive: () => this.data.showCourierMap,
+      getDest: () => this._userDest
+    })
+    this.ensureUserDest()
   },
 
   onShow() {
@@ -53,6 +64,22 @@ Page({
 
   onUnload() {
     this.stopCourierPoll()
+  },
+
+  ensureUserDest() {
+    const that = this
+    wx.getLocation({
+      type: 'gcj02',
+      success(res) {
+        that._userDest = {
+          latitude: res.latitude,
+          longitude: res.longitude
+        }
+        if (that.data.courierSharing && that._courierTrack) {
+          that._courierTrack.refresh()
+        }
+      }
+    })
   },
 
   loadDetail() {
@@ -82,7 +109,13 @@ Page({
         this.startCourierPoll()
       } else {
         this.stopCourierPoll()
-        this.setData({ courierSharing: false, courierTip: '', mapMarkers: [] })
+        this.setData({
+          courierSharing: false,
+          courierTip: '',
+          mapMarkers: [],
+          mapPolylines: [],
+          mapIncludePoints: []
+        })
       }
     }).catch(err => {
       wx.showToast({ title: err.message || '加载失败', icon: 'none' })
@@ -91,56 +124,15 @@ Page({
   },
 
   startCourierPoll() {
-    this.stopCourierPoll()
-    this.refreshCourierLocation()
-    this._courierTimer = setInterval(() => this.refreshCourierLocation(), 10000)
-  },
-
-  stopCourierPoll() {
-    if (this._courierTimer) {
-      clearInterval(this._courierTimer)
-      this._courierTimer = null
+    if (this._courierTrack) {
+      this._courierTrack.start()
     }
   },
 
-  refreshCourierLocation() {
-    if (!this.orderId || !this.data.showCourierMap) return
-    api.getCourierLocation(this.orderId).then(res => {
-      if (res.code !== 0 || !res.data) return
-      const d = res.data
-      if (!d.sharing || d.latitude == null || d.longitude == null) {
-        this.setData({
-          courierSharing: false,
-          courierTip: '配送员暂未开启位置分享',
-          mapMarkers: []
-        })
-        return
-      }
-      const lat = Number(d.latitude)
-      const lng = Number(d.longitude)
-      this.setData({
-        courierSharing: true,
-        courierTip: '配送员位置（约每 10 秒刷新）',
-        mapLatitude: lat,
-        mapLongitude: lng,
-        mapMarkers: [{
-          id: 1,
-          latitude: lat,
-          longitude: lng,
-          width: 28,
-          height: 28,
-          callout: {
-            content: '配送员',
-            display: 'ALWAYS',
-            padding: 6,
-            borderRadius: 6,
-            fontSize: 12
-          }
-        }]
-      })
-    }).catch(() => {
-      this.setData({ courierSharing: false, courierTip: '位置暂时无法获取' })
-    })
+  stopCourierPoll() {
+    if (this._courierTrack) {
+      this._courierTrack.stop()
+    }
   },
 
   openEditAddress() {

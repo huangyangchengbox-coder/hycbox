@@ -27,17 +27,19 @@
           </picker>
 
           <block wx:if="{{hasPhases}}">
-            <view class="picker-label">面向范围</view>
-            <view class="phase-scope-row">
-              <text class="hyc-sub">全部期</text>
-              <switch checked="{{allPhases}}" bindchange="onAllPhasesSwitch" color="#07c160" />
+            <view class="phase-scope-inline">
+              <text class="picker-label phase-scope-title">面向范围</text>
+              <checkbox-group class="phase-check-list" bindchange="onPhaseChecksChange">
+                <label
+                  class="phase-check-item"
+                  wx:for="{{phaseChecks}}"
+                  wx:key="id"
+                >
+                  <checkbox value="{{item.id}}" checked="{{item.checked}}" color="#07c160" />
+                  <text>{{item.name}}</text>
+                </label>
+              </checkbox-group>
             </view>
-            <block wx:if="{{!allPhases}}">
-              <view class="picker-label">指定期数</view>
-              <picker mode="selector" range="{{phaseNames}}" value="{{phaseIndex}}" bindchange="onPhaseChange">
-                <view class="picker-value">{{phaseNames[phaseIndex] || '请选择期数'}}</view>
-              </picker>
-            </block>
           </block>
         </block>
         <view wx:elif="{{scope === 'nationwide'}}" class="hyc-sub tip-nation">面向全国用户（物流中国）</view>
@@ -64,10 +66,13 @@
         <view class="picker-label">单价（元 / {{currentUnit}}）</view>
         <input class="hyc-input" type="digit" placeholder="如 15.00" value="{{unitPrice}}" bindinput="onUnitPriceInput" />
 
-        <view class="picker-label">图片</view>
-        <view class="upload-area" bindtap="chooseImage">
-          <image wx:if="{{imageUrl}}" class="hyc-fruit-img" src="{{imageUrl}}" mode="aspectFill" />
-          <view wx:else class="upload-placeholder">+ 点击上传图片</view>
+        <view class="picker-label">图片（可多选，最多 9 张）</view>
+        <view class="upload-grid">
+          <view class="upload-thumb" wx:for="{{imageUrls}}" wx:key="*this">
+            <image class="upload-thumb-img" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewImages" />
+            <view class="upload-thumb-del" data-index="{{index}}" catchtap="removeImage">×</view>
+          </view>
+          <view class="upload-add" wx:if="{{imageUrls.length < 9}}" bindtap="chooseImage">+</view>
         </view>
 
         <button class="hyc-btn-primary save-btn" bindtap="submitPublish">发布</button>

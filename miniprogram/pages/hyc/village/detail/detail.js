@@ -1,5 +1,6 @@
 const api = require('../../../../services/api')
 const orderStatus = require('../../../../services/orderStatus')
+const courierMapTrack = require('../../../../services/courierMapTrack')
 
 Page({
   data: {
@@ -11,11 +12,26 @@ Page({
     courierTip: '',
     mapLatitude: 30.57,
     mapLongitude: 111.30,
-    mapMarkers: []
+    mapMarkers: [],
+    mapPolylines: [],
+    mapIncludePoints: []
   },
 
   onLoad(options) {
     this.orderId = (options && options.id) || ''
+    this._courierTrack = courierMapTrack.createCourierMapTrack(this, {
+      getOrderId: () => this.orderId,
+      isActive: () => this.data.showCourierMap,
+      // 村村送下单时已选点，直接作为收货终点
+      getDest: () => {
+        const order = this.data.order
+        if (!order || order.locationLat == null || order.locationLng == null) return null
+        return {
+          latitude: order.locationLat,
+          longitude: order.locationLng
+        }
+      }
+    })
   },
 
   onShow() {
@@ -53,7 +69,13 @@ Page({
         this.startCourierPoll()
       } else {
         this.stopCourierPoll()
-        this.setData({ courierSharing: false, courierTip: '', mapMarkers: [] })
+        this.setData({
+          courierSharing: false,
+          courierTip: '',
+          mapMarkers: [],
+          mapPolylines: [],
+          mapIncludePoints: []
+        })
       }
     }).catch(err => {
       wx.showToast({ title: err.message || '加载失败', icon: 'none' })
@@ -62,56 +84,15 @@ Page({
   },
 
   startCourierPoll() {
-    this.stopCourierPoll()
-    this.refreshCourierLocation()
-    this._courierTimer = setInterval(() => this.refreshCourierLocation(), 10000)
-  },
-
-  stopCourierPoll() {
-    if (this._courierTimer) {
-      clearInterval(this._courierTimer)
-      this._courierTimer = null
+    if (this._courierTrack) {
+      this._courierTrack.start()
     }
   },
 
-  refreshCourierLocation() {
-    if (!this.orderId || !this.data.showCourierMap) return
-    api.getCourierLocation(this.orderId).then(res => {
-      if (res.code !== 0 || !res.data) return
-      const d = res.data
-      if (!d.sharing || d.latitude == null || d.longitude == null) {
-        this.setData({
-          courierSharing: false,
-          courierTip: '配送员暂未开启位置分享',
-          mapMarkers: []
-        })
-        return
-      }
-      const lat = Number(d.latitude)
-      const lng = Number(d.longitude)
-      this.setData({
-        courierSharing: true,
-        courierTip: '配送员位置（约每 10 秒刷新）',
-        mapLatitude: lat,
-        mapLongitude: lng,
-        mapMarkers: [{
-          id: 1,
-          latitude: lat,
-          longitude: lng,
-          width: 28,
-          height: 28,
-          callout: {
-            content: '配送员',
-            display: 'ALWAYS',
-            padding: 6,
-            borderRadius: 6,
-            fontSize: 12
-          }
-        }]
-      })
-    }).catch(() => {
-      this.setData({ courierSharing: false, courierTip: '位置暂时无法获取' })
-    })
+  stopCourierPoll() {
+    if (this._courierTrack) {
+      this._courierTrack.stop()
+    }
   },
 
   openMyLocation() {

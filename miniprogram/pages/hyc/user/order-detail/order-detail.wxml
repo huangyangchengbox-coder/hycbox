@@ -21,11 +21,14 @@
     <view class="hyc-sub tip-temp">{{courierTip || '正在获取…'}}</view>
     <map
       wx:if="{{courierSharing}}"
+      id="courierMap"
       class="courier-map"
       latitude="{{mapLatitude}}"
       longitude="{{mapLongitude}}"
       scale="16"
       markers="{{mapMarkers}}"
+      polyline="{{mapPolylines}}"
+      include-points="{{mapIncludePoints}}"
       show-location="{{false}}"
     />
   </view>

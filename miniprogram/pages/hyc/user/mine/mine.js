@@ -1,6 +1,7 @@
 const api = require('../../../../services/api')
 const communityPref = require('../../../../services/communityPref')
 const orderStatus = require('../../../../services/orderStatus')
+const publicationImages = require('../../../../services/publicationImages')
 
 Page({
   data: {
@@ -39,8 +40,10 @@ Page({
       api.listOrders()
     ]).then(([pubRes, orderRes]) => {
       // 仅小区闪送发布（排除村村送 / 物流中国）
-      const publications = ((pubRes.code === 0 && pubRes.data) ? pubRes.data : [])
-        .filter(item => !item.scope || item.scope === 'community')
+      const publications = publicationImages.normalizePublicationList(
+        ((pubRes.code === 0 && pubRes.data) ? pubRes.data : [])
+          .filter(item => !item.scope || item.scope === 'community')
+      )
       // 小区闪送：有门牌的订单
       const orders = ((orderRes.code === 0 && orderRes.data) ? orderRes.data : [])
         .filter(item => item.roomId)
@@ -61,6 +64,13 @@ Page({
       return
     }
     wx.navigateTo({ url: `/pages/hyc/user/order/order?publicationId=${id}` })
+  },
+
+  previewPubImages(e) {
+    const id = e.currentTarget.dataset.id
+    const current = e.currentTarget.dataset.url
+    const item = (this.data.publications || []).find(p => p.id === id)
+    publicationImages.previewPublicationImages(item, current)
   },
 
   goDetail(e) {

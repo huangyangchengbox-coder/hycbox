@@ -53,32 +53,90 @@
   font-size: 28rpx;
 }
 
-.upload-area {
+.upload-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
   margin-top: 12rpx;
 }
 
-.upload-placeholder {
-  height: 320rpx;
-  background: #f7f8fa;
+.upload-thumb {
+  position: relative;
+  width: 160rpx;
+  height: 160rpx;
+}
+
+.upload-thumb-img {
+  width: 160rpx;
+  height: 160rpx;
   border-radius: 12rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #999;
-  font-size: 28rpx;
+  background: #f7f8fa;
+}
+
+.upload-thumb-del {
+  position: absolute;
+  top: -8rpx;
+  right: -8rpx;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 24rpx;
+  line-height: 34rpx;
+  text-align: center;
+}
+
+.upload-add {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 12rpx;
   border: 2rpx dashed #ddd;
+  background: #f7f8fa;
+  color: #999;
+  font-size: 56rpx;
+  line-height: 156rpx;
+  text-align: center;
 }
 
 .save-btn {
   margin-top: 28rpx;
 }
 
-.phase-scope-row {
+.phase-scope-inline {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-top: 8rpx;
-  padding: 8rpx 0;
+  flex-wrap: wrap;
+  gap: 8rpx 16rpx;
+  margin-top: 16rpx;
+}
+
+.phase-scope-title {
+  margin-top: 0;
+  margin-right: 8rpx;
+  flex-shrink: 0;
+}
+
+.phase-check-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8rpx 20rpx;
+  flex: 1;
+}
+
+.phase-check-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  font-size: 26rpx;
+  color: #333;
+  line-height: 1.2;
+}
+
+.phase-check-item checkbox {
+  transform: scale(0.78);
+  transform-origin: center;
 }
 
 .tip-nation {

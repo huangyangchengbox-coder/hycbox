@@ -168,7 +168,7 @@ Page({
       })
     }
     report()
-    this._locTimer = setInterval(report, 12000)
+    this._locTimer = setInterval(report, 10000)
   },
 
   stopLocationShare: function (notifyServer) {

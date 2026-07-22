@@ -1,4 +1,5 @@
 const api = require('../../../../services/api')
+const publicationImages = require('../../../../services/publicationImages')
 
 function statusText(status) {
   if (status === 'shipped') return '已发货'
@@ -25,8 +26,10 @@ Page({
       api.listPublications({ scope: 'nationwide' }),
       api.listOrders()
     ]).then(([pubRes, orderRes]) => {
-      const publications = ((pubRes.code === 0 && pubRes.data) ? pubRes.data : [])
-        .filter(item => item && item.scope === 'nationwide')
+      const publications = publicationImages.normalizePublicationList(
+        ((pubRes.code === 0 && pubRes.data) ? pubRes.data : [])
+          .filter(item => item && item.scope === 'nationwide')
+      )
       const orders = ((orderRes.code === 0 && orderRes.data) ? orderRes.data : [])
         .filter(item => item.province && item.locationLat == null)
         .map(item => Object.assign({}, item, {
@@ -48,6 +51,13 @@ Page({
       return
     }
     wx.navigateTo({ url: `/pages/hyc/express/order/order?publicationId=${id}` })
+  },
+
+  previewPubImages(e) {
+    const id = e.currentTarget.dataset.id
+    const current = e.currentTarget.dataset.url
+    const item = (this.data.publications || []).find(p => p.id === id)
+    publicationImages.previewPublicationImages(item, current)
   },
 
   goDetail(e) {
