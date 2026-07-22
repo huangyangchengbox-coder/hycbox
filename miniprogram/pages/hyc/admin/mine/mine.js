@@ -68,6 +68,14 @@ Page({
     wx.redirectTo({ url: '/pages/hyc/admin/managers/managers' })
   },
 
+  goAiImage() {
+    wx.navigateTo({ url: '/pages/hyc/admin/ai-image/ai-image' })
+  },
+
+  goAiVideo() {
+    wx.navigateTo({ url: '/pages/hyc/admin/ai-video/ai-video' })
+  },
+
   goUser() {
     adminSession.switchToUser()
     require('../../../../services/adminEntry').goUserHome(false)

@@ -1,0 +1,44 @@
+<view class="hyc-page">
+  <admin-notice-bar></admin-notice-bar>
+  <view class="hyc-card">
+    <view class="hyc-title">图片AI</view>
+    <view class="hyc-sub">输入描述，调用 Agnes 生成图片</view>
+    <textarea
+      class="prompt-area"
+      placeholder="描述你想生成的图片，例如：一盘新鲜草莓特写，自然光"
+      value="{{prompt}}"
+      bindinput="onPromptInput"
+      maxlength="500"
+      show-confirm-bar="{{false}}"
+    />
+    <button class="hyc-btn-primary gen-btn" bindtap="onGenerate" loading="{{generating}}">生成图片</button>
+  </view>
+
+  <view class="hyc-card">
+    <view class="hyc-title">历史记录</view>
+    <view class="job-item" wx:for="{{jobs}}" wx:key="id">
+      <view class="hyc-row">
+        <text class="hyc-tag {{item.status === 'succeeded' ? 'hyc-tag-done' : (item.status === 'failed' ? 'status-failed hyc-tag' : 'status-running hyc-tag')}}">
+          {{item.statusText}}
+        </text>
+        <text class="hyc-sub">{{item.createdAt}}</text>
+      </view>
+      <view class="job-prompt">{{item.prompt}}</view>
+      <image
+        wx:if="{{item.mediaUrl}}"
+        class="job-img"
+        src="{{item.mediaUrl}}"
+        mode="aspectFill"
+        bindtap="previewImage"
+        data-url="{{item.mediaUrl}}"
+      />
+      <view class="hyc-sub job-meta" wx:if="{{item.errorMsg}}">{{item.errorMsg}}</view>
+    </view>
+    <view class="hyc-empty" wx:if="{{!loading && jobs.length === 0}}">暂无记录，先生成一张吧</view>
+  </view>
+
+  <view class="hyc-bottom-bar">
+    <view class="hyc-bottom-item" bindtap="goPublish">发布</view>
+    <view class="hyc-bottom-item" bindtap="goMine">我的</view>
+  </view>
+</view>

@@ -508,6 +508,56 @@ const api = {
         fail: reject
       })
     })
+  },
+
+  /** POST /admin/ai-media/images */
+  createAiImage(data) {
+    return request({
+      url: '/admin/ai-media/images',
+      method: 'POST',
+      data: data || {},
+      admin: true,
+      timeout: 120000
+    })
+  },
+
+  /** POST /admin/ai-media/videos */
+  createAiVideo(data) {
+    return request({
+      url: '/admin/ai-media/videos',
+      method: 'POST',
+      data: data || {},
+      admin: true,
+      timeout: 120000
+    })
+  },
+
+  /** GET /admin/ai-media?type=image|video */
+  listAiMedia(params) {
+    return request({
+      url: '/admin/ai-media',
+      data: params || {},
+      admin: true
+    }).then(normalizeListResponse)
+  },
+
+  /** GET /admin/ai-media/{id} */
+  getAiMedia(id) {
+    return request({
+      url: `/admin/ai-media/${id}`,
+      admin: true
+    })
+  },
+
+  /** POST /admin/ai-media/{id}/refresh */
+  refreshAiMedia(id) {
+    return request({
+      url: `/admin/ai-media/${id}/refresh`,
+      method: 'POST',
+      data: {},
+      admin: true,
+      timeout: 120000
+    })
   }
 }
 

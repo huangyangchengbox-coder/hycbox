@@ -1,0 +1,4 @@
+{
+  "navigationBarTitleText": "视频AI",
+  "usingComponents": { "admin-notice-bar": "/components/admin-notice-bar/admin-notice-bar" }
+}

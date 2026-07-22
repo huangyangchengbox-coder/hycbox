@@ -21,6 +21,20 @@
       </view>
       <text class="menu-arrow">›</text>
     </view>
+    <view class="menu-item" bindtap="goAiImage">
+      <view>
+        <view class="menu-title">图片AI</view>
+        <view class="hyc-sub">Agnes 文生图</view>
+      </view>
+      <text class="menu-arrow">›</text>
+    </view>
+    <view class="menu-item" bindtap="goAiVideo">
+      <view>
+        <view class="menu-title">视频AI</view>
+        <view class="hyc-sub">Agnes 文生视频</view>
+      </view>
+      <text class="menu-arrow">›</text>
+    </view>
     <view class="menu-item" wx:if="{{isSuperAdmin}}" bindtap="goManagers">
       <view>
         <view class="menu-title">管理员账号</view>

@@ -25,7 +25,9 @@
     "pages/hyc/admin/delivery/delivery",
     "pages/hyc/admin/village-delivery/village-delivery",
     "pages/hyc/admin/managers/managers",
-    "pages/hyc/admin/mine/mine"
+    "pages/hyc/admin/mine/mine",
+    "pages/hyc/admin/ai-image/ai-image",
+    "pages/hyc/admin/ai-video/ai-video"
   ],
   "window": {
     "navigationBarTextStyle": "black",

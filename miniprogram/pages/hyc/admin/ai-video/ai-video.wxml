@@ -1,0 +1,54 @@
+<view class="hyc-page">
+  <admin-notice-bar></admin-notice-bar>
+  <view class="hyc-card">
+    <view class="hyc-title">视频AI</view>
+    <view class="hyc-sub">输入描述，调用 Agnes 生成视频（异步，可刷新状态）</view>
+    <textarea
+      class="prompt-area"
+      placeholder="描述你想生成的视频，例如：果园里红苹果慢镜头特写"
+      value="{{prompt}}"
+      bindinput="onPromptInput"
+      maxlength="500"
+      show-confirm-bar="{{false}}"
+    />
+    <button class="hyc-btn-primary gen-btn" bindtap="onGenerate" loading="{{generating}}">生成视频</button>
+  </view>
+
+  <view class="hyc-card">
+    <view class="hyc-title">历史记录</view>
+    <view class="job-item" wx:for="{{jobs}}" wx:key="id">
+      <view class="hyc-row">
+        <text class="hyc-tag {{item.status === 'succeeded' ? 'hyc-tag-done' : (item.status === 'failed' ? 'status-failed hyc-tag' : 'status-running hyc-tag')}}">
+          {{item.statusText}}
+        </text>
+        <text class="hyc-sub">{{item.createdAt}}</text>
+      </view>
+      <view class="job-prompt">{{item.prompt}}</view>
+      <video
+        wx:if="{{item.mediaUrl}}"
+        class="job-video"
+        src="{{item.mediaUrl}}"
+        controls
+        show-center-play-btn
+        object-fit="contain"
+      />
+      <view class="hyc-sub job-meta" wx:if="{{item.errorMsg}}">{{item.errorMsg}}</view>
+      <view class="job-actions" wx:if="{{item.status === 'running' || item.status === 'pending'}}">
+        <button
+          class="hyc-btn-plain refresh-btn"
+          size="mini"
+          data-id="{{item.id}}"
+          data-index="{{index}}"
+          bindtap="onRefresh"
+          loading="{{item.refreshing}}"
+        >刷新状态</button>
+      </view>
+    </view>
+    <view class="hyc-empty" wx:if="{{!loading && jobs.length === 0}}">暂无记录，先生成一个吧</view>
+  </view>
+
+  <view class="hyc-bottom-bar">
+    <view class="hyc-bottom-item" bindtap="goPublish">发布</view>
+    <view class="hyc-bottom-item" bindtap="goMine">我的</view>
+  </view>
+</view>
