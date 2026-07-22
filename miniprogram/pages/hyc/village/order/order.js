@@ -1,5 +1,6 @@
 const api = require('../../../../services/api')
 const villagePref = require('../../../../services/villagePref')
+const publicationImages = require('../../../../services/publicationImages')
 
 Page({
   data: {
@@ -32,14 +33,21 @@ Page({
   loadPublication() {
     api.listPublications({ scope: 'village' }).then(res => {
       if (res.code === 0) {
-        const publication = (res.data || []).find(item =>
-          item.id === this.data.publicationId && item.scope === 'village')
+        const publication = publicationImages.normalizePublicationImages(
+          (res.data || []).find(item =>
+            item.id === this.data.publicationId && item.scope === 'village')
+        )
         this.setData({ publication: publication || null })
         if (!publication) {
           wx.showToast({ title: '仅可登记村村送发布', icon: 'none' })
         }
       }
     })
+  },
+
+  previewPubImages(e) {
+    const current = e.currentTarget.dataset.url
+    publicationImages.previewPublicationImages(this.data.publication, current)
   },
 
   onContactInput(e) {

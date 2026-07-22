@@ -12,6 +12,19 @@
     <view class="hyc-sub" wx:if="{{order.remark}}">备注：{{order.remark}}</view>
     <view class="hyc-sub">登记时间：{{order.createdAt}}</view>
     <view class="hyc-sub" wx:if="{{order.deliveredAt}}">送达时间：{{order.deliveredAt}}</view>
+    <view class="pub-img-row" wx:if="{{order.publicationImages && order.publicationImages.length}}">
+      <image
+        class="pub-img-thumb"
+        wx:for="{{order.publicationImages}}"
+        wx:for-item="img"
+        wx:key="*this"
+        src="{{img}}"
+        mode="aspectFill"
+        data-url="{{img}}"
+        bindtap="previewPubImages"
+      />
+    </view>
+    <view class="pub-img-tip" wx:if="{{order.publicationImages && order.publicationImages.length}}">点击图片查看大图</view>
     <button
       wx:if="{{order.locationLat != null}}"
       class="hyc-btn-primary"

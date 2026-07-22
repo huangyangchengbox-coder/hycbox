@@ -14,6 +14,7 @@
     "pages/hyc/village/mine/mine",
     "pages/hyc/village/order/order",
     "pages/hyc/village/detail/detail",
+    "pages/hyc/common/pub-ai-detail/pub-ai-detail",
     "pages/hyc/index",
     "pages/hyc/admin/login/login",
     "pages/hyc/admin/publish/publish",
@@ -42,7 +43,7 @@
     "chooseLocation"
   ],
   "networkTimeout": {
-    "request": 10000,
+    "request": 90000,
     "connectSocket": 10000,
     "uploadFile": 10000,
     "downloadFile": 10000

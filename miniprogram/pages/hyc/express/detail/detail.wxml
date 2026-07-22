@@ -16,6 +16,19 @@
     </view>
     <view class="hyc-sub" wx:if="{{order.payVerifiedAt}}">核实时间：{{order.payVerifiedAt}}</view>
     <view class="hyc-sub" wx:if="{{order.deliveredAt}}">发货时间：{{order.deliveredAt}}</view>
+    <view class="pub-img-row" wx:if="{{order.publicationImages && order.publicationImages.length}}">
+      <image
+        class="pub-img-thumb"
+        wx:for="{{order.publicationImages}}"
+        wx:for-item="img"
+        wx:key="*this"
+        src="{{img}}"
+        mode="aspectFill"
+        data-url="{{img}}"
+        bindtap="previewPubImages"
+      />
+    </view>
+    <view class="pub-img-tip" wx:if="{{order.publicationImages && order.publicationImages.length}}">点击图片查看大图</view>
   </view>
 
   <view class="hyc-card" wx:if="{{order.shipImages && order.shipImages.length}}">

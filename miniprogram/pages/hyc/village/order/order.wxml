@@ -2,6 +2,19 @@
   <view class="hyc-card" wx:if="{{publication}}">
     <view class="hyc-title">{{publication.title}}</view>
     <view class="hyc-sub">剩余 {{publication.remainBags}} {{publication.unit || '袋'}}</view>
+    <view class="pub-img-row" wx:if="{{publication.images.length}}">
+      <image
+        class="pub-img-thumb"
+        wx:for="{{publication.images}}"
+        wx:for-item="img"
+        wx:key="*this"
+        src="{{img}}"
+        mode="aspectFill"
+        data-url="{{img}}"
+        bindtap="previewPubImages"
+      />
+    </view>
+    <view class="pub-img-tip" wx:if="{{publication.images.length}}">点击图片查看大图</view>
   </view>
 
   <view class="hyc-card">

@@ -1,4 +1,5 @@
 const api = require('../../../../services/api')
+const publicationImages = require('../../../../services/publicationImages')
 
 function statusText(status) {
   if (status === 'shipped') return '已发货'
@@ -53,6 +54,14 @@ Page({
       || (current ? [current] : [])
     if (!urls.length) return
     wx.previewImage({ urls, current: current || urls[0] })
+  },
+
+  previewPubImages(e) {
+    const current = e.currentTarget.dataset.url
+    publicationImages.previewUrls(
+      (this.data.order && this.data.order.publicationImages) || [],
+      current
+    )
   },
 
   downloadShipImage(e) {

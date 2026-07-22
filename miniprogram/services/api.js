@@ -53,7 +53,7 @@ function request(options) {
       method,
       data,
       header,
-      timeout: config.timeout,
+      timeout: options.timeout || config.timeout,
       success(res) {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           const body = res.data
@@ -210,6 +210,14 @@ const api = {
       return wrapMock(() => ({ code: 0, data: mockStore.listPublications(query) }))
     }
     return request({ url: '/publications', data: query }).then(normalizeListResponse)
+  },
+
+  /** 物品 AI 详情：有缓存直接返回，否则服务端调 AI 并落库（可能较慢） */
+  getPublicationAiDetail(publicationId) {
+    return request({
+      url: `/publications/${publicationId}/ai-detail`,
+      timeout: 90000
+    })
   },
 
   /** 管理者端：仅自己的发布 */

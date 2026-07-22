@@ -1,6 +1,7 @@
 const api = require('../../../../services/api')
 const communityPref = require('../../../../services/communityPref')
 const addressCascade = require('../../../../services/addressCascade')
+const publicationImages = require('../../../../services/publicationImages')
 
 Page({
   data: {
@@ -77,10 +78,17 @@ Page({
       phaseId: pref.phaseId || undefined
     }).then(res => {
       if (res.code === 0) {
-        const publication = (res.data || []).find(item => item.id === this.data.publicationId)
+        const publication = publicationImages.normalizePublicationImages(
+          (res.data || []).find(item => item.id === this.data.publicationId)
+        )
         this.setData({ publication: publication || null })
       }
     })
+  },
+
+  previewPubImages(e) {
+    const current = e.currentTarget.dataset.url
+    publicationImages.previewPublicationImages(this.data.publication, current)
   },
 
   /** 打开临时改址：仅影响本次登记 */

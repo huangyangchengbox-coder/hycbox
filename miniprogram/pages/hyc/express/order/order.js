@@ -1,5 +1,6 @@
 const api = require('../../../../services/api')
 const provinces = require('../../../../data/provinces')
+const publicationImages = require('../../../../services/publicationImages')
 
 Page({
   data: {
@@ -22,10 +23,17 @@ Page({
   loadPublication() {
     api.listPublications({ scope: 'nationwide' }).then(res => {
       if (res.code === 0) {
-        const publication = (res.data || []).find(item => item.id === this.data.publicationId)
+        const publication = publicationImages.normalizePublicationImages(
+          (res.data || []).find(item => item.id === this.data.publicationId)
+        )
         this.setData({ publication: publication || null })
       }
     })
+  },
+
+  previewPubImages(e) {
+    const current = e.currentTarget.dataset.url
+    publicationImages.previewPublicationImages(this.data.publication, current)
   },
 
   onProvinceChange(e) {

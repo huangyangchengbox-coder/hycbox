@@ -119,6 +119,48 @@
   background: #f0f0f0;
 }
 
+/* 发布图缩略图行：列表/登记信息不占满屏，点击看大图 */
+.pub-img-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 12rpx;
+  margin-bottom: 4rpx;
+}
+
+.pub-img-thumb {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 10rpx;
+  background: #f0f0f0;
+}
+
+.pub-img-tip {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #999;
+}
+
+.pub-action-row {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 20rpx;
+  align-items: stretch;
+}
+
+.pub-action-row .detail-btn,
+.pub-action-row .order-btn {
+  flex: 1;
+  margin: 0;
+  font-size: 28rpx;
+}
+
+.pub-action-row .detail-btn {
+  background: #f7f8fa;
+  color: #333;
+  border: 1rpx solid #e5e5e5;
+}
+
 .hyc-fruit-swiper {
   width: 100%;
   height: 320rpx;

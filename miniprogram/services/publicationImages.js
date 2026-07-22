@@ -20,15 +20,21 @@ function previewPublicationImages(item, current) {
   const urls = (item && item.images && item.images.length)
     ? item.images
     : (item && item.imageUrl ? [item.imageUrl] : [])
-  if (!urls.length) return
+  previewUrls(urls, current)
+}
+
+function previewUrls(urls, current) {
+  const list = (urls || []).filter(Boolean)
+  if (!list.length) return
   wx.previewImage({
-    urls,
-    current: current || urls[0]
+    urls: list,
+    current: current || list[0]
   })
 }
 
 module.exports = {
   normalizePublicationImages,
   normalizePublicationList,
-  previewPublicationImages
+  previewPublicationImages,
+  previewUrls
 }

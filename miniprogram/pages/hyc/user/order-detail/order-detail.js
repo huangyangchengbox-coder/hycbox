@@ -3,6 +3,7 @@ const communityPref = require('../../../../services/communityPref')
 const addressCascade = require('../../../../services/addressCascade')
 const orderStatus = require('../../../../services/orderStatus')
 const courierMapTrack = require('../../../../services/courierMapTrack')
+const publicationImages = require('../../../../services/publicationImages')
 
 Page({
   data: {
@@ -133,6 +134,14 @@ Page({
     if (this._courierTrack) {
       this._courierTrack.stop()
     }
+  },
+
+  previewPubImages(e) {
+    const current = e.currentTarget.dataset.url
+    publicationImages.previewUrls(
+      (this.data.order && this.data.order.publicationImages) || [],
+      current
+    )
   },
 
   openEditAddress() {

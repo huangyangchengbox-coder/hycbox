@@ -1,0 +1,24 @@
+@import "../../common.wxss";
+
+.tip {
+  margin-top: 12rpx;
+  color: #999;
+}
+
+.content {
+  font-size: 30rpx;
+  line-height: 1.7;
+  color: #1a1a1a;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.err {
+  font-size: 28rpx;
+  color: #cf1322;
+  line-height: 1.6;
+}
+
+.retry {
+  margin-top: 24rpx;
+}
