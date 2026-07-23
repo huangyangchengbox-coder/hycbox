@@ -32,7 +32,9 @@
     "pages/hyc/tools/locator/locator",
     "pages/hyc/tools/compass/compass",
     "pages/hyc/tools/ruler/ruler",
-    "pages/hyc/tools/level/level"
+    "pages/hyc/tools/level/level",
+    "pages/hyc/tools/flashlight/flashlight",
+    "pages/hyc/tools/timer/timer"
   ],
   "window": {
     "navigationBarTextStyle": "black",

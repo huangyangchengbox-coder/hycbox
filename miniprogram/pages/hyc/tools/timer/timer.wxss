@@ -1,0 +1,82 @@
+.page {
+  min-height: 100vh;
+  padding: 40rpx;
+  box-sizing: border-box;
+  background: #f5f6f8;
+}
+
+.tabs {
+  display: flex;
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 8rpx;
+  gap: 8rpx;
+}
+
+.tab {
+  flex: 1;
+  text-align: center;
+  padding: 20rpx 0;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  color: #666;
+}
+
+.tab.active {
+  background: #ecfdf5;
+  color: #0f766e;
+  font-weight: 600;
+}
+
+.display {
+  margin: 80rpx 0 48rpx;
+  text-align: center;
+  font-size: 80rpx;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #1a1a1a;
+  letter-spacing: 2rpx;
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  justify-content: center;
+  margin-bottom: 40rpx;
+}
+
+.chip {
+  padding: 14rpx 28rpx;
+  background: #fff;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  color: #334155;
+  border: 1rpx solid #e5e7eb;
+}
+
+.actions {
+  display: flex;
+  gap: 24rpx;
+}
+
+.btn {
+  flex: 1;
+  margin: 0 !important;
+  border-radius: 14rpx !important;
+  font-size: 30rpx !important;
+  background: #fff !important;
+  color: #1a1a1a !important;
+}
+
+.btn.primary {
+  background: #0f766e !important;
+  color: #fff !important;
+}
+
+.tip {
+  margin-top: 36rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: #999;
+}

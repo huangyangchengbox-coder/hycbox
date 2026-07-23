@@ -34,7 +34,7 @@
     <view class="hub-card" bindtap="goTools">
       <view class="hub-icon tools">▣</view>
       <view class="hub-title">实用工具</view>
-      <view class="hub-desc">定位 · 指南针 · 尺子 · 水平仪</view>
+      <view class="hub-desc">定位 · 指南针 · 尺子 · 水平仪 · 手电筒 · 计时器</view>
     </view>
   </view>
 

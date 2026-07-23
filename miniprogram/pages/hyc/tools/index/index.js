@@ -10,5 +10,11 @@ Page({
   },
   goLevel() {
     wx.navigateTo({ url: '/pages/hyc/tools/level/level' })
+  },
+  goFlashlight() {
+    wx.navigateTo({ url: '/pages/hyc/tools/flashlight/flashlight' })
+  },
+  goTimer() {
+    wx.navigateTo({ url: '/pages/hyc/tools/timer/timer' })
   }
 })

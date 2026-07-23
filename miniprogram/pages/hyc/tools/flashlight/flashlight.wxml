@@ -1,0 +1,20 @@
+<view class="page {{on ? 'on' : 'off'}}">
+  <!-- 后置闪光灯：隐藏相机组件 -->
+  <camera
+    wx:if="{{cameraReady}}"
+    class="hidden-cam"
+    device-position="back"
+    flash="{{camFlash}}"
+    binderror="onCameraError"
+  />
+
+  <view class="bulb" bindtap="toggle">
+    <view class="bulb-inner">{{on ? '开' : '关'}}</view>
+  </view>
+  <view class="mode-row">
+    <view class="mode {{mode === 'screen' ? 'active' : ''}}" data-mode="screen" bindtap="setMode">屏幕光</view>
+    <view class="mode {{mode === 'torch' ? 'active' : ''}}" data-mode="torch" bindtap="setMode">闪光灯</view>
+  </view>
+  <view class="tip">{{tip}}</view>
+  <view class="error" wx:if="{{error}}">{{error}}</view>
+</view>

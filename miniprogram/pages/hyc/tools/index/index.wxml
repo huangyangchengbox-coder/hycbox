@@ -1,7 +1,7 @@
 <view class="tools-page">
   <view class="tools-hero">
     <view class="tools-title">实用工具</view>
-    <view class="tools-sub">定位 · 指南针 · 尺子 · 水平仪</view>
+    <view class="tools-sub">定位 · 指南针 · 尺子 · 水平仪 · 手电筒 · 计时器</view>
   </view>
 
   <view class="tools-grid">
@@ -24,6 +24,16 @@
       <view class="tool-icon level">◯</view>
       <view class="tool-name">水平仪</view>
       <view class="tool-desc">检测平面是否水平</view>
+    </view>
+    <view class="tool-card" bindtap="goFlashlight">
+      <view class="tool-icon flash">☀</view>
+      <view class="tool-name">手电筒</view>
+      <view class="tool-desc">屏幕光 / 闪光灯</view>
+    </view>
+    <view class="tool-card" bindtap="goTimer">
+      <view class="tool-icon timer">⏱</view>
+      <view class="tool-name">计时器</view>
+      <view class="tool-desc">秒表与倒计时</view>
     </view>
   </view>
 </view>

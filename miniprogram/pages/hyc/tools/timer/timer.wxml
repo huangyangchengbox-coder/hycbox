@@ -1,0 +1,22 @@
+<view class="page">
+  <view class="tabs">
+    <view class="tab {{tab === 'stopwatch' ? 'active' : ''}}" data-tab="stopwatch" bindtap="switchTab">秒表</view>
+    <view class="tab {{tab === 'countdown' ? 'active' : ''}}" data-tab="countdown" bindtap="switchTab">倒计时</view>
+  </view>
+
+  <view class="display">{{display}}</view>
+
+  <view class="presets" wx:if="{{tab === 'countdown' && !running}}">
+    <view class="chip" data-sec="60" bindtap="setPreset">1 分</view>
+    <view class="chip" data-sec="180" bindtap="setPreset">3 分</view>
+    <view class="chip" data-sec="300" bindtap="setPreset">5 分</view>
+    <view class="chip" data-sec="600" bindtap="setPreset">10 分</view>
+  </view>
+
+  <view class="actions">
+    <button class="btn" bindtap="reset" disabled="{{display === '00:00.00' && !running}}">复位</button>
+    <button class="btn primary" bindtap="toggle">{{running ? '暂停' : '开始'}}</button>
+  </view>
+
+  <view class="tip" wx:if="{{tab === 'countdown'}}">倒计时结束会震动提醒</view>
+</view>
