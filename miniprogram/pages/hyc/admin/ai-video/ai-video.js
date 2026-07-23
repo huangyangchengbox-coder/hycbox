@@ -1,5 +1,6 @@
 const api = require('../../../../services/api')
 const adminSession = require('../../../../services/adminSession')
+const { playTaskFly } = require('../../../../services/taskFly')
 
 const STATUS_MAP = {
   pending: '排队中',
@@ -30,7 +31,11 @@ Page({
     jobs: [],
     loading: true,
     generating: false,
-    enteringId: ''
+    enteringId: '',
+    flyVisible: false,
+    flyText: '',
+    flyStyle: '',
+    flyTrailStyle: ''
   },
 
   _pollTimer: null,
@@ -134,23 +139,24 @@ Page({
     api.createAiVideo({ prompt }).then(res => {
       if (res.code === 0 && res.data) {
         wx.showToast({ title: '已提交，后台生成中', icon: 'success' })
-        const jobs = [mapJob(res.data)].concat(this.data.jobs.filter(j => j.id !== res.data.id))
-        this.setData({
-          prompt: '',
-          jobs,
-          enteringId: res.data.id
+        return playTaskFly(this, '#promptBox', '#historyCard', prompt).then(() => {
+          const jobs = [mapJob(res.data)].concat(this.data.jobs.filter(j => j.id !== res.data.id))
+          this.setData({
+            prompt: '',
+            jobs,
+            enteringId: res.data.id
+          })
+          if (this._enteringTimer) clearTimeout(this._enteringTimer)
+          this._enteringTimer = setTimeout(() => {
+            this.setData({ enteringId: '' })
+            this._enteringTimer = null
+          }, 700)
+          this.scrollToHistory()
+          this.startPoll()
         })
-        if (this._enteringTimer) clearTimeout(this._enteringTimer)
-        this._enteringTimer = setTimeout(() => {
-          this.setData({ enteringId: '' })
-          this._enteringTimer = null
-        }, 700)
-        this.scrollToHistory()
-        this.startPoll()
-      } else {
-        wx.showToast({ title: res.message || '提交失败', icon: 'none' })
-        this.loadJobs()
       }
+      wx.showToast({ title: res.message || '提交失败', icon: 'none' })
+      this.loadJobs()
     }).catch(err => {
       wx.showToast({ title: err.message || '提交失败', icon: 'none' })
       this.loadJobs()

@@ -3,15 +3,17 @@
   <view class="hyc-card">
     <view class="hyc-title">图片AI</view>
     <view class="hyc-sub">输入描述，调用 Agnes 生成图片</view>
-    <textarea
-      class="prompt-area"
-      placeholder="描述你想生成的图片，例如：一盘新鲜草莓特写，自然光"
-      value="{{prompt}}"
-      bindinput="onPromptInput"
-      maxlength="500"
-      disabled="{{generating}}"
-      show-confirm-bar="{{false}}"
-    />
+    <view id="promptBox">
+      <textarea
+        class="prompt-area"
+        placeholder="描述你想生成的图片，例如：一盘新鲜草莓特写，自然光"
+        value="{{prompt}}"
+        bindinput="onPromptInput"
+        maxlength="500"
+        disabled="{{generating}}"
+        show-confirm-bar="{{false}}"
+      />
+    </view>
     <button
       class="hyc-btn-primary gen-btn {{generating ? 'gen-btn-busy' : ''}}"
       bindtap="onGenerate"
@@ -50,5 +52,13 @@
   <view class="hyc-bottom-bar">
     <view class="hyc-bottom-item" bindtap="goPublish">发布</view>
     <view class="hyc-bottom-item" bindtap="goMine">我的</view>
+  </view>
+
+  <view wx:if="{{flyVisible}}" class="fly-layer">
+    <view class="fly-trail" style="{{flyTrailStyle}}"></view>
+    <view class="fly-card" style="{{flyStyle}}">
+      <text class="fly-tag">生成任务</text>
+      <text class="fly-text">{{flyText}}</text>
+    </view>
   </view>
 </view>
