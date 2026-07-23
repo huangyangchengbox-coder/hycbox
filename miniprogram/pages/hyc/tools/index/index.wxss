@@ -1,0 +1,79 @@
+.tools-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 48rpx 40rpx 80rpx;
+  background: linear-gradient(165deg, #eef6f2 0%, #f5f6f8 45%, #eef2f7 100%);
+}
+
+.tools-hero {
+  margin-bottom: 40rpx;
+}
+
+.tools-title {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.tools-sub {
+  margin-top: 10rpx;
+  font-size: 26rpx;
+  color: #666;
+}
+
+.tools-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24rpx;
+}
+
+.tool-card {
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 36rpx 28rpx;
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.04);
+}
+
+.tool-icon {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34rpx;
+  margin-bottom: 20rpx;
+}
+
+.tool-icon.loc {
+  background: #e8f5ee;
+  color: #0f766e;
+}
+
+.tool-icon.comp {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.tool-icon.ruler {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.tool-icon.level {
+  background: #ecfeff;
+  color: #0e7490;
+}
+
+.tool-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.tool-desc {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #888;
+  line-height: 1.4;
+}

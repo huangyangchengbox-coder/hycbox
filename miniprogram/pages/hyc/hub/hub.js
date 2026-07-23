@@ -90,6 +90,10 @@ Page({
     wx.navigateTo({ url: '/pages/hyc/village/mine/mine' })
   },
 
+  goTools() {
+    wx.navigateTo({ url: '/pages/hyc/tools/index/index' })
+  },
+
   goProfile() {
     wx.navigateTo({ url: '/pages/hyc/user/profile/profile' })
   }

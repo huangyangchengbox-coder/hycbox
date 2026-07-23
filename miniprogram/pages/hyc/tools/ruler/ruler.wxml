@@ -1,0 +1,22 @@
+<view class="page">
+  <view class="readout">
+    <text class="cm">{{cmText}}</text>
+    <text class="mm">{{mmText}}</text>
+  </view>
+  <view class="board"
+    bindtouchstart="onTouchStart"
+    bindtouchmove="onTouchMove"
+    bindtouchend="onTouchEnd"
+  >
+    <view class="hint" wx:if="{{!measuring && !hasLine}}">按住拖动，测量两点距离</view>
+    <view
+      wx:if="{{hasLine}}"
+      class="line"
+      style="left:{{lineLeft}}px;top:{{lineTop}}px;width:{{lineWidth}}px;transform:rotate({{lineDeg}}deg);"
+    ></view>
+    <view wx:if="{{hasLine}}" class="dot" style="left:{{x1}}px;top:{{y1}}px;"></view>
+    <view wx:if="{{hasLine}}" class="dot" style="left:{{x2}}px;top:{{y2}}px;"></view>
+  </view>
+  <view class="tip">屏幕测距仅供参考，不同机型略有偏差；精密测量请用实体尺。</view>
+  <button class="btn" bindtap="reset">清除</button>
+</view>

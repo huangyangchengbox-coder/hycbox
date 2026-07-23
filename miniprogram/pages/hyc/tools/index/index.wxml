@@ -1,0 +1,29 @@
+<view class="tools-page">
+  <view class="tools-hero">
+    <view class="tools-title">实用工具</view>
+    <view class="tools-sub">定位 · 指南针 · 尺子 · 水平仪</view>
+  </view>
+
+  <view class="tools-grid">
+    <view class="tool-card" bindtap="goLocator">
+      <view class="tool-icon loc">◎</view>
+      <view class="tool-name">定位器</view>
+      <view class="tool-desc">查看坐标，打开地图</view>
+    </view>
+    <view class="tool-card" bindtap="goCompass">
+      <view class="tool-icon comp">✦</view>
+      <view class="tool-name">指南针</view>
+      <view class="tool-desc">实时方位朝向</view>
+    </view>
+    <view class="tool-card" bindtap="goRuler">
+      <view class="tool-icon ruler">═</view>
+      <view class="tool-name">尺子</view>
+      <view class="tool-desc">屏幕测距（参考）</view>
+    </view>
+    <view class="tool-card" bindtap="goLevel">
+      <view class="tool-icon level">◯</view>
+      <view class="tool-name">水平仪</view>
+      <view class="tool-desc">检测平面是否水平</view>
+    </view>
+  </view>
+</view>

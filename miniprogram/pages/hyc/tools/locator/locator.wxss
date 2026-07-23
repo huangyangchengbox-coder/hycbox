@@ -1,0 +1,71 @@
+.page {
+  min-height: 100vh;
+  padding: 40rpx;
+  box-sizing: border-box;
+  background: #f5f6f8;
+}
+
+.card {
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 36rpx;
+  box-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.04);
+}
+
+.label {
+  font-size: 24rpx;
+  color: #888;
+}
+
+.value,
+.coords {
+  margin-top: 16rpx;
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.coords {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.accuracy {
+  margin-top: 16rpx;
+  font-size: 24rpx;
+  color: #666;
+}
+
+.error {
+  margin-top: 16rpx;
+  font-size: 26rpx;
+  color: #dc2626;
+}
+
+.actions {
+  margin-top: 32rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.btn {
+  margin: 0 !important;
+  border-radius: 14rpx !important;
+  font-size: 28rpx !important;
+  background: #fff !important;
+  color: #1a1a1a !important;
+}
+
+.btn.primary {
+  background: #0f766e !important;
+  color: #fff !important;
+}
+
+.tip {
+  margin-top: 28rpx;
+  font-size: 22rpx;
+  color: #999;
+  line-height: 1.5;
+}

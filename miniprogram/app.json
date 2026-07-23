@@ -27,7 +27,12 @@
     "pages/hyc/admin/managers/managers",
     "pages/hyc/admin/mine/mine",
     "pages/hyc/admin/ai-image/ai-image",
-    "pages/hyc/admin/ai-video/ai-video"
+    "pages/hyc/admin/ai-video/ai-video",
+    "pages/hyc/tools/index/index",
+    "pages/hyc/tools/locator/locator",
+    "pages/hyc/tools/compass/compass",
+    "pages/hyc/tools/ruler/ruler",
+    "pages/hyc/tools/level/level"
   ],
   "window": {
     "navigationBarTextStyle": "black",
