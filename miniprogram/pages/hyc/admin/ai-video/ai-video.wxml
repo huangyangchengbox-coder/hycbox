@@ -9,14 +9,24 @@
       value="{{prompt}}"
       bindinput="onPromptInput"
       maxlength="500"
+      disabled="{{generating}}"
       show-confirm-bar="{{false}}"
     />
-    <button class="hyc-btn-primary gen-btn" bindtap="onGenerate" loading="{{generating}}">生成视频</button>
+    <button
+      class="hyc-btn-primary gen-btn {{generating ? 'gen-btn-busy' : ''}}"
+      bindtap="onGenerate"
+      loading="{{generating}}"
+      disabled="{{generating}}"
+    >{{generating ? '提交中…' : '生成视频'}}</button>
   </view>
 
-  <view class="hyc-card">
+  <view id="historyCard" class="hyc-card">
     <view class="hyc-title">历史记录</view>
-    <view class="job-item" wx:for="{{jobs}}" wx:key="id">
+    <view
+      class="job-item {{item.id === enteringId ? 'job-entering' : ''}}"
+      wx:for="{{jobs}}"
+      wx:key="id"
+    >
       <view class="hyc-row">
         <text class="hyc-tag {{item.status === 'succeeded' ? 'hyc-tag-done' : (item.status === 'failed' ? 'status-failed hyc-tag' : 'status-running hyc-tag')}}">
           {{item.statusText}}

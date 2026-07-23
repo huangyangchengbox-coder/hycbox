@@ -28,11 +28,13 @@ Page({
     prompt: '',
     jobs: [],
     loading: true,
-    generating: false
+    generating: false,
+    enteringId: ''
   },
 
   _pollTimer: null,
   _pollStartedAt: 0,
+  _enteringTimer: null,
 
   onShow() {
     if (!adminSession.isLoggedIn()) {
@@ -48,6 +50,10 @@ Page({
 
   onUnload() {
     this.stopPoll()
+    if (this._enteringTimer) {
+      clearTimeout(this._enteringTimer)
+      this._enteringTimer = null
+    }
   },
 
   onPromptInput(e) {
@@ -117,6 +123,7 @@ Page({
   },
 
   onGenerate() {
+    if (this.data.generating) return
     const prompt = (this.data.prompt || '').trim()
     if (!prompt) {
       wx.showToast({ title: '请输入描述', icon: 'none' })
@@ -126,9 +133,18 @@ Page({
     api.createAiImage({ prompt }).then(res => {
       if (res.code === 0 && res.data) {
         wx.showToast({ title: '已提交，后台生成中', icon: 'success' })
-        this.setData({ prompt: '' })
         const jobs = [mapJob(res.data)].concat(this.data.jobs.filter(j => j.id !== res.data.id))
-        this.setData({ jobs })
+        this.setData({
+          prompt: '',
+          jobs,
+          enteringId: res.data.id
+        })
+        if (this._enteringTimer) clearTimeout(this._enteringTimer)
+        this._enteringTimer = setTimeout(() => {
+          this.setData({ enteringId: '' })
+          this._enteringTimer = null
+        }, 700)
+        this.scrollToHistory()
         this.startPoll()
       } else {
         wx.showToast({ title: res.message || '提交失败', icon: 'none' })
@@ -140,6 +156,21 @@ Page({
     }).finally(() => {
       this.setData({ generating: false })
     })
+  },
+
+  scrollToHistory() {
+    wx.createSelectorQuery()
+      .select('#historyCard')
+      .boundingClientRect()
+      .selectViewport()
+      .scrollOffset()
+      .exec((res) => {
+        const rect = res && res[0]
+        const scroll = res && res[1]
+        if (!rect || !scroll) return
+        const top = Math.max(0, scroll.scrollTop + rect.top - 24)
+        wx.pageScrollTo({ scrollTop: top, duration: 300 })
+      })
   },
 
   previewImage(e) {
