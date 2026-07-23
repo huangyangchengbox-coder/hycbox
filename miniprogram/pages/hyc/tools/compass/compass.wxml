@@ -5,7 +5,7 @@
       <text class="dir e">E</text>
       <text class="dir s">S</text>
       <text class="dir w">W</text>
-      <view class="dial" style="transform: rotate({{rotate}}deg);">
+      <view class="dial" style="{{dialStyle}}">
         <view class="needle"></view>
       </view>
     </view>

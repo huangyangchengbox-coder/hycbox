@@ -8,7 +8,7 @@ function directionName(deg) {
 
 Page({
   data: {
-    rotate: 0,
+    dialStyle: 'transform:rotate(0deg)',
     degreeText: '--°',
     directionName: '--',
     error: ''
@@ -54,8 +54,9 @@ Page({
 
   onCompass(res) {
     const deg = Number(res.direction) || 0
+    const rotate = -deg
     this.setData({
-      rotate: -deg,
+      dialStyle: 'transform:rotate(' + rotate + 'deg)',
       degreeText: Math.round(deg) + '°',
       directionName: directionName(deg)
     })
