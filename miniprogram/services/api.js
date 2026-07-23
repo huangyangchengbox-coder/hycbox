@@ -134,7 +134,7 @@ const api = {
         throw new Error('Mock 已关闭，请连接真实后端')
       })
     }
-    return request({ url: '/admin/login', method: 'POST', data: { username, password } })
+    return request({ url: '/admin/login', method: 'POST', data: { username, password, client: 'mp' } })
   },
 
   /** GET /admin/users 超级管理员 */
