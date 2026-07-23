@@ -510,25 +510,25 @@ const api = {
     })
   },
 
-  /** POST /admin/ai-media/images */
+  /** POST /admin/ai-media/images（立即返回任务 ID，后台异步生成） */
   createAiImage(data) {
     return request({
       url: '/admin/ai-media/images',
       method: 'POST',
       data: data || {},
       admin: true,
-      timeout: 120000
+      timeout: 20000
     })
   },
 
-  /** POST /admin/ai-media/videos */
+  /** POST /admin/ai-media/videos（立即返回任务 ID，后台异步生成） */
   createAiVideo(data) {
     return request({
       url: '/admin/ai-media/videos',
       method: 'POST',
       data: data || {},
       admin: true,
-      timeout: 120000
+      timeout: 20000
     })
   },
 

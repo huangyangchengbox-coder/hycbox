@@ -8,12 +8,19 @@ const STATUS_MAP = {
   failed: '失败'
 }
 
+const POLL_INTERVAL_MS = 4000
+const POLL_MAX_MS = 10 * 60 * 1000
+
 function mapJob(item) {
   const status = item.status || 'pending'
   return Object.assign({}, item, {
     statusText: STATUS_MAP[status] || status,
     mediaUrl: item.resultUrl || item.remoteUrl || ''
   })
+}
+
+function isRunning(status) {
+  return status === 'pending' || status === 'running'
 }
 
 Page({
@@ -24,12 +31,23 @@ Page({
     generating: false
   },
 
+  _pollTimer: null,
+  _pollStartedAt: 0,
+
   onShow() {
     if (!adminSession.isLoggedIn()) {
       wx.redirectTo({ url: '/pages/hyc/admin/login/login' })
       return
     }
     this.loadJobs()
+  },
+
+  onHide() {
+    this.stopPoll()
+  },
+
+  onUnload() {
+    this.stopPoll()
   },
 
   onPromptInput(e) {
@@ -42,6 +60,7 @@ Page({
       if (res.code === 0) {
         const list = res.data || (res.pageInfo && res.pageInfo.list) || []
         this.setData({ jobs: list.map(mapJob) })
+        this.startPoll()
       } else {
         wx.showToast({ title: res.message || '加载失败', icon: 'none' })
       }
@@ -49,6 +68,51 @@ Page({
       wx.showToast({ title: err.message || '加载失败', icon: 'none' })
     }).finally(() => {
       this.setData({ loading: false })
+    })
+  },
+
+  startPoll() {
+    if (!this.data.jobs.some(j => isRunning(j.status))) {
+      this.stopPoll()
+      return
+    }
+    if (this._pollTimer) return
+    this._pollStartedAt = Date.now()
+    this._pollTimer = setInterval(() => this.pollRunning(), POLL_INTERVAL_MS)
+    this.pollRunning()
+  },
+
+  stopPoll() {
+    if (this._pollTimer) {
+      clearInterval(this._pollTimer)
+      this._pollTimer = null
+    }
+    this._pollStartedAt = 0
+  },
+
+  pollRunning() {
+    if (this._pollStartedAt && Date.now() - this._pollStartedAt >= POLL_MAX_MS) {
+      this.stopPoll()
+      return
+    }
+    const running = this.data.jobs.filter(j => isRunning(j.status))
+    if (!running.length) {
+      this.stopPoll()
+      return
+    }
+    const jobs = this.data.jobs.slice()
+    Promise.all(running.map(job =>
+      api.getAiMedia(job.id).then(res => {
+        if (res.code === 0 && res.data) {
+          const idx = jobs.findIndex(j => j.id === job.id)
+          if (idx >= 0) jobs[idx] = mapJob(res.data)
+        }
+      }).catch(() => {})
+    )).then(() => {
+      this.setData({ jobs })
+      if (!jobs.some(j => isRunning(j.status))) {
+        this.stopPoll()
+      }
     })
   },
 
@@ -61,16 +125,17 @@ Page({
     this.setData({ generating: true })
     api.createAiImage({ prompt }).then(res => {
       if (res.code === 0 && res.data) {
-        wx.showToast({ title: '生成成功', icon: 'success' })
+        wx.showToast({ title: '已提交，后台生成中', icon: 'success' })
         this.setData({ prompt: '' })
-        const jobs = [mapJob(res.data)].concat(this.data.jobs)
+        const jobs = [mapJob(res.data)].concat(this.data.jobs.filter(j => j.id !== res.data.id))
         this.setData({ jobs })
+        this.startPoll()
       } else {
-        wx.showToast({ title: res.message || '生成失败', icon: 'none' })
+        wx.showToast({ title: res.message || '提交失败', icon: 'none' })
         this.loadJobs()
       }
     }).catch(err => {
-      wx.showToast({ title: err.message || '生成失败', icon: 'none' })
+      wx.showToast({ title: err.message || '提交失败', icon: 'none' })
       this.loadJobs()
     }).finally(() => {
       this.setData({ generating: false })
