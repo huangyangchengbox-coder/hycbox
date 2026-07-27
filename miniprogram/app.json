@@ -17,6 +17,7 @@
     "pages/hyc/common/pub-ai-detail/pub-ai-detail",
     "pages/hyc/index",
     "pages/hyc/admin/login/login",
+    "pages/hyc/admin/web-login/web-login",
     "pages/hyc/admin/publish/publish",
     "pages/hyc/admin/pub-orders/pub-orders",
     "pages/hyc/admin/express-orders/express-orders",
@@ -34,7 +35,8 @@
     "pages/hyc/tools/ruler/ruler",
     "pages/hyc/tools/level/level",
     "pages/hyc/tools/flashlight/flashlight",
-    "pages/hyc/tools/timer/timer"
+    "pages/hyc/tools/timer/timer",
+    "pages/hyc/tools/zombie/zombie"
   ],
   "window": {
     "navigationBarTextStyle": "black",
@@ -44,7 +46,7 @@
   },
   "permission": {
     "scope.userLocation": {
-      "desc": "用于展示当前位置天气，以及选择收货位置、配送导航与分享实时位置"
+      "desc": "用于天气展示、收货选址、配送导航与位置分享"
     }
   },
   "requiredPrivateInfos": [

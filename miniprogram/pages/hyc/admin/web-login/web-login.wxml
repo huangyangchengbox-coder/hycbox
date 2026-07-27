@@ -1,0 +1,16 @@
+<view class="hyc-page">
+  <view class="hyc-card">
+    <view class="hyc-title">确认登录电脑端</view>
+    <view class="hyc-sub">管理员 {{adminName}} 正在授权 Web 管理端登录</view>
+
+    <view class="ticket-box">
+      <view class="ticket-label">登录票据</view>
+      <view class="ticket-value">{{ticketShort}}</view>
+    </view>
+
+    <button class="hyc-btn-primary" bindtap="onConfirm" loading="{{loading}}" disabled="{{!ticket || loading}}">
+      确认登录
+    </button>
+    <button class="hyc-btn-plain" bindtap="goBack">取消</button>
+  </view>
+</view>

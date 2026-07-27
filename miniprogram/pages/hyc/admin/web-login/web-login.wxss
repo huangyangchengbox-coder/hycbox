@@ -1,0 +1,24 @@
+.hyc-page {
+  min-height: 100vh;
+  padding: 32rpx;
+  box-sizing: border-box;
+}
+
+.ticket-box {
+  margin: 32rpx 0;
+  padding: 24rpx;
+  border-radius: 16rpx;
+  background: #f5f6f8;
+}
+
+.ticket-label {
+  font-size: 24rpx;
+  color: #64748b;
+}
+
+.ticket-value {
+  margin-top: 8rpx;
+  font-size: 28rpx;
+  color: #0f172a;
+  word-break: break-all;
+}

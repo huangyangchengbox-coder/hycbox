@@ -137,6 +137,16 @@ const api = {
     return request({ url: '/admin/login', method: 'POST', data: { username, password, client: 'mp' } })
   },
 
+  /** POST /admin/qr-login/scan 小程序扫码 */
+  scanQrLogin(ticket) {
+    return request({ url: '/admin/qr-login/scan', method: 'POST', data: { ticket } })
+  },
+
+  /** POST /admin/qr-login/confirm 小程序确认 Web 登录 */
+  confirmQrLogin(ticket) {
+    return request({ url: '/admin/qr-login/confirm', method: 'POST', data: { ticket }, admin: true })
+  },
+
   /** GET /admin/users 超级管理员 */
   listAdminUsers() {
     return request({ url: '/admin/users', admin: true })

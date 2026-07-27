@@ -5,12 +5,27 @@ Page({
   data: {
     username: '',
     password: '',
-    loading: false
+    loading: false,
+    redirect: '',
+    ticket: ''
+  },
+
+  onLoad(options) {
+    this.setData({
+      redirect: (options && options.redirect) || '',
+      ticket: (options && options.ticket) || ''
+    })
   },
 
   onShow() {
-    // 有效 token 直接进管理发布页
+    // 有效 token：扫码确认页优先，否则进管理发布页
     if (adminSession.isLoggedIn()) {
+      if (this.data.redirect === 'web-login' && this.data.ticket) {
+        wx.redirectTo({
+          url: `/pages/hyc/admin/web-login/web-login?ticket=${encodeURIComponent(this.data.ticket)}`
+        })
+        return
+      }
       require('../../../../services/adminEntry').goAdminHome()
     }
   },
@@ -37,6 +52,12 @@ Page({
         return
       }
       adminSession.save(res.data)
+      if (this.data.redirect === 'web-login' && this.data.ticket) {
+        wx.redirectTo({
+          url: `/pages/hyc/admin/web-login/web-login?ticket=${encodeURIComponent(this.data.ticket)}`
+        })
+        return
+      }
       require('../../../../services/adminEntry').goAdminHome()
     }).catch(err => {
       console.error('adminLogin failed', err)
