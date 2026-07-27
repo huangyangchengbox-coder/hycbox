@@ -75,6 +75,11 @@
   color: #6d28d9;
 }
 
+.tool-icon.zombie {
+  background: #ecfdf5;
+  color: #15803d;
+}
+
 .tool-name {
   font-size: 30rpx;
   font-weight: 600;

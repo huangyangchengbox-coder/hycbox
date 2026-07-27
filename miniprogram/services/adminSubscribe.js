@@ -3,33 +3,26 @@
  * 模板「新留言提醒」为一次性，推送一条后需再次授权。
  */
 const api = require('./api')
+const wxSession = require('./wxSession')
 
 const TEMPLATE_ID = 'dxRwNatW9XCtcenQZVu8K2TJovhsCgMX9sxhR2SFsig'
 
-function getOpenid() {
-  return wx.getStorageSync('hyc_openid') || ''
+function ensureOpenid() {
+  const cached = wxSession.getOpenid()
+  if (cached) {
+    return Promise.resolve(cached)
+  }
+  return wxSession.ensureWxSession().then((s) => s.openid || wxSession.getOpenid())
 }
 
-function wxLoginCode() {
-  return new Promise((resolve, reject) => {
-    wx.login({
-      success(res) {
-        if (res.code) {
-          resolve(res.code)
-        } else {
-          reject(new Error('wx.login 无 code'))
-        }
-      },
-      fail(err) {
-        reject(new Error((err && err.errMsg) || 'wx.login 失败'))
-      }
-    })
-  })
-}
-
-/** 绑定当前管理员微信，便于推送 */
+/** 绑定当前管理员微信，便于推送 / 扫码免登 */
 function bindAdminWx() {
-  return wxLoginCode().then(code => api.bindAdminWx(code))
+  return ensureOpenid().then((openid) => {
+    if (!openid) {
+      return Promise.reject(new Error('获取微信 openid 失败'))
+    }
+    return api.bindAdminWx(openid)
+  })
 }
 
 /**
@@ -38,7 +31,6 @@ function bindAdminWx() {
  */
 function requestAdminSubscribe() {
   return new Promise((resolve, reject) => {
-    // 需在用户点击手势内调用
     wx.requestSubscribeMessage({
       tmplIds: [TEMPLATE_ID],
       success(res) {
@@ -47,26 +39,16 @@ function requestAdminSubscribe() {
           resolve({ accepted: false, state })
           return
         }
-        const openid = getOpenid()
-        const grant = () => api.grantAdminSubscribe(openid).then(statusRes => {
+        const grant = (openid) => api.grantAdminSubscribe(openid).then(statusRes => {
           resolve({
             accepted: true,
             status: statusRes.code === 0 ? statusRes.data : null
           })
         }).catch(reject)
 
-        if (!openid) {
-          bindAdminWx().then(bindRes => {
-            if (bindRes.code !== 0) {
-              reject(new Error(bindRes.message || '绑定微信失败'))
-              return
-            }
-            grant()
-          }).catch(reject)
-          return
-        }
-        // 确保服务端已有 openid
-        bindAdminWx().then(() => grant()).catch(() => grant())
+        ensureOpenid().then((openid) => {
+          return api.bindAdminWx(openid).then(() => grant(openid)).catch(() => grant(openid))
+        }).catch(reject)
       },
       fail(err) {
         reject(new Error((err && err.errMsg) || '订阅失败'))
@@ -78,5 +60,6 @@ function requestAdminSubscribe() {
 module.exports = {
   TEMPLATE_ID,
   bindAdminWx,
+  ensureOpenid,
   requestAdminSubscribe
 }

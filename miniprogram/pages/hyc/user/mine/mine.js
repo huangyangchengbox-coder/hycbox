@@ -66,12 +66,12 @@ Page({
     wx.navigateTo({ url: `/pages/hyc/user/order/order?publicationId=${id}` })
   },
 
-  goAiDetail(e) {
+  goPubDetail(e) {
     const id = e.currentTarget.dataset.id
     const title = e.currentTarget.dataset.title || ''
     if (!id) return
     wx.navigateTo({
-      url: `/pages/hyc/common/pub-ai-detail/pub-ai-detail?id=${id}&title=${encodeURIComponent(title)}`
+      url: `/pages/hyc/common/pub-detail/pub-detail?id=${id}&title=${encodeURIComponent(title)}`
     })
   },
 

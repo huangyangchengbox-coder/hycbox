@@ -7,8 +7,13 @@ Page({
     adminName: '',
     isSuperAdmin: false,
     wxBound: false,
+    qrWxBound: false,
     subscribeQuota: 0,
-    needSubscribe: true
+    needSubscribe: true,
+    showBindForm: false,
+    bindUsername: '',
+    bindPassword: '',
+    bindLoading: false
   },
 
   onShow() {
@@ -18,16 +23,20 @@ Page({
     }
     this.setData({
       adminName: wx.getStorageSync('hyc_admin_name') || '管理者',
-      isSuperAdmin: wx.getStorageSync('hyc_is_super_admin') === '1'
+      isSuperAdmin: wx.getStorageSync('hyc_is_super_admin') === '1',
+      bindUsername: wx.getStorageSync('hyc_admin_username') || ''
     })
-    this.refreshSubscribe()
+    this.refreshBindStatus()
   },
 
-  refreshSubscribe() {
+  /** 以服务端管理员记录为准（token），不再每次用 code 换票判断 */
+  refreshBindStatus() {
     api.getAdminSubscribeStatus().then(res => {
       if (res.code === 0 && res.data) {
+        const bound = !!res.data.wxBound
         this.setData({
-          wxBound: !!res.data.wxBound,
+          wxBound: bound,
+          qrWxBound: bound,
           subscribeQuota: Number(res.data.subscribeQuota) || 0,
           needSubscribe: !!res.data.needSubscribe
         })
@@ -35,7 +44,6 @@ Page({
     }).catch(() => {})
   },
 
-  /** 开启/续订一次性订阅（必须用户点击） */
   onSubscribeTap() {
     wx.showLoading({ title: '准备中' })
     adminSubscribe.bindAdminWx().then(() => {
@@ -44,12 +52,13 @@ Page({
     }).then(result => {
       if (!result.accepted) {
         wx.showToast({ title: '未授权订阅', icon: 'none' })
-        this.refreshSubscribe()
+        this.refreshBindStatus()
         return
       }
       const quota = result.status ? result.status.subscribeQuota : 1
       this.setData({
         wxBound: true,
+        qrWxBound: true,
         subscribeQuota: quota,
         needSubscribe: quota <= 0
       })
@@ -60,20 +69,114 @@ Page({
     })
   },
 
+  onBindMpTap() {
+    if (this.data.qrWxBound) {
+      wx.showToast({ title: '已绑定当前微信', icon: 'none' })
+      return
+    }
+    this.bindWithToken()
+  },
+
+  bindWithToken() {
+    wx.showLoading({ title: '绑定中' })
+    adminSubscribe.ensureOpenid().then((openid) => api.bindAdminWx(openid)).then((res) => {
+      wx.hideLoading()
+      if (res.code !== 0) {
+        this.setData({ showBindForm: true })
+        wx.showToast({ title: (res && res.message) || '请验证账号后绑定', icon: 'none' })
+        return
+      }
+      this.setData({ qrWxBound: true, wxBound: true, showBindForm: false })
+      wx.showToast({ title: '绑定成功', icon: 'success' })
+      this.refreshBindStatus()
+    }).catch((err) => {
+      wx.hideLoading()
+      this.setData({ showBindForm: true })
+      wx.showToast({ title: (err && err.message) || '请验证账号后绑定', icon: 'none' })
+    })
+  },
+
+  onBindUsernameInput(e) {
+    this.setData({ bindUsername: e.detail.value })
+  },
+
+  onBindPasswordInput(e) {
+    this.setData({ bindPassword: e.detail.value })
+  },
+
+  cancelBindForm() {
+    this.setData({ showBindForm: false, bindPassword: '' })
+  },
+
+  submitBindForm() {
+    const username = (this.data.bindUsername || '').trim()
+    const password = (this.data.bindPassword || '').trim()
+    if (!username || !password) {
+      wx.showToast({ title: '请输入管理员账号和密码', icon: 'none' })
+      return
+    }
+    this.setData({ bindLoading: true })
+    adminSubscribe.ensureOpenid().then((openid) => api.bindAdminWxByLogin(username, password, openid)).then((res) => {
+      if (res.code !== 0) {
+        wx.showToast({ title: (res && res.message) || '绑定失败', icon: 'none' })
+        return
+      }
+      this.setData({
+        qrWxBound: true,
+        wxBound: true,
+        showBindForm: false,
+        bindPassword: ''
+      })
+      wx.showToast({ title: '绑定成功，扫码可免密确认', icon: 'success' })
+      this.refreshBindStatus()
+    }).catch((err) => {
+      wx.showToast({ title: (err && err.message) || '绑定失败', icon: 'none' })
+    }).finally(() => {
+      this.setData({ bindLoading: false })
+    })
+  },
+
   goPublish() {
     wx.redirectTo({ url: '/pages/hyc/admin/publish/publish' })
   },
 
+  onScanWebLogin() {
+    if (!this.data.qrWxBound) {
+      wx.showModal({
+        title: '请先绑定小程序号',
+        content: '绑定后扫码确认电脑端登录，无需再输入密码',
+        confirmText: '去绑定',
+        success: (r) => {
+          if (r.confirm) {
+            this.onBindMpTap()
+          }
+        }
+      })
+      return
+    }
+    wx.scanCode({
+      onlyFromCamera: false,
+      success: (res) => {
+        const ticket = parseWebLoginTicket(res)
+        if (!ticket) {
+          wx.showToast({ title: '未识别到登录码，请扫网页二维码', icon: 'none' })
+          return
+        }
+        wx.navigateTo({
+          url: `/pages/hyc/admin/web-login/web-login?ticket=${encodeURIComponent(ticket)}`
+        })
+      },
+      fail: (err) => {
+        if (err && /cancel/i.test(err.errMsg || '')) {
+          return
+        }
+        wx.showToast({ title: '扫码失败', icon: 'none' })
+      }
+    })
+  },
+
   goManagers() {
     wx.redirectTo({ url: '/pages/hyc/admin/managers/managers' })
-  },
-
-  goAiImage() {
-    wx.navigateTo({ url: '/pages/hyc/admin/ai-image/ai-image' })
-  },
-
-  goAiVideo() {
-    wx.navigateTo({ url: '/pages/hyc/admin/ai-video/ai-video' })
   },
 
   goUser() {
@@ -81,3 +184,29 @@ Page({
     require('../../../../services/adminEntry').goUserHome(false)
   }
 })
+
+function parseWebLoginTicket(res) {
+  if (!res) {
+    return ''
+  }
+  const path = String(res.path || '')
+  let m = path.match(/[?&](?:scene|ticket)=([^&]+)/i)
+  if (m && m[1]) {
+    return decodeURIComponent(m[1]).trim()
+  }
+  if (res.scene != null && String(res.scene).trim()) {
+    return String(res.scene).trim()
+  }
+  const raw = String(res.result || '').trim()
+  if (!raw) {
+    return ''
+  }
+  m = raw.match(/(?:scene|ticket)=([^&\s]+)/i)
+  if (m && m[1]) {
+    return decodeURIComponent(m[1]).trim()
+  }
+  if (/^[A-Za-z0-9_-]{16,64}$/.test(raw)) {
+    return raw
+  }
+  return ''
+}

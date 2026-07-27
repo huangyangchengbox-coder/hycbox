@@ -35,7 +35,7 @@
         class="detail-btn"
         data-id="{{item.id}}"
         data-title="{{item.title}}"
-        bindtap="goAiDetail"
+        bindtap="goPubDetail"
       >物品详情</button>
       <button
         class="hyc-btn-primary order-btn"

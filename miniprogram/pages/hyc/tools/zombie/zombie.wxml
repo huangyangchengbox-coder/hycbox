@@ -1,0 +1,28 @@
+<view class="page">
+  <view class="hud">
+    <view class="hud-item">击杀 {{kills}}</view>
+    <view class="hud-item">武器 Lv.{{weaponLv}} · {{weaponName}}</view>
+    <view class="hud-item">波次 {{wave}}</view>
+  </view>
+
+  <canvas
+    type="2d"
+    id="gameCanvas"
+    class="canvas"
+    bindtouchstart="onTouch"
+  ></canvas>
+
+  <view class="bar">
+    <view class="btn {{autoFire ? 'on' : ''}}" bindtap="toggleAuto">
+      {{autoFire ? '自动开火 · 开' : '自动开火 · 关'}}
+    </view>
+    <view class="btn primary" bindtap="onShootTap">开火</view>
+    <view class="btn" wx:if="{{over}}" bindtap="restart">再来一局</view>
+  </view>
+
+  <view class="mask" wx:if="{{over}}">
+    <view class="mask-title">防线失守</view>
+    <view class="mask-sub">击杀 {{kills}} · 最高武器 Lv.{{weaponLv}}</view>
+    <view class="mask-btn" bindtap="restart">重新开始</view>
+  </view>
+</view>

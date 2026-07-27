@@ -16,5 +16,8 @@ Page({
   },
   goTimer() {
     wx.navigateTo({ url: '/pages/hyc/tools/timer/timer' })
+  },
+  goZombie() {
+    wx.navigateTo({ url: '/pages/hyc/tools/zombie/zombie' })
   }
 })

@@ -4,15 +4,29 @@
     <view class="hub-sub">选择你要使用的服务</view>
   </view>
 
-  <view class="weather-card" bindtap="onWeatherTap">
-    <view class="weather-main" wx:if="{{weatherText}}">
-      <text class="weather-temp">{{weatherTemp}}</text>
-      <view class="weather-meta">
-        <text class="weather-text">{{weatherText}}</text>
-        <text class="weather-extra" wx:if="{{weatherExtra}}">{{weatherExtra}}</text>
+  <view class="weather-card {{weatherSky}}" bindtap="onWeatherTap">
+    <view class="weather-fx">
+      <view wx:if="{{fxCloud}}" class="fx-clouds">
+        <view class="cloud c1"><view class="puff a"></view><view class="puff b"></view></view>
+        <view class="cloud c2"><view class="puff a"></view><view class="puff b"></view></view>
+        <view class="cloud c3"><view class="puff a"></view><view class="puff b"></view></view>
       </view>
+      <view wx:if="{{fxRain}}" class="fx-rain">
+        <view class="drop" wx:for="{{rainDrops}}" wx:key="*this" style="left:{{item}}%; animation-delay:{{index * 0.12}}s;"></view>
+      </view>
+      <view wx:if="{{fxLightning}}" class="fx-lightning"></view>
     </view>
-    <view class="weather-tip">{{weatherTip}}</view>
+
+    <view class="weather-body">
+      <view class="weather-main" wx:if="{{weatherText}}">
+        <text class="weather-temp">{{weatherTemp}}</text>
+        <view class="weather-meta">
+          <text class="weather-text">{{weatherText}}</text>
+          <text class="weather-extra" wx:if="{{weatherExtra}}">{{weatherExtra}}</text>
+        </view>
+      </view>
+      <view class="weather-tip">{{weatherTip}}</view>
+    </view>
   </view>
 
   <view class="hub-grid">

@@ -7,6 +7,7 @@ const EXPIRE_KEY = 'hyc_admin_token_expire'
 const ROLE_KEY = 'hyc_role'
 const ADMIN_ID_KEY = 'hyc_admin_id'
 const ADMIN_NAME_KEY = 'hyc_admin_name'
+const ADMIN_USERNAME_KEY = 'hyc_admin_username'
 const SUPER_KEY = 'hyc_is_super_admin'
 
 const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000
@@ -32,6 +33,7 @@ function save(loginData) {
   wx.setStorageSync(ROLE_KEY, 'admin')
   wx.setStorageSync(ADMIN_ID_KEY, loginData.adminId || '')
   wx.setStorageSync(ADMIN_NAME_KEY, name)
+  wx.setStorageSync(ADMIN_USERNAME_KEY, loginData.username || '')
   wx.setStorageSync(SUPER_KEY, isSuper ? '1' : '0')
 
   applyToApp({
@@ -68,6 +70,7 @@ function clearAdminAuth() {
   wx.removeStorageSync(EXPIRE_KEY)
   wx.removeStorageSync(ADMIN_ID_KEY)
   wx.removeStorageSync(ADMIN_NAME_KEY)
+  wx.removeStorageSync(ADMIN_USERNAME_KEY)
   wx.removeStorageSync(SUPER_KEY)
   applyToApp({
     adminToken: '',

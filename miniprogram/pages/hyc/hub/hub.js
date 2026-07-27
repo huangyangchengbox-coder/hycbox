@@ -4,6 +4,47 @@ const api = require('../../../services/api')
 const FALLBACK_LAT = 30.6915
 const FALLBACK_LNG = 111.2864
 
+/** 雨丝水平位置（百分比），固定以免每次 setData 抖动 */
+const RAIN_DROPS = [8, 16, 24, 33, 41, 52, 61, 70, 78, 88, 94]
+
+/**
+ * 按 WMO weather_code 决定卡片天空与动效开关。
+ * @param {number|null|undefined} code
+ * @param {string} text 中文天气文案兜底
+ */
+function resolveWeatherFx(code, text) {
+  const c = code == null ? -1 : Number(code)
+  const t = text || ''
+  const storm =
+    c === 95 || c === 96 || c === 99 ||
+    t.indexOf('雷') >= 0
+  const rain =
+    storm ||
+    (c >= 51 && c <= 67) ||
+    (c >= 80 && c <= 82) ||
+    t.indexOf('雨') >= 0
+  const cloudy =
+    rain || storm ||
+    (c >= 1 && c <= 3) ||
+    c === 45 || c === 48 ||
+    (c >= 71 && c <= 77) ||
+    (c >= 85 && c <= 86) ||
+    t.indexOf('云') >= 0 || t.indexOf('阴') >= 0 || t.indexOf('雾') >= 0 || t.indexOf('雪') >= 0
+
+  let weatherSky = 'sky-clear'
+  if (storm) weatherSky = 'sky-storm'
+  else if (rain) weatherSky = 'sky-rain'
+  else if (cloudy) weatherSky = 'sky-cloud'
+
+  return {
+    weatherSky,
+    fxCloud: cloudy || c === 0 || c === 1, // 晴天也有轻云飘过
+    fxRain: rain,
+    fxLightning: storm,
+    rainDrops: rain ? RAIN_DROPS : []
+  }
+}
+
 Page({
   data: {
     weatherLoading: true,
@@ -11,7 +52,12 @@ Page({
     weatherTemp: '',
     weatherExtra: '',
     weatherTip: '正在获取天气…',
-    weatherFromFallback: false
+    weatherFromFallback: false,
+    weatherSky: 'sky-clear',
+    fxCloud: false,
+    fxRain: false,
+    fxLightning: false,
+    rainDrops: []
   },
 
   onShow() {
@@ -46,6 +92,7 @@ Page({
       const parts = []
       if (d.humidity != null) parts.push('湿度 ' + d.humidity + '%')
       if (d.windSpeed != null) parts.push('风速 ' + Math.round(Number(d.windSpeed)) + 'km/h')
+      const fx = resolveWeatherFx(d.weatherCode, text)
       that.setData({
         weatherLoading: false,
         weatherText: text,
@@ -54,7 +101,8 @@ Page({
         weatherTip: fromFallback
           ? ('未开启定位 · ' + (d.placeLabel || '默认城市') + '（点击授权）')
           : ((d.placeLabel || '当前位置') + '天气'),
-        weatherFromFallback: !!fromFallback
+        weatherFromFallback: !!fromFallback,
+        ...fx
       })
     }).catch(err => {
       console.warn('[hub] weather', err && err.message)
@@ -64,7 +112,12 @@ Page({
         weatherTemp: '',
         weatherExtra: '',
         weatherTip: '天气暂时不可用，点击重试',
-        weatherFromFallback: false
+        weatherFromFallback: false,
+        weatherSky: 'sky-clear',
+        fxCloud: false,
+        fxRain: false,
+        fxLightning: false,
+        rainDrops: []
       })
     })
   },

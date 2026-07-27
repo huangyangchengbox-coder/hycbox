@@ -1,0 +1,46 @@
+<view class="hyc-page">
+  <view class="hyc-card" wx:if="{{loading}}">
+    <view class="hyc-empty">加载中...</view>
+  </view>
+
+  <block wx:if="{{!loading && !error}}">
+    <view class="hyc-card">
+      <view class="hyc-title">{{title || '物品详情'}}</view>
+      <view class="hyc-sub" wx:if="{{communityLabel}}">{{communityLabel}}</view>
+      <view class="hyc-sub" wx:if="{{adminName}}">发布人：{{adminName}}</view>
+      <view class="hyc-sub" wx:if="{{createdAt}}">发布时间：{{createdAt}}</view>
+      <view class="hyc-row stock-row" wx:if="{{remainBags != null}}">
+        <text>剩余 <text class="hyc-stat-num">{{remainBags}}</text> {{unit || '袋'}}</text>
+        <text class="hyc-sub" wx:if="{{totalBags != null}}">共 {{totalBags}} {{unit || '袋'}}</text>
+      </view>
+      <view class="hyc-sub" wx:if="{{unitPrice != null}}">单价：¥{{unitPrice}}</view>
+    </view>
+
+    <view class="hyc-card" wx:if="{{images.length}}">
+      <view class="hyc-title">图片</view>
+      <view class="img-row">
+        <image
+          class="detail-img"
+          wx:for="{{images}}"
+          wx:key="*this"
+          src="{{item}}"
+          mode="aspectFill"
+          data-url="{{item}}"
+          bindtap="previewImage"
+        />
+      </view>
+      <view class="hyc-sub tip">点击图片查看大图</view>
+    </view>
+
+    <view class="hyc-card">
+      <view class="hyc-title">介绍</view>
+      <view class="content" wx:if="{{description}}">{{description}}</view>
+      <view class="hyc-empty soft" wx:else>暂无介绍</view>
+    </view>
+  </block>
+
+  <view class="hyc-card" wx:if="{{!loading && error}}">
+    <view class="err">{{error}}</view>
+    <button class="hyc-btn-primary retry" bindtap="reload">重试</button>
+  </view>
+</view>

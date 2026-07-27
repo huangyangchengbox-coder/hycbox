@@ -42,9 +42,9 @@ miniprogram/
 module.exports = {
   useMock: false,
   // 本地后端：http://127.0.0.1:8090/api
-  // 线上 IP（备案前）：http://8.152.99.189/api
+  // 线上 IP（备案前）：https://hychyr.top/api
   // 备案后域名：https://hychyr.top/api
-  baseUrl: 'http://8.152.99.189/api',
+  baseUrl: 'https://hychyr.top/api',
   timeout: 20000
 }
 ```

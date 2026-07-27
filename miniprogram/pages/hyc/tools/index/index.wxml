@@ -1,7 +1,7 @@
 <view class="tools-page">
   <view class="tools-hero">
     <view class="tools-title">实用工具</view>
-    <view class="tools-sub">定位 · 指南针 · 尺子 · 水平仪 · 手电筒 · 计时器</view>
+    <view class="tools-sub">定位 · 指南针 · 尺子 · 水平仪 · 手电筒 · 计时器 · 小游戏</view>
   </view>
 
   <view class="tools-grid">
@@ -34,6 +34,11 @@
       <view class="tool-icon timer">⏱</view>
       <view class="tool-name">计时器</view>
       <view class="tool-desc">秒表与倒计时</view>
+    </view>
+    <view class="tool-card" bindtap="goZombie">
+      <view class="tool-icon zombie">Z</view>
+      <view class="tool-name">僵尸通道</view>
+      <view class="tool-desc">单通道射击 · 击杀升级</view>
     </view>
   </view>
 </view>

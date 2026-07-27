@@ -2,11 +2,11 @@
  * 配送地图追踪（闪送 / 村村送共用）：
  * - 管理员头顶箱子标记
  * - 折线指向收货点
- * - 每 10 秒拉真实 GPS，translateMarker 动画挪到新位置
+ * - 每 30 秒拉真实 GPS，translateMarker 动画挪到新位置
  */
 const api = require('./api')
 
-const POLL_MS = 10000
+const POLL_MS = 30000
 const ANIM_MS = 2800
 const BOX_ICON = '/images/map/courier-box.png'
 const DEST_ICON = '/images/map/user-pin.png'
@@ -130,8 +130,8 @@ function createCourierMapTrack(page, options) {
       : courier
 
     const tip = dest
-      ? '箱子正在送往您这边（约每 10 秒更新）'
-      : '配送员位置（约每 10 秒刷新）'
+      ? '箱子正在送往您这边（约每 30 秒更新）'
+      : '配送员位置（约每 30 秒刷新）'
 
     page.setData({
       courierSharing: true,

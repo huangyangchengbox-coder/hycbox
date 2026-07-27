@@ -1,10 +1,32 @@
 /**
  * 服务配置
- * 本地调试：改 baseUrl 为 http://127.0.0.1:8090/api
- * 域名备案中暂用 IP；备案通过后改为 https://hychyr.top/api
+ * 正式版 → 生产库 API
+ * 体验版 / 开发版 → 体验库 API（与生产数据隔离）
+ *
+ * 注意：小程序合法域名 + HTTPS 证书目前仅覆盖 hychyr.top，
+ * 体验库走同域路径 /api-trial，不要用 trial.hychyr.top（证书不含该子域会报 -200）。
  */
+const PROD_API = 'https://hychyr.top/api'
+const TRIAL_API = 'https://hychyr.top/api-trial'
+
+function resolveBaseUrl() {
+  try {
+    const info = wx.getAccountInfoSync()
+    const env = info && info.miniProgram && info.miniProgram.envVersion
+    // release=正式版；trial=体验版；develop=开发者工具
+    if (env === 'release') {
+      return PROD_API
+    }
+    return TRIAL_API
+  } catch (e) {
+    return TRIAL_API
+  }
+}
+
 module.exports = {
   useMock: false,
-  baseUrl: 'http://8.152.99.189/api',
-  timeout: 20000
+  baseUrl: resolveBaseUrl(),
+  timeout: 20000,
+  prodApi: PROD_API,
+  trialApi: TRIAL_API
 }

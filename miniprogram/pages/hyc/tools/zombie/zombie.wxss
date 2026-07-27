@@ -1,0 +1,101 @@
+.page {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background: #0f1419;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  padding: 16rpx 28rpx;
+  font-size: 24rpx;
+  color: #d7e0ea;
+  background: linear-gradient(180deg, rgba(15, 20, 25, 0.85), transparent);
+  pointer-events: none;
+}
+
+.hud-item {
+  white-space: nowrap;
+}
+
+.canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  gap: 16rpx;
+  padding: 20rpx 28rpx calc(20rpx + env(safe-area-inset-bottom));
+  background: linear-gradient(0deg, rgba(15, 20, 25, 0.92), transparent);
+}
+
+.btn {
+  flex: 1;
+  height: 72rpx;
+  line-height: 72rpx;
+  text-align: center;
+  border-radius: 16rpx;
+  font-size: 26rpx;
+  color: #c9d4e0;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1rpx solid rgba(255, 255, 255, 0.12);
+}
+
+.btn.on {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.18);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.btn.primary {
+  color: #fff;
+  background: #c2410c;
+  border-color: #ea580c;
+}
+
+.mask {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 14, 0.72);
+}
+
+.mask-title {
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #fecaca;
+}
+
+.mask-sub {
+  margin-top: 16rpx;
+  font-size: 28rpx;
+  color: #cbd5e1;
+}
+
+.mask-btn {
+  margin-top: 40rpx;
+  padding: 20rpx 56rpx;
+  border-radius: 16rpx;
+  font-size: 30rpx;
+  color: #fff;
+  background: #c2410c;
+}

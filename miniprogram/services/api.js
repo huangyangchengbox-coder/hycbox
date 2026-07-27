@@ -18,7 +18,9 @@ function adminHeader(extra) {
 
 function request(options) {
   const method = (options.method || 'GET').toUpperCase()
-  let url = `${config.baseUrl}${options.url}`
+  // baseUrl 可覆盖：扫码票据带 t/p 前缀时打到对应环境 API
+  const root = options.baseUrl || config.baseUrl
+  let url = `${root}${options.url}`
   let data = options.data || {}
 
   // GET：参数拼到 URL；不要带 json Content-Type，避免部分基础库异常
@@ -134,17 +136,47 @@ const api = {
         throw new Error('Mock 已关闭，请连接真实后端')
       })
     }
-    return request({ url: '/admin/login', method: 'POST', data: { username, password, client: 'mp' } })
+    return request({
+      url: '/admin/login',
+      method: 'POST',
+      data: { username, password, client: 'mp' }
+    })
+  },
+
+  /** 按票据前缀选择 API：t=体验，p=正式，避免扫错环境报「票据不存在」 */
+  apiBaseForTicket(ticket) {
+    const t = (ticket || '').trim()
+    if (t.charAt(0) === 't') {
+      return config.trialApi
+    }
+    if (t.charAt(0) === 'p') {
+      return config.prodApi
+    }
+    return config.baseUrl
   },
 
   /** POST /admin/qr-login/scan 小程序扫码 */
   scanQrLogin(ticket) {
-    return request({ url: '/admin/qr-login/scan', method: 'POST', data: { ticket } })
+    return request({
+      url: '/admin/qr-login/scan',
+      method: 'POST',
+      data: { ticket },
+      baseUrl: this.apiBaseForTicket(ticket)
+    })
   },
 
-  /** POST /admin/qr-login/confirm 小程序确认 Web 登录 */
-  confirmQrLogin(ticket) {
-    return request({ url: '/admin/qr-login/confirm', method: 'POST', data: { ticket }, admin: true })
+  /** POST /admin/qr-login/confirm：用本地 openid 确认 */
+  confirmQrLogin(ticket, openid) {
+    const oid = (openid || '').trim()
+    if (!oid) {
+      return Promise.reject(new Error('缺少微信 openid，请先打开小程序完成登录'))
+    }
+    return request({
+      url: '/admin/qr-login/confirm',
+      method: 'POST',
+      data: { ticket, openid: oid },
+      baseUrl: this.apiBaseForTicket(ticket)
+    })
   },
 
   /** GET /admin/users 超级管理员 */
@@ -222,12 +254,9 @@ const api = {
     return request({ url: '/publications', data: query }).then(normalizeListResponse)
   },
 
-  /** 物品 AI 详情：有缓存直接返回，否则服务端调 AI 并落库（可能较慢） */
-  getPublicationAiDetail(publicationId) {
-    return request({
-      url: `/publications/${publicationId}/ai-detail`,
-      timeout: 90000
-    })
+  /** 用户端：普通物品详情 */
+  getPublicationDetail(publicationId) {
+    return request({ url: `/publications/${publicationId}` })
   },
 
   /** 管理者端：仅自己的发布 */
@@ -470,8 +499,32 @@ const api = {
     return request({ url: '/admin/notices/read-all', method: 'POST', data: {}, admin: true })
   },
 
-  bindAdminWx(code) {
-    return request({ url: '/admin/wx-bind', method: 'POST', data: { code }, admin: true })
+  /** 绑定当前管理员 openid（优先本地 openid） */
+  bindAdminWx(openid) {
+    return request({
+      url: '/admin/wx-bind',
+      method: 'POST',
+      data: { openid: openid || '' },
+      admin: true
+    })
+  },
+
+  /** 账号密码 + openid 绑定小程序号 */
+  bindAdminWxByLogin(username, password, openid) {
+    return request({
+      url: '/admin/wx-bind-login',
+      method: 'POST',
+      data: { username, password, openid: openid || '' }
+    })
+  },
+
+  /** 查询 openid 是否已绑定管理员 */
+  checkAdminWxBind(openid) {
+    return request({
+      url: '/admin/wx-bind-check',
+      method: 'POST',
+      data: { openid: openid || '' }
+    })
   },
 
   grantAdminSubscribe(openid) {
@@ -517,56 +570,6 @@ const api = {
         },
         fail: reject
       })
-    })
-  },
-
-  /** POST /admin/ai-media/images（立即返回任务 ID，后台异步生成） */
-  createAiImage(data) {
-    return request({
-      url: '/admin/ai-media/images',
-      method: 'POST',
-      data: data || {},
-      admin: true,
-      timeout: 20000
-    })
-  },
-
-  /** POST /admin/ai-media/videos（立即返回任务 ID，后台异步生成） */
-  createAiVideo(data) {
-    return request({
-      url: '/admin/ai-media/videos',
-      method: 'POST',
-      data: data || {},
-      admin: true,
-      timeout: 20000
-    })
-  },
-
-  /** GET /admin/ai-media?type=image|video */
-  listAiMedia(params) {
-    return request({
-      url: '/admin/ai-media',
-      data: params || {},
-      admin: true
-    }).then(normalizeListResponse)
-  },
-
-  /** GET /admin/ai-media/{id} */
-  getAiMedia(id) {
-    return request({
-      url: `/admin/ai-media/${id}`,
-      admin: true
-    })
-  },
-
-  /** POST /admin/ai-media/{id}/refresh */
-  refreshAiMedia(id) {
-    return request({
-      url: `/admin/ai-media/${id}/refresh`,
-      method: 'POST',
-      data: {},
-      admin: true,
-      timeout: 120000
     })
   }
 }

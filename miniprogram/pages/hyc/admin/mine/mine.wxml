@@ -14,24 +14,25 @@
       </view>
       <text class="menu-arrow">{{needSubscribe ? '开启' : '续订'}}</text>
     </view>
+    <view class="menu-item" bindtap="onBindMpTap">
+      <view class="menu-main">
+        <view class="menu-title">绑定小程序号</view>
+        <view class="hyc-sub" wx:if="{{qrWxBound}}">已绑定 · 扫码登录电脑端无需再输密码</view>
+        <view class="hyc-sub" wx:else>绑定后扫码确认电脑端登录免密</view>
+      </view>
+      <text class="menu-arrow">{{qrWxBound ? '已绑定' : '绑定'}}</text>
+    </view>
+    <view class="menu-item" bindtap="onScanWebLogin">
+      <view>
+        <view class="menu-title">扫码登录电脑端</view>
+        <view class="hyc-sub">扫描网页登录页二维码并确认</view>
+      </view>
+      <text class="menu-arrow">扫码</text>
+    </view>
     <view class="menu-item" bindtap="goUser">
       <view>
         <view class="menu-title">进入用户端</view>
         <view class="hyc-sub">查看发布 / 我的订单</view>
-      </view>
-      <text class="menu-arrow">›</text>
-    </view>
-    <view class="menu-item" bindtap="goAiImage">
-      <view>
-        <view class="menu-title">图片AI</view>
-        <view class="hyc-sub">Agnes 文生图</view>
-      </view>
-      <text class="menu-arrow">›</text>
-    </view>
-    <view class="menu-item" bindtap="goAiVideo">
-      <view>
-        <view class="menu-title">视频AI</view>
-        <view class="hyc-sub">Agnes 文生视频</view>
       </view>
       <text class="menu-arrow">›</text>
     </view>
@@ -42,6 +43,15 @@
       </view>
       <text class="menu-arrow">›</text>
     </view>
+  </view>
+
+  <view class="hyc-card" wx:if="{{showBindForm}}">
+    <view class="hyc-title">验证管理员账号</view>
+    <view class="hyc-sub">绑定当前微信到电脑端管理账号（仅需一次）</view>
+    <input class="bind-input" placeholder="管理员账号" value="{{bindUsername}}" bindinput="onBindUsernameInput" />
+    <input class="bind-input" password placeholder="管理员密码" value="{{bindPassword}}" bindinput="onBindPasswordInput" />
+    <button class="hyc-btn-primary" bindtap="submitBindForm" loading="{{bindLoading}}" disabled="{{bindLoading}}">确认绑定</button>
+    <button class="hyc-btn-plain" bindtap="cancelBindForm">取消</button>
   </view>
 
   <view class="hyc-bottom-bar">
