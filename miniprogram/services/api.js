@@ -540,6 +540,26 @@ const api = {
     return request({ url: '/admin/subscribe/status', admin: true })
   },
 
+  /** 首页业务入口显隐（公开，用户 Hub 用） */
+  getHubEntries() {
+    return request({ url: '/hub/entries' })
+  },
+
+  /** 管理员读取首页入口配置 */
+  getAdminHubEntries() {
+    return request({ url: '/admin/hub-entries', admin: true })
+  },
+
+  /** 管理员更新首页入口显隐 */
+  updateHubEntries(data) {
+    return request({
+      url: '/admin/hub-entries',
+      method: 'PUT',
+      data: data || {},
+      admin: true
+    })
+  },
+
   uploadImage(filePath) {
     if (config.useMock) {
       return wrapMock(() => ({ code: 0, data: { url: filePath } }))

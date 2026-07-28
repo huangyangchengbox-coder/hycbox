@@ -29,6 +29,27 @@
       </view>
       <text class="menu-arrow">扫码</text>
     </view>
+    <view class="menu-item">
+      <view class="menu-main">
+        <view class="menu-title">首页·小区闪送</view>
+        <view class="hyc-sub">对用户显示该入口</view>
+      </view>
+      <switch checked="{{hubFlash}}" bindchange="onHubFlashChange" color="#07c160" disabled="{{hubSaving}}" />
+    </view>
+    <view class="menu-item">
+      <view class="menu-main">
+        <view class="menu-title">首页·物流中国</view>
+        <view class="hyc-sub">对用户显示该入口</view>
+      </view>
+      <switch checked="{{hubExpress}}" bindchange="onHubExpressChange" color="#07c160" disabled="{{hubSaving}}" />
+    </view>
+    <view class="menu-item">
+      <view class="menu-main">
+        <view class="menu-title">首页·村村送</view>
+        <view class="hyc-sub">对用户显示该入口</view>
+      </view>
+      <switch checked="{{hubVillage}}" bindchange="onHubVillageChange" color="#07c160" disabled="{{hubSaving}}" />
+    </view>
     <view class="menu-item" bindtap="goUser">
       <view>
         <view class="menu-title">进入用户端</view>

@@ -1,7 +1,8 @@
 <view class="page">
   <view class="hud">
     <view class="hud-item">击杀 {{kills}}</view>
-    <view class="hud-item">武器 Lv.{{weaponLv}} · {{weaponName}}</view>
+    <view class="hud-item">{{realmTierName}} · {{realmName}}</view>
+    <view class="hud-item">飞剑 ×{{swordCount}}</view>
     <view class="hud-item">波次 {{wave}}</view>
   </view>
 
@@ -9,20 +10,43 @@
     type="2d"
     id="gameCanvas"
     class="canvas"
-    bindtouchstart="onTouch"
+    bindtouchstart="onTouchStart"
+    bindtouchmove="onTouchMove"
+    bindtouchend="onTouchEnd"
+    bindtouchcancel="onTouchEnd"
   ></canvas>
 
-  <view class="bar">
-    <view class="btn {{autoFire ? 'on' : ''}}" bindtap="toggleAuto">
-      {{autoFire ? '自动开火 · 开' : '自动开火 · 关'}}
-    </view>
-    <view class="btn primary" bindtap="onShootTap">开火</view>
-    <view class="btn" wx:if="{{over}}" bindtap="restart">再来一局</view>
-  </view>
+  <!-- 必须放在 canvas 后面；cover-view 用固定宽高才能稳定显示 -->
+  <cover-view class="ctrl-bar" wx:if="{{!over && !perfect && !showRealmInfo}}">
+    <cover-view class="ctrl-btn" bindtap="toggleAutoPilot">{{autoPilot ? '自动中' : '自动'}}</cover-view>
+    <cover-view class="ctrl-btn" bindtap="toggleRealmInfo">境界</cover-view>
+  </cover-view>
 
-  <view class="mask" wx:if="{{over}}">
-    <view class="mask-title">防线失守</view>
-    <view class="mask-sub">击杀 {{kills}} · 最高武器 Lv.{{weaponLv}}</view>
-    <view class="mask-btn" bindtap="restart">重新开始</view>
-  </view>
+  <view class="tip" wx:if="{{!over && !perfect && !showRealmInfo}}">尸丹满50触发大庚剑阵 · 看经验条知升级进度</view>
+
+  <cover-view class="info-mask" wx:if="{{showRealmInfo && !over && !perfect}}">
+    <cover-view class="info-title">修仙境界</cover-view>
+    <cover-view class="info-scroll">
+      <cover-view wx:for="{{realmInfoList}}" wx:key="title" class="info-group">
+        <cover-view class="info-group-title">{{item.title}}</cover-view>
+        <cover-view wx:for="{{item.items}}" wx:for-item="r" wx:key="name" class="info-row">
+          <cover-view class="info-name">{{r.name}}期 · 击杀{{r.kills}}+</cover-view>
+          <cover-view class="info-desc">{{r.desc}}</cover-view>
+        </cover-view>
+      </cover-view>
+    </cover-view>
+    <cover-view class="info-close" bindtap="closeRealmInfo">关闭</cover-view>
+  </cover-view>
+
+  <cover-view class="mask" wx:if="{{perfect}}">
+    <cover-view class="ink-epitaph">大圆满</cover-view>
+    <cover-view class="mask-sub">道祖 · 击杀 {{kills}}</cover-view>
+    <cover-view class="mask-btn" bindtap="restart">再修一回</cover-view>
+  </cover-view>
+
+  <cover-view class="mask" wx:if="{{over && !perfect}}">
+    <cover-view class="ink-epitaph">大道无情</cover-view>
+    <cover-view class="mask-sub">击杀 {{kills}} · 境界 {{realmName}}</cover-view>
+    <cover-view class="mask-btn" bindtap="restart">再修一回</cover-view>
+  </cover-view>
 </view>

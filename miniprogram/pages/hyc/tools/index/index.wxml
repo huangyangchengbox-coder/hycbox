@@ -36,9 +36,9 @@
       <view class="tool-desc">秒表与倒计时</view>
     </view>
     <view class="tool-card" bindtap="goZombie">
-      <view class="tool-icon zombie">Z</view>
-      <view class="tool-name">僵尸通道</view>
-      <view class="tool-desc">单通道射击 · 击杀升级</view>
+      <view class="tool-icon zombie">仙</view>
+      <view class="tool-name">仙途</view>
+      <view class="tool-desc">草地斩尸 · 飞剑追踪 · 境界突破</view>
     </view>
   </view>
 </view>

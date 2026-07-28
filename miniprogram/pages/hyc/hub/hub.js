@@ -47,6 +47,10 @@ function resolveWeatherFx(code, text) {
 
 Page({
   data: {
+    /** 管理员可配置：默认隐藏，接口返回后更新 */
+    showFlash: false,
+    showExpress: false,
+    showVillage: false,
     weatherLoading: true,
     weatherText: '',
     weatherTemp: '',
@@ -61,7 +65,24 @@ Page({
   },
 
   onShow() {
+    this.loadHubEntries()
     this.loadWeather()
+  },
+
+  loadHubEntries() {
+    const that = this
+    api.getHubEntries().then(res => {
+      if (res.code !== 0 || !res.data) {
+        return
+      }
+      that.setData({
+        showFlash: !!res.data.flash,
+        showExpress: !!res.data.express,
+        showVillage: !!res.data.village
+      })
+    }).catch(err => {
+      console.warn('[hub] entries', err && err.message)
+    })
   },
 
   loadWeather() {

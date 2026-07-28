@@ -13,7 +13,11 @@ Page({
     showBindForm: false,
     bindUsername: '',
     bindPassword: '',
-    bindLoading: false
+    bindLoading: false,
+    hubFlash: false,
+    hubExpress: false,
+    hubVillage: false,
+    hubSaving: false
   },
 
   onShow() {
@@ -27,6 +31,61 @@ Page({
       bindUsername: wx.getStorageSync('hyc_admin_username') || ''
     })
     this.refreshBindStatus()
+    this.loadHubEntries()
+  },
+
+  loadHubEntries() {
+    api.getAdminHubEntries().then(res => {
+      if (res.code !== 0 || !res.data) {
+        return
+      }
+      this.setData({
+        hubFlash: !!res.data.flash,
+        hubExpress: !!res.data.express,
+        hubVillage: !!res.data.village
+      })
+    }).catch(err => {
+      console.warn('[admin mine] hub entries', err && err.message)
+    })
+  },
+
+  onHubFlashChange(e) {
+    this.saveHubEntry('flash', !!e.detail.value, 'hubFlash')
+  },
+
+  onHubExpressChange(e) {
+    this.saveHubEntry('express', !!e.detail.value, 'hubExpress')
+  },
+
+  onHubVillageChange(e) {
+    this.saveHubEntry('village', !!e.detail.value, 'hubVillage')
+  },
+
+  saveHubEntry(field, value, dataKey) {
+    const prev = this.data[dataKey]
+    const payload = {}
+    payload[field] = value
+    this.setData({ [dataKey]: value, hubSaving: true })
+    api.updateHubEntries(payload).then(res => {
+      if (res.code !== 0) {
+        this.setData({ [dataKey]: prev })
+        wx.showToast({ title: (res && res.message) || '保存失败', icon: 'none' })
+        return
+      }
+      if (res.data) {
+        this.setData({
+          hubFlash: !!res.data.flash,
+          hubExpress: !!res.data.express,
+          hubVillage: !!res.data.village
+        })
+      }
+      wx.showToast({ title: value ? '已显示' : '已隐藏', icon: 'success' })
+    }).catch(err => {
+      this.setData({ [dataKey]: prev })
+      wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' })
+    }).finally(() => {
+      this.setData({ hubSaving: false })
+    })
   },
 
   /** 以服务端管理员记录为准（token），不再每次用 code 换票判断 */
