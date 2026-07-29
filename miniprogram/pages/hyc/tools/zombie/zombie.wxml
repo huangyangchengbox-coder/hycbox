@@ -1,4 +1,5 @@
-<view class="page">
+<!-- 仙途主界面 -->
+<view class="xian-page">
   <view class="hud">
     <view class="hud-item">击杀 {{kills}}</view>
     <view class="hud-item">{{realmTierName}} · {{realmName}}</view>

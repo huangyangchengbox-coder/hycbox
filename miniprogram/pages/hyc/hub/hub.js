@@ -123,7 +123,11 @@ Page({
           ? ('未开启定位 · ' + (d.placeLabel || '默认城市') + '（点击授权）')
           : ((d.placeLabel || '当前位置') + '天气'),
         weatherFromFallback: !!fromFallback,
-        ...fx
+        weatherSky: fx.weatherSky,
+        fxCloud: fx.fxCloud,
+        fxRain: fx.fxRain,
+        fxLightning: fx.fxLightning,
+        rainDrops: fx.rainDrops
       })
     }).catch(err => {
       console.warn('[hub] weather', err && err.message)

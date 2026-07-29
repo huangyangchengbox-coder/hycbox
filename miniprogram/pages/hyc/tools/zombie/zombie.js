@@ -3,6 +3,15 @@
  * 击杀达门槛突破境界：清场 + 境界特效；尸体会随境界变大。
  */
 
+/** 远程资源根路径（后台 uploads），避免主包图片超 200K 质量门禁 */
+const ASSET_BASE = 'https://hychyr.top/uploads/game/xian'
+/** 资源版本号：换图后递增，避免微信缓存旧图 */
+const ASSET_VER = '20260729c'
+
+function assetUrl(relPath) {
+  return ASSET_BASE + '/' + String(relPath || '').replace(/^\//, '') + '?v=' + ASSET_VER
+}
+
 /** 修仙境界表：kills=突破所需击杀；tier 决定升阶特效风格 */
 const REALMS = [
   {
@@ -85,11 +94,11 @@ const REALMS = [
   }
 ]
 
-/** ZombieOGA 分镜：Idle/Walk/Attack/Hurt/Dead */
+/** ZombieOGA 分镜：Idle/Walk/Attack/Hurt/Dead（远程图） */
 function buildAnimPaths(folder, prefix, count) {
   const paths = []
   for (let i = 0; i < count; i++) {
-    paths.push('/images/zombie/' + folder + '/' + prefix + '_' + (i < 10 ? '0' : '') + i + '.png')
+    paths.push(assetUrl(folder + '/' + prefix + '_' + (i < 10 ? '0' : '') + i + '.png'))
   }
   return paths
 }
@@ -100,7 +109,9 @@ const ANIM_DEFS = {
   attack: { paths: buildAnimPaths('attack', 'attack', 8), fps: 10 },
   // 受伤/死亡稍慢，方便看清单帧动作
   hurt: { paths: buildAnimPaths('hurt', 'hurt', 8), fps: 9 },
-  dead: { paths: buildAnimPaths('dead', 'dead', 8), fps: 7 }
+  dead: { paths: buildAnimPaths('dead', 'dead', 8), fps: 7 },
+  // 出土：手→露头→半身（3 帧）
+  emerge: { paths: buildAnimPaths('emerge', 'emerge', 3), fps: 3.2 }
 }
 
 /** 地面掉落：飞剑/血包；电火风冰符靠近拾取后附魔飞剑 10 秒 */
@@ -121,16 +132,13 @@ function playerMaxHpByRealm(realm) {
   return 48 + realm.lv * 16 + tierBonus
 }
 
-const TOMB_COUNT = 3
+const TOMB_COUNT = 4
 const TOMB_PATHS = buildAnimPaths('tombs', 'tomb', TOMB_COUNT)
 
-const HERO_COUNT = 12
-const HERO_PATHS = []
-for (let i = 0; i < HERO_COUNT; i++) {
-  HERO_PATHS.push('/images/zombie/heroes/hero_' + (i < 10 ? '0' : '') + i + '.png')
-}
+/** 任务角色固定为指定原图，不再随机换皮 */
+const PLAYER_PATH = assetUrl('heroes/player_fixed.png')
 
-const GRASS_PATH = '/images/zombie/grass.png'
+const GRASS_PATH = assetUrl('bg_forest.png')
 
 function realmByKills(kills) {
   let r = REALMS[0]
@@ -256,7 +264,6 @@ Page({
 
   restart() {
     this._resetGame()
-    this._pickHeroSkin()
     const r = realmByKills(0)
     this.setData({
       kills: 0,
@@ -374,7 +381,7 @@ Page({
         this._h = height
         this._animImgs = { idle: [], walk: [], attack: [], hurt: [], dead: [] }
         this._tombImgs = []
-        this._heroImgs = []
+        this._playerImg = null
         this._grassImg = null
         this._resetGame()
         this._loadImages(() => this._loop())
@@ -385,22 +392,25 @@ Page({
     const canvas = this._canvas
     if (!canvas) return
     const animKeys = Object.keys(ANIM_DEFS)
-    let left = HERO_COUNT + TOMB_COUNT + 1
+    let left = 1 + TOMB_COUNT + 1
     for (let k = 0; k < animKeys.length; k++) left += ANIM_DEFS[animKeys[k]].paths.length
 
     const animImgs = { idle: [], walk: [], attack: [], hurt: [], dead: [] }
     const tombImgs = new Array(TOMB_COUNT)
-    const heroImgs = new Array(HERO_COUNT)
+    let playerImg = null
     let grassImg = null
 
     const finish = () => {
       if (left > 0) return
       this._animImgs = animImgs
       this._tombImgs = tombImgs
-      this._heroImgs = heroImgs
+      this._playerImg = playerImg
       this._grassImg = grassImg
-      this._pickHeroSkin()
       this.setData({ hp: Math.ceil(this._hp), maxHp: this._maxHp })
+      if (!playerImg || !grassImg) {
+        console.warn('仙途资源未就绪，请确认已上传到', ASSET_BASE)
+        wx.showToast({ title: '游戏资源加载失败', icon: 'none', duration: 2500 })
+      }
       if (done) done()
     }
 
@@ -412,6 +422,7 @@ Page({
         finish()
       }
       img.onerror = () => {
+        console.warn('资源加载失败', src)
         left -= 1
         finish()
       }
@@ -429,14 +440,8 @@ Page({
     for (let i = 0; i < TOMB_COUNT; i++) {
       loadOne(TOMB_PATHS[i], (img) => { tombImgs[i] = img })
     }
-    for (let i = 0; i < HERO_COUNT; i++) {
-      loadOne(HERO_PATHS[i], (img) => { heroImgs[i] = img })
-    }
+    loadOne(PLAYER_PATH, (img) => { playerImg = img })
     loadOne(GRASS_PATH, (img) => { grassImg = img })
-  },
-
-  _pickHeroSkin() {
-    this._heroIndex = Math.floor(Math.random() * HERO_COUNT)
   },
 
   _resetGame() {
@@ -510,13 +515,30 @@ Page({
   /** 草地上散落卡通墓碑（装饰，不挡碰撞） */
   _buildTombs(w, h) {
     const list = []
-    const m = 40
-    for (let i = 0; i < 9; i++) {
+    const m = 36
+    // 固定几处显眼落点，再补随机，确保新墓碑一眼能看到
+    const spots = [
+      { x: w * 0.18, y: h * 0.28 },
+      { x: w * 0.78, y: h * 0.32 },
+      { x: w * 0.22, y: h * 0.58 },
+      { x: w * 0.72, y: h * 0.62 },
+      { x: w * 0.48, y: h * 0.22 },
+      { x: w * 0.55, y: h * 0.72 }
+    ]
+    for (let i = 0; i < spots.length; i++) {
+      list.push({
+        x: spots[i].x,
+        y: spots[i].y,
+        idx: i % TOMB_COUNT,
+        scale: 1.15 + (i % 3) * 0.12
+      })
+    }
+    for (let i = 0; i < 4; i++) {
       list.push({
         x: m + Math.random() * (w - m * 2),
-        y: m + 40 + Math.random() * (h - m * 2 - 80),
+        y: m + 50 + Math.random() * (h - m * 2 - 100),
         idx: i % TOMB_COUNT,
-        scale: 0.75 + Math.random() * 0.45
+        scale: 0.95 + Math.random() * 0.35
       })
     }
     return list
@@ -721,29 +743,29 @@ Page({
     const spawnEvery = Math.max(1.35, 2.6 - this._wave * 0.06 - realm.lv * 0.04)
     const maxZ = Math.min(5, 2 + Math.floor(realm.lv / 3))
     this._spawnAcc += dt
-    if (this._breakMute <= 0 && this._zombies.length < maxZ && this._spawnAcc >= spawnEvery) {
+    if (!this._gengFx && this._breakMute <= 0 && this._zombies.length < maxZ && this._spawnAcc >= spawnEvery) {
       this._spawnAcc = 0
       this._spawnZombie()
     }
 
     this._pickupAcc += dt
-    if (this._pickupAcc >= Math.max(5.5, 8.5 - realm.lv * 0.35)) {
+    if (!this._gengFx && this._pickupAcc >= Math.max(5.5, 8.5 - realm.lv * 0.35)) {
       this._pickupAcc = 0
       this._spawnLoot('sword')
     }
 
     this._lootAcc += dt
-    if (this._lootAcc >= 6 + Math.random() * 5) {
+    if (!this._gengFx && this._lootAcc >= 6 + Math.random() * 5) {
       this._lootAcc = 0
       this._spawnRandomLoot()
     }
 
     // 随机雷罚
-    this._updateLightning(dt, realm)
+    if (!this._gengFx) this._updateLightning(dt, realm)
 
     const shootEvery = Math.max(0.22, 0.55 - realm.lv * 0.045)
     this._swordAcc += dt
-    if (this._swordAcc >= shootEvery) {
+    if (!this._gengFx && this._swordAcc >= shootEvery) {
       this._swordAcc = 0
       this._launchSwords(realm)
     }
@@ -890,12 +912,14 @@ Page({
         continue
       }
 
-      if (z.emerge < 1) {
-        z.state = 'idle'
-        z.emerge = Math.min(1, z.emerge + dt / 0.55)
+      // 出土动画：手 → 露头 → 半身，约 1 秒播完再追人
+      if (z.state === 'emerge' || z.emerge < 1) {
+        z.state = 'emerge'
+        z.emerge = Math.min(1, z.emerge + dt / 1.05)
         if (z.emerge >= 1) {
           z.state = 'walk'
           z.frameT = 0
+          z.emerge = 1
         }
         continue
       }
@@ -917,12 +941,13 @@ Page({
         continue
       }
 
+      // 剑阵整段期间：僵尸冻结，由剑阵逻辑驱动位移
+      if (this._gengFx) {
+        z.state = 'idle'
+        continue
+      }
+
       if (z.state === 'attack') {
-        // 剑阵中禁止僵尸咬人
-        if (this._gengFx) {
-          z.state = 'idle'
-          continue
-        }
         const atkLen = ANIM_DEFS.attack.paths.length / ANIM_DEFS.attack.fps
         if (z.frameT >= atkLen * 0.55 && !z.hitDone) {
           z.hitDone = true
@@ -933,12 +958,6 @@ Page({
           z.frameT = 0
           z.hitDone = false
         }
-        continue
-      }
-
-      // 剑阵吸入阶段：不再自主追击
-      if (this._gengFx && (this._gengFx.phase === 'suck' || this._gengFx.phase === 'zap')) {
-        z.state = 'idle'
         continue
       }
 
@@ -1275,9 +1294,9 @@ Page({
       hp,
       maxHp: hp,
       speedBonus: Math.random() * 10,
-      frameT: Math.random() * 2,
+      frameT: 0,
       emerge: 0,
-      state: 'idle',
+      state: 'emerge',
       kx: 0,
       ky: 0,
       flash: 0,
@@ -1321,77 +1340,172 @@ Page({
   },
 
   /**
-   * 大庚剑阵：尸丹满 50 触发
-   * 刷出大量僵尸 → 64 剑围圆剑尖朝内 → 吸入 → 雷丝尽斩 → 尸丹归零
+   * 大庚剑阵：尸丹满 50 触发，整段约 10 秒
+   * 身上汇聚 64 金黄雷剑 → 各自飞向屏幕中央围圆（尖朝内）→ 吸入缩小散开 → 雷丝穿尸尽斩
+   * 剑离身后，人物周围环剑/御剑暂时消失
    */
   _startGengFormation() {
     if (this._perfect || this._over) return
-    // 同时涌现大量僵尸
-    const n = 12 + Math.min(8, Math.floor((this._realmLv || 1) / 2))
+    const n = 14 + Math.min(10, Math.floor((this._realmLv || 1) / 2))
     for (let i = 0; i < n; i++) this._spawnZombie()
 
     const w = this._w
     const h = this._h
     const cx = w * 0.5
     const cy = h * 0.42
-    const radius = Math.min(w, h) * 0.3
+    const radius = Math.min(w, h) * 0.32
+    const px = this._playerX
+    const py = this._playerY
+    const orbitR = 30
     const swords = []
     for (let i = 0; i < GENG_SWORD_COUNT; i++) {
       const a = (Math.PI * 2 * i) / GENG_SWORD_COUNT
-      // 剑尖朝圆心：+X 为尖，故朝向圆心角 = a + π
+      // 起点：环绕人物（与平时环剑同向，尖朝外）
+      const sx = px + Math.cos(a) * orbitR
+      const sy = py + Math.sin(a) * orbitR
       swords.push({
         a: a,
-        x: cx + Math.cos(a) * radius,
-        y: cy + Math.sin(a) * radius,
-        tipAngle: a + Math.PI
+        // 终点：阵心圆圈上，剑尖朝内
+        tx: cx + Math.cos(a) * radius,
+        ty: cy + Math.sin(a) * radius,
+        tipIn: a + Math.PI,
+        tipOut: a,
+        x: px,
+        y: py,
+        tipAngle: a,
+        scale: 0,
+        // 错开汇聚，像从身上陆续抽出
+        delay: (i / GENG_SWORD_COUNT) * 0.55
       })
+    }
+    const links = []
+    for (let i = 0; i < GENG_SWORD_COUNT; i += 2) {
+      links.push({ a: i, b: (i + 31) % GENG_SWORD_COUNT })
     }
     this._gengFx = {
       t: 0,
-      phase: 'form',
+      phase: 'gather',
       cx: cx,
       cy: cy,
       radius: radius,
       swords: swords,
-      formDur: 0.75,
-      suckDur: 1.15,
-      zapDur: 1.45,
-      killed: false
+      links: links,
+      gatherDur: 1.1,
+      flyDur: 1.5,
+      suckDur: 2.2,
+      zapDur: 4.2,
+      endDur: 1.0,
+      killed: false,
+      killAt: 3.5,
+      orbitR: orbitR
     }
-    this._breakMute = 4.5
+    this._breakMute = 10.5
+    // 身上飞剑全部离体参阵，清空场上追击飞剑
     this._swords = []
     this._focusZombie = null
     this.setData({ corpseDan: 0 })
     wx.showToast({ title: '大庚剑阵', icon: 'none', duration: 1500 })
   },
 
+  /** 为场上僵尸分配剑阵内散开落点（不全挤中间） */
+  _assignGengScatterTargets(fx) {
+    const list = this._zombies || []
+    for (let i = 0; i < list.length; i++) {
+      const z = list[i]
+      if (z.state === 'dead') continue
+      const a = Math.random() * Math.PI * 2
+      const rr = fx.radius * (0.18 + Math.random() * 0.6)
+      z.gengFromX = z.x
+      z.gengFromY = z.y
+      z.gengTx = fx.cx + Math.cos(a) * rr
+      z.gengTy = fx.cy + Math.sin(a) * rr * 0.92
+      z.gengScale = 1
+      z.emerge = 1
+      z.floatY = 0
+    }
+  },
+
   _updateGengFormation(dt, realm) {
     const fx = this._gengFx
     if (!fx) return
     fx.t += dt
+    const px = this._playerX
+    const py = this._playerY
 
-    if (fx.phase === 'form') {
-      const u = Math.min(1, fx.t / fx.formDur)
-      const r = fx.radius * (0.2 + 0.8 * u)
+    // 身上汇聚：剑从人物身上陆续抽出，环绕成形
+    if (fx.phase === 'gather') {
       for (let i = 0; i < fx.swords.length; i++) {
         const s = fx.swords[i]
-        s.x = fx.cx + Math.cos(s.a) * r
-        s.y = fx.cy + Math.sin(s.a) * r
+        const local = Math.max(0, fx.t - s.delay)
+        const u = Math.min(1, local / 0.45)
+        const ease = 1 - Math.pow(1 - u, 2)
+        const r = fx.orbitR * (0.15 + 0.85 * ease)
+        s.x = px + Math.cos(s.a) * r
+        s.y = py + Math.sin(s.a) * r
+        s.tipAngle = s.tipOut
+        s.scale = ease
       }
-      if (fx.t >= fx.formDur) {
+      if (fx.t >= fx.gatherDur) {
+        fx.phase = 'fly'
+        fx.t = 0
+        // 锁定起飞起点（人物当前位置环上）
+        for (let i = 0; i < fx.swords.length; i++) {
+          const s = fx.swords[i]
+          s.fromX = s.x
+          s.fromY = s.y
+          s.scale = 1
+        }
+      }
+      return
+    }
+
+    // 各自飞向屏幕中央预定落点，围成圆圈；剑尖翻转向内
+    if (fx.phase === 'fly') {
+      const u = Math.min(1, fx.t / fx.flyDur)
+      const ease = 1 - Math.pow(1 - u, 3)
+      for (let i = 0; i < fx.swords.length; i++) {
+        const s = fx.swords[i]
+        // 错开起飞，外圈感更强
+        const iu = Math.min(1, Math.max(0, (u * 1.15) - (i / GENG_SWORD_COUNT) * 0.15))
+        const e = 1 - Math.pow(1 - iu, 3)
+        const fx0 = s.fromX != null ? s.fromX : px
+        const fy0 = s.fromY != null ? s.fromY : py
+        s.x = fx0 + (s.tx - fx0) * e
+        s.y = fy0 + (s.ty - fy0) * e
+        // 尖朝外 → 尖朝内
+        let da = s.tipIn - s.tipOut
+        while (da > Math.PI) da -= Math.PI * 2
+        while (da < -Math.PI) da += Math.PI * 2
+        s.tipAngle = s.tipOut + da * e
+        s.scale = 1
+      }
+      if (fx.t >= fx.flyDur) {
+        for (let i = 0; i < fx.swords.length; i++) {
+          const s = fx.swords[i]
+          s.x = s.tx
+          s.y = s.ty
+          s.tipAngle = s.tipIn
+        }
         fx.phase = 'suck'
         fx.t = 0
+        this._assignGengScatterTargets(fx)
       }
       return
     }
 
     if (fx.phase === 'suck') {
-      const pull = 1 - Math.pow(1 - Math.min(1, fx.t / fx.suckDur), 2)
+      const u = Math.min(1, fx.t / fx.suckDur)
+      const ease = 1 - Math.pow(1 - u, 2)
       for (let i = 0; i < this._zombies.length; i++) {
         const z = this._zombies[i]
         if (z.state === 'dead') continue
-        z.x += (fx.cx - z.x) * (0.08 + pull * 0.22)
-        z.y += (fx.cy - z.y) * (0.08 + pull * 0.22)
+        const fx0 = z.gengFromX != null ? z.gengFromX : z.x
+        const fy0 = z.gengFromY != null ? z.gengFromY : z.y
+        const tx = z.gengTx != null ? z.gengTx : fx.cx
+        const ty = z.gengTy != null ? z.gengTy : fx.cy
+        z.x = fx0 + (tx - fx0) * ease
+        z.y = fy0 + (ty - fy0) * ease
+        z.gengScale = 1 - 0.58 * ease
         z.emerge = 1
         z.state = 'hurt'
         z.frameT = 0
@@ -1405,18 +1519,34 @@ Page({
     }
 
     if (fx.phase === 'zap') {
-      if (!fx.killed && fx.t >= 0.28) {
+      for (let i = 0; i < this._zombies.length; i++) {
+        const z = this._zombies[i]
+        if (z.state === 'dead') continue
+        z.gengScale = 0.42
+        z.x += Math.sin((this._animT || 0) * 28 + z.id) * 0.35
+        z.y += Math.cos((this._animT || 0) * 24 + z.id) * 0.25
+        z.state = 'hurt'
+      }
+      if (!fx.killed && fx.t >= fx.killAt) {
         fx.killed = true
         for (let i = this._zombies.length - 1; i >= 0; i--) {
           const z = this._zombies[i]
-          this._burst(z.x, z.y, '#67e8f9', 12)
-          this._burst(z.x, z.y, '#e0f2fe', 8)
+          this._burst(z.x, z.y, '#fbbf24', 14)
+          this._burst(z.x, z.y, '#fef08a', 10)
           this._zombies.splice(i, 1)
           this._registerKill({ skipDan: true })
         }
         this._focusZombie = null
       }
       if (fx.t >= fx.zapDur) {
+        fx.phase = 'end'
+        fx.t = 0
+      }
+      return
+    }
+
+    if (fx.phase === 'end') {
+      if (fx.t >= fx.endDur) {
         this._gengFx = null
         this._corpseDan = 0
         this.setData({ corpseDan: 0 })
@@ -1730,14 +1860,16 @@ Page({
     ctx.restore()
   },
 
-  /** 按状态取 ZombieOGA 分镜帧；死亡不循环，其它循环 */
+  /** 按状态取分镜；出土按 emerge 进度选帧；死亡/受伤不循环 */
   _zombieFrame(z, animKey) {
     const def = ANIM_DEFS[animKey] || ANIM_DEFS.walk
     const imgs = (this._animImgs && this._animImgs[animKey]) || []
     const n = imgs.length || def.paths.length
     if (!n) return null
     let fi
-    if (animKey === 'dead' || animKey === 'hurt' || animKey === 'attack') {
+    if (animKey === 'emerge') {
+      fi = Math.min(n - 1, Math.floor((z.emerge || 0) * n))
+    } else if (animKey === 'dead' || animKey === 'hurt' || animKey === 'attack') {
       fi = Math.min(n - 1, Math.floor(z.frameT * def.fps))
     } else {
       fi = Math.floor(z.frameT * def.fps) % n
@@ -1753,22 +1885,23 @@ Page({
     const realm = realmByKills(this._kills)
 
     if (this._grassImg) {
+      // 全屏森林地图背景（远程图）
       ctx.drawImage(this._grassImg, 0, 0, w, h)
     } else {
-      ctx.fillStyle = '#4aa848'
+      ctx.fillStyle = '#2f6b3a'
       ctx.fillRect(0, 0, w, h)
     }
 
-    this._drawScenery(ctx)
+    // 新背景已含山石小路，不再叠画程序风景，避免挡画面
 
     const tombs = this._tombs || []
     for (let ti = 0; ti < tombs.length; ti++) {
       const t = tombs[ti]
       const img = this._tombImgs && this._tombImgs[t.idx]
       if (!img) continue
-      const tw = 36 * t.scale
-      const th = 48 * t.scale
-      ctx.globalAlpha = 0.92
+      const tw = 64 * t.scale
+      const th = 78 * t.scale
+      ctx.globalAlpha = 1
       ctx.drawImage(img, t.x - tw / 2, t.y - th, tw, th)
       ctx.globalAlpha = 1
     }
@@ -1784,28 +1917,35 @@ Page({
     }
     ctx.globalAlpha = 1
 
-    for (const p of this._pickups) this._drawLoot(ctx, p)
-    for (const s of this._swords) this._drawFlyingSword(ctx, s)
+    for (let i = 0; i < this._pickups.length; i++) this._drawLoot(ctx, this._pickups[i])
+    for (let i = 0; i < this._swords.length; i++) this._drawFlyingSword(ctx, this._swords[i])
 
-    for (const z of this._zombies) {
+    for (let zi = 0; zi < this._zombies.length; zi++) {
+      const z = this._zombies[zi]
       const animKey = z.state || 'walk'
       const img = this._zombieFrame(z, animKey)
       const emerge = Math.max(0.05, Math.min(1, z.emerge))
       let size = z.r * 2.55 * (0.35 + 0.65 * emerge)
+      // 出土帧自带土堆，用更大画幅、不透明度拉满
+      if (z.state === 'emerge') size = z.r * (2.8 + emerge * 0.6)
+      if (z.gengScale != null) size *= z.gengScale
       if (z.state === 'walk') size *= 1 + Math.sin(z.frameT * 10) * 0.04
       if (z.state === 'hurt') size *= 1.08
       if (z.state === 'dead') size *= 1 - Math.min(0.25, z.frameT * 0.2)
       if (z.flash > 0) z.flash -= 0.016
-      const drawY = z.y - (z.floatY || 0) + (1 - emerge) * 16
+      const drawY = z.y - (z.floatY || 0) + (z.state === 'emerge' ? 8 : (1 - emerge) * 16)
       ctx.save()
-      ctx.globalAlpha = z.state === 'dead' ? Math.max(0.2, 1 - z.frameT * 0.7) : (0.35 + 0.65 * emerge)
+      ctx.globalAlpha = z.state === 'dead'
+        ? Math.max(0.2, 1 - z.frameT * 0.7)
+        : (z.state === 'emerge' ? 1 : (0.35 + 0.65 * emerge))
       if ((z.iceT || 0) > 0) ctx.globalAlpha *= 0.9
       this._drawSprite(ctx, img, z.x, drawY, size, z.flash > 0 ? 'rgba(255,255,200,0.55)' : null, null)
       ctx.restore()
       this._drawZombieElementFx(ctx, z, drawY)
 
-      if (emerge > 0.5 && z.state !== 'dead') {
-        const bw = z.r * 2.2
+      const hideBar = z.state === 'emerge' || (this._gengFx && (this._gengFx.phase === 'suck' || this._gengFx.phase === 'zap' || this._gengFx.phase === 'end'))
+      if (emerge > 0.5 && z.state !== 'dead' && !hideBar) {
+        const bw = z.r * 2.2 * (z.gengScale != null ? z.gengScale : 1)
         const ratio = Math.max(0, z.hp / z.maxHp)
         ctx.fillStyle = '#1f2937'
         ctx.fillRect(z.x - bw / 2, drawY - z.r - 16, bw, 4)
@@ -1824,15 +1964,18 @@ Page({
 
     this._drawLightning(ctx)
 
-    const heroImg = this._heroImgs[this._heroIndex || 0]
-    // 御剑：身下飞剑
-    this._drawRideSword(ctx, realm)
-    if (!this._perfect) this._drawOrbitSwords(ctx, realm)
+    const heroImg = this._playerImg
+    // 剑阵期间：环剑/御剑已离体参阵，人物身边不再画剑
+    if (!this._gengFx) {
+      this._drawRideSword(ctx, realm)
+      if (!this._perfect) this._drawOrbitSwords(ctx, realm)
+    }
     const hurtFlash = this._playerHurtT > 0 ? 'rgba(248,113,113,0.45)' : realm.glow
-    this._drawSprite(ctx, heroImg, this._playerX, this._playerY - 6, 52, hurtFlash, realm.color)
+    this._drawSprite(ctx, heroImg, this._playerX, this._playerY - 6, 58, hurtFlash, realm.color)
     if (!this._perfectFx) this._drawRealmBadge(ctx, realm)
 
-    for (const p of this._particles) {
+    for (let i = 0; i < this._particles.length; i++) {
+      const p = this._particles[i]
       ctx.globalAlpha = Math.max(0, p.life * 3)
       ctx.fillStyle = p.color
       ctx.fillRect(p.x - 2, p.y - 2, 4, 4)
@@ -2100,60 +2243,211 @@ Page({
     ctx.restore()
   },
 
-  /** 大庚剑阵：64 剑围圆 + 雷丝 */
+  /** 大庚剑阵：身上汇聚 → 飞向中央围圆 + 雷丝（约 10s） */
   _drawGengFormation(ctx) {
     const fx = this._gengFx
     if (!fx) return
+    const fade =
+      fx.phase === 'end' ? Math.max(0, 1 - fx.t / fx.endDur) :
+      (fx.phase === 'gather' ? Math.min(1, fx.t / 0.35) : 1)
     ctx.save()
-    // 阵名
-    ctx.globalAlpha = 0.9
-    ctx.fillStyle = '#e0f2fe'
-    ctx.font = 'bold 20px "KaiTi", "STKaiti", serif'
-    ctx.textAlign = 'center'
-    ctx.fillText('大庚剑阵', fx.cx, fx.cy - fx.radius - 24)
 
-    // 圆阵
-    ctx.globalAlpha = 0.35
-    ctx.strokeStyle = '#67e8f9'
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.arc(fx.cx, fx.cy, fx.radius * (fx.phase === 'form' ? Math.min(1, fx.t / fx.formDur) : 1), 0, Math.PI * 2)
-    ctx.stroke()
+    // 阵名：起飞后显示在阵心上方
+    if (fx.phase !== 'gather') {
+      ctx.globalAlpha = 0.92 * fade * (fx.phase === 'fly' ? Math.min(1, fx.t / fx.flyDur) : 1)
+      ctx.fillStyle = '#fef9c3'
+      ctx.font = 'bold 20px "KaiTi", "STKaiti", serif'
+      ctx.textAlign = 'center'
+      ctx.fillText('大庚剑阵', fx.cx, fx.cy - fx.radius - 26)
+    }
 
-    for (let i = 0; i < fx.swords.length; i++) {
-      const s = fx.swords[i]
-      ctx.save()
-      ctx.globalAlpha = 0.95
-      ctx.translate(s.x, s.y)
-      ctx.rotate(s.tipAngle)
-      this._paintInkSword(ctx, '#e0f2fe', 0.42)
-      ctx.restore()
-
-      if (fx.phase === 'zap') {
-        // 剑尖雷电细丝吸入中心/连向僵尸残留点
-        ctx.globalAlpha = 0.55 + Math.sin((this._animT || 0) * 20 + i) * 0.2
-        ctx.strokeStyle = '#67e8f9'
-        ctx.lineWidth = 1
-        ctx.beginPath()
-        const tipX = s.x + Math.cos(s.tipAngle) * 10
-        const tipY = s.y + Math.sin(s.tipAngle) * 10
-        ctx.moveTo(tipX, tipY)
-        const midX = (tipX + fx.cx) * 0.5 + Math.sin(i + fx.t * 14) * 6
-        const midY = (tipY + fx.cy) * 0.5 + Math.cos(i + fx.t * 12) * 6
-        ctx.lineTo(midX, midY)
-        ctx.lineTo(fx.cx, fx.cy)
-        ctx.stroke()
-      }
+    // 金黄阵环：飞阵过程渐显，结阵后常亮
+    if (fx.phase !== 'gather') {
+      const ringU = fx.phase === 'fly' ? Math.min(1, fx.t / fx.flyDur) : 1
+      ctx.globalAlpha = 0.4 * fade * ringU
+      ctx.strokeStyle = '#fbbf24'
+      ctx.lineWidth = 2.5
+      ctx.beginPath()
+      ctx.arc(fx.cx, fx.cy, fx.radius, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.globalAlpha = 0.12 * fade * ringU
+      ctx.fillStyle = 'rgba(251,191,36,0.35)'
+      ctx.beginPath()
+      ctx.arc(fx.cx, fx.cy, fx.radius, 0, Math.PI * 2)
+      ctx.fill()
     }
 
     if (fx.phase === 'suck') {
-      ctx.globalAlpha = 0.2
-      ctx.fillStyle = '#67e8f9'
-      ctx.beginPath()
-      ctx.arc(fx.cx, fx.cy, 18 + fx.t * 10, 0, Math.PI * 2)
-      ctx.fill()
+      ctx.globalAlpha = 0.25 * fade
+      for (let i = 0; i < 18; i++) {
+        const a = (this._animT || 0) * 3 + i * 0.7
+        const rr = fx.radius * (0.85 - (fx.t / fx.suckDur) * 0.55)
+        ctx.fillStyle = i % 2 ? '#fef08a' : '#f59e0b'
+        ctx.beginPath()
+        ctx.arc(fx.cx + Math.cos(a) * rr, fx.cy + Math.sin(a) * rr * 0.9, 2.2, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+
+    // 64 金黄雷电剑
+    for (let i = 0; i < fx.swords.length; i++) {
+      const s = fx.swords[i]
+      const sc = (s.scale != null ? s.scale : 1)
+      if (sc <= 0.02) continue
+      ctx.save()
+      ctx.globalAlpha = 0.96 * fade * Math.min(1, sc + 0.15)
+      ctx.translate(s.x, s.y)
+      ctx.rotate(s.tipAngle)
+      this._paintGengSword(ctx, 0.48 * sc)
+      ctx.restore()
+    }
+
+    if (fx.phase === 'zap' || (fx.phase === 'end' && !fx.killed)) {
+      this._drawGengFilaments(ctx, fx, fade)
+    } else if (fx.phase === 'end') {
+      ctx.globalAlpha = 0.35 * fade
+      ctx.strokeStyle = '#fef08a'
+      ctx.lineWidth = 1
+      for (let i = 0; i < fx.links.length; i += 2) {
+        const la = fx.links[i]
+        const sa = fx.swords[la.a]
+        const sb = fx.swords[la.b]
+        const tipA = this._gengTip(sa)
+        const tipB = this._gengTip(sb)
+        ctx.beginPath()
+        ctx.moveTo(tipA.x, tipA.y)
+        ctx.lineTo(tipB.x, tipB.y)
+        ctx.stroke()
+      }
     }
     ctx.restore()
+  },
+
+  _gengTip(s) {
+    return {
+      x: s.x + Math.cos(s.tipAngle) * 11,
+      y: s.y + Math.sin(s.tipAngle) * 11
+    }
+  },
+
+  /** 金黄雷电包裹的庚金剑 */
+  _paintGengSword(ctx, scale) {
+    const sc = scale || 1
+    ctx.save()
+    ctx.scale(sc, sc)
+    // 外层雷电辉光
+    ctx.globalAlpha = 0.35 + Math.sin((this._animT || 0) * 18) * 0.12
+    ctx.strokeStyle = '#fef08a'
+    ctx.lineWidth = 3.2
+    ctx.beginPath()
+    ctx.moveTo(-10, 0)
+    ctx.lineTo(20, 0)
+    ctx.stroke()
+    ctx.globalAlpha = 0.55
+    ctx.strokeStyle = '#f59e0b'
+    ctx.lineWidth = 1.4
+    ctx.beginPath()
+    ctx.moveTo(-8, -3)
+    ctx.lineTo(4, 2)
+    ctx.lineTo(14, -2)
+    ctx.lineTo(22, 0)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(-8, 3)
+    ctx.lineTo(5, -1.5)
+    ctx.lineTo(12, 2.5)
+    ctx.lineTo(22, 0)
+    ctx.stroke()
+    ctx.restore()
+    this._paintInkSword(ctx, '#fbbf24', scale)
+    // 刃心高光
+    ctx.save()
+    ctx.scale(sc, sc)
+    ctx.globalAlpha = 0.7
+    ctx.strokeStyle = '#fffbeb'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(-6, 0)
+    ctx.lineTo(18, 0)
+    ctx.stroke()
+    ctx.restore()
+  },
+
+  /** 剑尖金黄雷电细丝，穿过僵尸连接到对侧剑尖 */
+  _drawGengFilaments(ctx, fx, fade) {
+    const zombies = this._zombies || []
+    const t = this._animT || 0
+    const links = fx.links || []
+    for (let i = 0; i < links.length; i++) {
+      const link = links[i]
+      const sa = fx.swords[link.a]
+      const sb = fx.swords[link.b]
+      if (!sa || !sb) continue
+      const tipA = this._gengTip(sa)
+      const tipB = this._gengTip(sb)
+      // 选落在弦附近的僵尸作为穿点
+      const mids = []
+      for (let zi = 0; zi < zombies.length; zi++) {
+        const z = zombies[zi]
+        if (z.state === 'dead') continue
+        const d = this._pointSegDist(z.x, z.y, tipA.x, tipA.y, tipB.x, tipB.y)
+        if (d < fx.radius * 0.42) {
+          mids.push({ x: z.x, y: z.y, id: z.id })
+        }
+      }
+      mids.sort((p, q) => {
+        const da = (p.x - tipA.x) * (p.x - tipA.x) + (p.y - tipA.y) * (p.y - tipA.y)
+        const db = (q.x - tipA.x) * (q.x - tipA.x) + (q.y - tipA.y) * (q.y - tipA.y)
+        return da - db
+      })
+      const pts = [tipA].concat(mids.slice(0, 3)).concat([tipB])
+
+      ctx.globalAlpha = (0.55 + Math.sin(t * 22 + i) * 0.25) * fade
+      ctx.strokeStyle = '#fef08a'
+      ctx.lineWidth = 1.6
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      this._strokeJaggedPolyline(ctx, pts, t * 16 + i * 2.1, 5)
+
+      ctx.globalAlpha = (0.35 + Math.sin(t * 18 + i * 0.7) * 0.15) * fade
+      ctx.strokeStyle = '#f59e0b'
+      ctx.lineWidth = 0.9
+      this._strokeJaggedPolyline(ctx, pts, t * 20 + i * 3.3, 7)
+    }
+  },
+
+  _pointSegDist(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1
+    const dy = y2 - y1
+    const len2 = dx * dx + dy * dy || 1
+    let u = ((px - x1) * dx + (py - y1) * dy) / len2
+    u = Math.max(0, Math.min(1, u))
+    const sx = x1 + u * dx
+    const sy = y1 + u * dy
+    return Math.sqrt((px - sx) * (px - sx) + (py - sy) * (py - sy))
+  },
+
+  /** 折线雷丝：在相邻点之间插入抖动折点 */
+  _strokeJaggedPolyline(ctx, pts, seed, jag) {
+    if (!pts || pts.length < 2) return
+    ctx.beginPath()
+    ctx.moveTo(pts[0].x, pts[0].y)
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]
+      const b = pts[i + 1]
+      const steps = 4
+      for (let s = 1; s <= steps; s++) {
+        const u = s / steps
+        const x = a.x + (b.x - a.x) * u
+        const y = a.y + (b.y - a.y) * u
+        const nx = -(b.y - a.y)
+        const ny = b.x - a.x
+        const nl = Math.sqrt(nx * nx + ny * ny) || 1
+        const amp = (s === steps ? 0 : Math.sin(seed + i * 4 + s * 2.7) * jag)
+        ctx.lineTo(x + (nx / nl) * amp, y + (ny / nl) * amp)
+      }
+    }
+    ctx.stroke()
   },
 
   /** 人物周围环绕小剑：剑柄朝人、剑尖朝外，随时间旋转 */

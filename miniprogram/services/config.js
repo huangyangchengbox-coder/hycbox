@@ -28,5 +28,7 @@ module.exports = {
   baseUrl: resolveBaseUrl(),
   timeout: 20000,
   prodApi: PROD_API,
-  trialApi: TRIAL_API
+  trialApi: TRIAL_API,
+  /** 仙途游戏图：走后台 uploads，不进小程序主包 */
+  gameAssetBase: 'https://hychyr.top/uploads/game/xian'
 }
