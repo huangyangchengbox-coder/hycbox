@@ -6,7 +6,7 @@
 /** 远程资源根路径（后台 uploads），避免主包图片超 200K 质量门禁 */
 const ASSET_BASE = 'https://hychyr.top/uploads/game/xian'
 /** 资源版本号：换图后递增，避免微信缓存旧图 */
-const ASSET_VER = '20260730j'
+const ASSET_VER = '20260730k'
 
 /** 劫尸血条段数（随境界增加） */
 function bossHpBars(realmLv) {
@@ -291,7 +291,7 @@ function buildRealmFxPaths(folder) {
 /** 突破立绘（仅 V1） */
 const REALM_FX_PATHS = buildRealmFxPaths('fx/realms')
 const REALM_FX_KEYS = Object.keys(REALM_FX_PATHS)
-/** 灵狐：跟随 / 流光突袭分镜 */
+/** 灵狐：跟随 / 流光突袭分镜（元婴三尾灵狐） */
 const HELPER_WALK_PATHS = [
   assetUrl('helper/fox/fox_00.png'),
   assetUrl('helper/fox/fox_01.png')
@@ -300,8 +300,12 @@ const HELPER_SKILL_PATHS = [
   assetUrl('helper/fox/fox_02.png'),
   assetUrl('helper/fox/fox_03.png')
 ]
-const HELPER_SKILL_DUR = 0.72
-const HELPER_SKILL_CD = 2.8
+/** 突袭总时长：冲入 + 命中绽放 + 折返 */
+const HELPER_SKILL_DUR = 0.86
+const HELPER_SKILL_CD = 2.45
+/** 跟随侧后方偏移 */
+const HELPER_FOLLOW_OX = -46
+const HELPER_FOLLOW_OY = 8
 
 /** 按已解锁境界等级取配置（与击杀数解耦，需先击败劫尸才升境） */
 function realmByLv(lv) {
@@ -2303,24 +2307,29 @@ Page({
     this._ensureHelper()
   },
 
-  /** 元婴起召唤灵狐帮手（跟随 + 化作流光突袭） */
+  /** 元婴起召唤灵狐帮手（跟随飘游 + 化作流光突袭） */
   _ensureHelper() {
     if ((this._realmLv || 1) < HELPER_UNLOCK_LV) return
     if (this._helper) return
-    const g = this._clampToGrass(this._playerX - 42, this._playerY + 12)
+    const g = this._clampToGrass(this._playerX + HELPER_FOLLOW_OX, this._playerY + HELPER_FOLLOW_OY)
     this._helper = {
       x: g.x,
       y: g.y,
       state: 'follow',
       frameT: 0,
-      skillCd: 1.0,
+      skillCd: 0.8,
       skillHit: false,
       facing: 1,
+      bobT: 0,
       dashFromX: 0,
       dashFromY: 0,
       dashToX: 0,
       dashToY: 0,
-      trails: []
+      trails: [],
+      ghosts: [],
+      impactT: 0,
+      impactX: 0,
+      impactY: 0
     }
     if (!this._helperAnnounced) {
       this._helperAnnounced = true
@@ -2334,51 +2343,79 @@ Page({
     const h = this._helper
     if (!h || this._spiritFx || this._breakFx || this._perfect || this._perfectFx) return
     h.frameT += dt
+    h.bobT = (h.bobT || 0) + dt
     h.skillCd = (h.skillCd || 0) - dt
+    if ((h.impactT || 0) > 0) h.impactT -= dt
 
-    // 流光拖尾衰减
+    // 流光拖尾 / 残影衰减
     if (h.trails && h.trails.length) {
       for (let i = h.trails.length - 1; i >= 0; i--) {
-        h.trails[i].life -= dt
-        if (h.trails[i].life <= 0) h.trails.splice(i, 1)
+        const p = h.trails[i]
+        p.life -= dt
+        p.x += (p.vx || 0) * dt
+        p.y += (p.vy || 0) * dt
+        if (p.life <= 0) h.trails.splice(i, 1)
+      }
+    }
+    if (h.ghosts && h.ghosts.length) {
+      for (let i = h.ghosts.length - 1; i >= 0; i--) {
+        h.ghosts[i].life -= dt
+        if (h.ghosts[i].life <= 0) h.ghosts.splice(i, 1)
       }
     }
 
     if (h.state === 'skill') {
       const u = Math.min(1, h.frameT / HELPER_SKILL_DUR)
-      // 前半冲向目标，后半折返侧后方
-      const mid = 0.48
+      // 前段冲刺、中段命中滞空、后段折返
+      const mid = 0.42
+      const hold = 0.58
       let px
       let py
       if (u <= mid) {
         const t = u / mid
-        const e = t * t * (3 - 2 * t)
+        const e = 1 - Math.pow(1 - t, 3)
         px = h.dashFromX + (h.dashToX - h.dashFromX) * e
         py = h.dashFromY + (h.dashToY - h.dashFromY) * e
+      } else if (u <= hold) {
+        px = h.dashToX
+        py = h.dashToY - Math.sin(((u - mid) / (hold - mid)) * Math.PI) * 10
       } else {
-        const t = (u - mid) / (1 - mid)
+        const t = (u - hold) / (1 - hold)
         const e = t * t * (3 - 2 * t)
-        const backX = this._playerX - 40
-        const backY = this._playerY + 10
+        const backX = this._playerX + HELPER_FOLLOW_OX
+        const backY = this._playerY + HELPER_FOLLOW_OY
         px = h.dashToX + (backX - h.dashToX) * e
         py = h.dashToY + (backY - h.dashToY) * e
       }
       h.x = px
       h.y = py
       h.facing = (h.dashToX >= h.dashFromX) ? 1 : -1
-      // 流光粒子
-      if (Math.random() < 0.9) {
+
+      // 流光粒子 + 偶尔残影
+      if (Math.random() < 0.95) {
         if (!h.trails) h.trails = []
+        const ang = Math.atan2(h.dashToY - h.dashFromY, h.dashToX - h.dashFromX)
         h.trails.push({
-          x: h.x + (Math.random() - 0.5) * 8,
-          y: h.y + (Math.random() - 0.5) * 6,
-          life: 0.22 + Math.random() * 0.18,
-          r: 2 + Math.random() * 3
+          x: h.x + (Math.random() - 0.5) * 10,
+          y: h.y + (Math.random() - 0.5) * 8 - 4,
+          life: 0.28 + Math.random() * 0.22,
+          r: 2 + Math.random() * 4,
+          kind: Math.random() < 0.35 ? 'spark' : 'orb',
+          vx: -Math.cos(ang) * (20 + Math.random() * 40),
+          vy: -Math.sin(ang) * (20 + Math.random() * 40) - 10
         })
       }
+      if (u < 0.55 && Math.random() < 0.35) {
+        if (!h.ghosts) h.ghosts = []
+        h.ghosts.push({ x: h.x, y: h.y, facing: h.facing, life: 0.18, size: 58 })
+      }
+
       // 冲刺中段命中路径上的僵尸
-      if (!h.skillHit && u >= 0.28) {
+      if (!h.skillHit && u >= 0.3) {
         h.skillHit = true
+        h.impactT = 0.42
+        h.impactX = h.dashToX
+        h.impactY = h.dashToY
         this._helperSkillHit(h, realm)
       }
       if (h.frameT >= HELPER_SKILL_DUR) {
@@ -2387,30 +2424,48 @@ Page({
         h.skillHit = false
         h.skillCd = HELPER_SKILL_CD
         h.trails = []
+        h.ghosts = []
       }
       return
     }
 
-    // 跟随主角侧后方
-    const tx = this._playerX - 40
-    const ty = this._playerY + 10
+    // 跟随主角侧后方（弹性靠近 + 轻盈悬浮）
+    const tx = this._playerX + HELPER_FOLLOW_OX
+    const ty = this._playerY + HELPER_FOLLOW_OY
     let dx = tx - h.x
     let dy = ty - h.y
     let dist = Math.sqrt(dx * dx + dy * dy) || 1
-    if (dist > 6) {
-      const spd = Math.min(190, 100 + dist * 2) * dt
+    if (dist > 4) {
+      const spd = Math.min(220, 90 + dist * 2.4) * dt
       h.x += (dx / dist) * spd
       h.y += (dy / dist) * spd
       const c = this._clampToGrass(h.x, h.y)
       h.x = c.x
       h.y = c.y
+      // 移动时洒落灵火碎屑
+      if (dist > 18 && Math.random() < 0.45) {
+        if (!h.trails) h.trails = []
+        h.trails.push({
+          x: h.x + (Math.random() - 0.5) * 12,
+          y: h.y + 6 + Math.random() * 4,
+          life: 0.2 + Math.random() * 0.15,
+          r: 1.5 + Math.random() * 2.2,
+          kind: 'dust',
+          vx: (Math.random() - 0.5) * 12,
+          vy: -8 - Math.random() * 16
+        })
+      }
+      if (dist > 55 && Math.random() < 0.2) {
+        if (!h.ghosts) h.ghosts = []
+        h.ghosts.push({ x: h.x, y: h.y, facing: h.facing, life: 0.14, size: 48 })
+      }
     }
     if (Math.abs(dx) > 2) h.facing = dx >= 0 ? 1 : -1
 
     // 附近有尸则化作流光突袭
     if ((h.skillCd || 0) > 0 || this._gengFx || this._bossActive) return
     let best = null
-    let bestD = 170 * 170
+    let bestD = 185 * 185
     const zs = this._zombies || []
     for (let i = 0; i < zs.length; i++) {
       const z = zs[i]
@@ -2430,17 +2485,17 @@ Page({
     h.dashFromX = h.x
     h.dashFromY = h.y
     h.dashToX = best.x
-    h.dashToY = best.y
+    h.dashToY = best.y - 4
     h.facing = best.x >= h.x ? 1 : -1
     h.trails = []
+    h.ghosts = []
   },
 
-  /** 流光斩击：路径附近僵尸受伤 */
+  /** 流光斩击：路径附近僵尸受伤，并绽放命中环 */
   _helperSkillHit(h, realm) {
-    const r = 46 + Math.min(20, (realm.lv || 1) * 1.6)
-    const dmg = 7 + Math.floor((realm.lv || 1) * 2)
+    const r = 52 + Math.min(24, (realm.lv || 1) * 1.8)
+    const dmg = 8 + Math.floor((realm.lv || 1) * 2.2)
     const zs = this._zombies || []
-    // 对起点→终点线段附近的尸造成伤害
     const x0 = h.dashFromX
     const y0 = h.dashFromY
     const x1 = h.dashToX
@@ -2448,6 +2503,7 @@ Page({
     const segDx = x1 - x0
     const segDy = y1 - y0
     const segLen2 = segDx * segDx + segDy * segDy || 1
+    let hits = 0
     for (let i = 0; i < zs.length; i++) {
       const z = zs[i]
       if (!z || z.state === 'dead') continue
@@ -2458,10 +2514,26 @@ Page({
       const dy = z.y - cy
       if (dx * dx + dy * dy <= r * r) {
         this._hitZombie(z, dmg, h.x, h.y, realm, null, true)
+        hits++
       }
     }
-    this._burst(h.dashToX, h.dashToY - 6, '#fbbf24', 16)
-    this._burst(h.dashToX, h.dashToY - 6, '#fdba74', 10)
+    this._burst(h.dashToX, h.dashToY - 6, '#fbbf24', 18 + hits * 2)
+    this._burst(h.dashToX, h.dashToY - 6, '#fdba74', 12)
+    this._burst(h.dashToX, h.dashToY - 8, '#fff7ed', 8)
+    // 命中点追加短寿灵火粒子
+    if (!h.trails) h.trails = []
+    for (let k = 0; k < 10; k++) {
+      const a = (Math.PI * 2 * k) / 10
+      h.trails.push({
+        x: h.dashToX + Math.cos(a) * 6,
+        y: h.dashToY + Math.sin(a) * 4 - 6,
+        life: 0.32 + Math.random() * 0.2,
+        r: 2 + Math.random() * 3,
+        kind: 'spark',
+        vx: Math.cos(a) * (40 + Math.random() * 50),
+        vy: Math.sin(a) * (30 + Math.random() * 40) - 20
+      })
+    }
   },
 
   _drawHelper(ctx) {
@@ -2469,59 +2541,144 @@ Page({
     if (!h || this._spiritFx || this._breakFx) return
     const walk = this._helperWalkImgs || []
     const skill = this._helperSkillImgs || []
+    const bob = Math.sin((h.bobT || 0) * 4.2) * (h.state === 'skill' ? 1.5 : 4)
+
+    // 残影
+    if (h.ghosts && h.ghosts.length) {
+      for (let i = 0; i < h.ghosts.length; i++) {
+        const g = h.ghosts[i]
+        const imgG = (walk[0] || skill[0])
+        if (!imgG) continue
+        ctx.save()
+        ctx.globalAlpha = Math.max(0, g.life * 2.2)
+        ctx.translate(g.x, g.y - 4 + bob * 0.2)
+        if (g.facing < 0) ctx.scale(-1, 1)
+        this._drawSprite(ctx, imgG, 0, 0, g.size || 48, 'rgba(251,191,36,0.25)', null)
+        ctx.restore()
+      }
+    }
 
     // 流光拖尾
     if (h.trails && h.trails.length) {
       ctx.save()
       for (let i = 0; i < h.trails.length; i++) {
         const p = h.trails[i]
-        ctx.globalAlpha = Math.max(0, p.life * 3.2)
-        ctx.fillStyle = i % 2 ? '#fde68a' : '#fb923c'
-        ctx.beginPath()
-        ctx.arc(p.x, p.y - 4, p.r || 3, 0, Math.PI * 2)
-        ctx.fill()
+        const a = Math.max(0, Math.min(1, p.life * 3.4))
+        ctx.globalAlpha = a
+        if (p.kind === 'spark') {
+          ctx.strokeStyle = '#fde68a'
+          ctx.lineWidth = 1.6
+          ctx.beginPath()
+          ctx.moveTo(p.x, p.y)
+          ctx.lineTo(p.x - (p.vx || 0) * 0.04, p.y - (p.vy || 0) * 0.04)
+          ctx.stroke()
+        } else if (p.kind === 'dust') {
+          ctx.fillStyle = 'rgba(253,230,138,0.85)'
+          ctx.beginPath()
+          ctx.arc(p.x, p.y, (p.r || 2) * 0.7, 0, Math.PI * 2)
+          ctx.fill()
+        } else {
+          ctx.fillStyle = i % 2 ? '#fde68a' : '#fb923c'
+          ctx.beginPath()
+          ctx.arc(p.x, p.y - 2, p.r || 3, 0, Math.PI * 2)
+          ctx.fill()
+        }
       }
       ctx.restore()
     }
 
-    // 突袭时画一道金色流光线
+    // 突袭：金色剑弧 + 流光带
     if (h.state === 'skill') {
+      const u = Math.min(1, h.frameT / HELPER_SKILL_DUR)
       ctx.save()
-      ctx.globalAlpha = 0.55
-      ctx.strokeStyle = '#fbbf24'
-      ctx.lineWidth = 5
       ctx.lineCap = 'round'
+      ctx.globalAlpha = 0.5
+      ctx.strokeStyle = '#f59e0b'
+      ctx.lineWidth = 7
       ctx.beginPath()
       ctx.moveTo(h.dashFromX, h.dashFromY - 4)
       ctx.lineTo(h.x, h.y - 4)
       ctx.stroke()
-      ctx.globalAlpha = 0.35
+      ctx.globalAlpha = 0.4
       ctx.strokeStyle = '#fff7ed'
-      ctx.lineWidth = 2
+      ctx.lineWidth = 2.5
       ctx.beginPath()
       ctx.moveTo(h.dashFromX, h.dashFromY - 4)
       ctx.lineTo(h.x, h.y - 4)
+      ctx.stroke()
+                  // 前段月牙斩
+      if (u < 0.55) {
+        const ang = Math.atan2(h.dashToY - h.dashFromY, h.dashToX - h.dashFromX)
+        ctx.save()
+        ctx.translate(h.x, h.y - 6)
+        ctx.rotate(ang)
+        ctx.globalAlpha = 0.55 * (1 - u / 0.55)
+        ctx.strokeStyle = '#fde68a'
+        ctx.lineWidth = 3
+        ctx.beginPath()
+        ctx.arc(0, 0, 22 + u * 18, -1.1, 1.1)
+        ctx.stroke()
+        ctx.restore()
+      }
+      ctx.restore()
+    }
+
+    // 命中冲击环
+    if ((h.impactT || 0) > 0) {
+      const t = Math.max(0, h.impactT / 0.42)
+      const rr = 12 + (1 - t) * 48
+      ctx.save()
+      ctx.globalAlpha = t * 0.75
+      ctx.strokeStyle = '#fbbf24'
+      ctx.lineWidth = 2.5
+      ctx.beginPath()
+      ctx.arc(h.impactX, h.impactY - 6, rr, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.globalAlpha = t * 0.35
+      ctx.strokeStyle = '#fff7ed'
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.arc(h.impactX, h.impactY - 6, rr * 0.62, 0, Math.PI * 2)
       ctx.stroke()
       ctx.restore()
     }
 
     let img = null
-    let size = 52
+    let size = 56
     if (h.state === 'skill' && skill.length) {
       const fi = Math.min(skill.length - 1, Math.floor((h.frameT / HELPER_SKILL_DUR) * skill.length))
       img = skill[fi] || skill[0]
-      size = 64
+      size = 70
     } else if (walk.length) {
-      const fi = Math.floor((h.frameT || 0) * 6) % walk.length
+      const fi = Math.floor((h.frameT || 0) * 7) % walk.length
       img = walk[fi] || walk[0]
     }
     if (!img) return
+
+    // 跟随态脚下灵光
+    if (h.state === 'follow') {
+      ctx.save()
+      ctx.globalAlpha = 0.28 + Math.sin((h.bobT || 0) * 5) * 0.08
+      ctx.fillStyle = 'rgba(251,191,36,0.55)'
+      ctx.beginPath()
+      ctx.ellipse(h.x, h.y + 10, 16, 5, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    }
+
     ctx.save()
-    ctx.translate(h.x, h.y - 4)
+    ctx.translate(h.x, h.y - 4 + bob)
     if (h.facing < 0) ctx.scale(-1, 1)
-    // 突袭时略透明，更像流光化形
-    if (h.state === 'skill') ctx.globalAlpha = 0.85
-    this._drawSprite(ctx, img, 0, 0, size, h.state === 'skill' ? 'rgba(251,191,36,0.35)' : null, null)
+    if (h.state === 'skill') ctx.globalAlpha = 0.9
+    this._drawSprite(
+      ctx,
+      img,
+      0,
+      0,
+      size,
+      h.state === 'skill' ? 'rgba(251,191,36,0.4)' : 'rgba(253,186,116,0.22)',
+      null
+    )
     ctx.restore()
   },
 
