@@ -4,6 +4,8 @@
     <view class="hud-item">击杀 {{kills}}</view>
     <view class="hud-item">{{realmTierName}} · {{realmName}}</view>
     <view class="hud-item">飞剑 ×{{swordCount}}</view>
+    <view class="hud-item">灵气 {{lingQi}}/{{maxLingQi}}</view>
+    <view class="hud-item" wx:if="{{heldFu}}">符 · {{heldFu}}</view>
     <view class="hud-item">波次 {{wave}}</view>
   </view>
 
@@ -21,7 +23,9 @@
   <cover-view class="realm-btn" wx:if="{{!over && !perfect && !showRealmInfo}}" bindtap="toggleRealmInfo">境界</cover-view>
 
   <view class="tip" wx:if="{{!over && !perfect && !showRealmInfo && realmName === '凡人'}}">盘膝吸纳天地灵气 · 僵尸之手伤不得你</view>
-  <view class="tip" wx:elif="{{!over && !perfect && !showRealmInfo}}">尸丹满50触发大庚剑阵 · 左下太极切换自动</view>
+  <view class="tip" wx:elif="{{!over && !perfect && !showRealmInfo && heldFu}}">点按落点扔出「{{heldFu}}」</view>
+  <view class="tip" wx:elif="{{!over && !perfect && !showRealmInfo && (realmName === '炼气' || realmName === '筑基' || realmName === '结丹')}}">御剑耗灵气 · 静止打坐回灵 · 出土剑/丹药/符箓</view>
+  <view class="tip" wx:elif="{{!over && !perfect && !showRealmInfo}}">点按顺移 · 持符点按释放 · 左下太极切换自动</view>
 
   <cover-view class="info-mask" wx:if="{{showRealmInfo && !over && !perfect}}">
     <cover-view class="info-title">修仙境界</cover-view>
