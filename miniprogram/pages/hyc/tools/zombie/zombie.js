@@ -1,96 +1,102 @@
 /**
  * 仙途：草地上修仙斩尸。
- * 击杀达门槛突破境界：清场 + 境界特效；尸体会随境界变大。
+ * 击杀达门槛后出现劫尸（大僵尸），击败后才突破境界。
  */
 
 /** 远程资源根路径（后台 uploads），避免主包图片超 200K 质量门禁 */
 const ASSET_BASE = 'https://hychyr.top/uploads/game/xian'
 /** 资源版本号：换图后递增，避免微信缓存旧图 */
-const ASSET_VER = '20260729c'
+const ASSET_VER = '20260730d'
 
 function assetUrl(relPath) {
   return ASSET_BASE + '/' + String(relPath || '').replace(/^\//, '') + '?v=' + ASSET_VER
 }
 
-/** 修仙境界表：kills=突破所需击杀；tier 决定升阶特效风格 */
+/** 修仙境界表：kills=突破所需击杀；fx=突破配图；tier 决定升阶特效风格 */
 const REALMS = [
   {
-    kills: 0, name: '炼气', tier: '下', tierName: '下境界',
-    color: '#94a3b8', glow: 'rgba(148,163,184,0.45)', sword: '#1e293b',
-    short: '吸纳灵气温养经脉，初掌术法神识',
-    desc: '修仙初始阶段，共13层小境界。修士能吸纳天地灵气，温养经脉四肢并汇聚于丹田，初步掌握灵气术法和神识。体质比凡人强，可使用简单法术，寿元约100-120岁。'
+    kills: 0, name: '凡人', tier: '下', tierName: '下境界', fx: '',
+    color: '#64748b', glow: 'rgba(100,116,139,0.4)', sword: '#1e293b',
+    short: '盘膝吸纳天地灵气，僵尸之手环伺却伤不得身',
+    desc: '刚入仙途的凡人，盘膝打坐吸纳天地灵气。灵气入体足够后可突破炼气；修炼时僵尸之手会从地底伸出，但无法伤人。'
   },
   {
-    kills: 12, name: '筑基', tier: '下', tierName: '下境界',
+    kills: 0, name: '炼气', tier: '下', tierName: '下境界', fx: 'lianqi',
+    color: '#86efac', glow: 'rgba(134,239,172,0.5)', sword: '#166534',
+    short: '灵气如萤火汇聚入体，丹田初现灵气漩涡',
+    desc: '灵气如萤火汇聚入体，丹田初现灵气漩涡，修仙之路的起点。自此持剑斩尸。'
+  },
+  {
+    kills: 12, name: '筑基', tier: '下', tierName: '下境界', fx: 'zhuji',
     color: '#38bdf8', glow: 'rgba(56,189,248,0.5)', sword: '#0369a1',
-    short: '灵气成液，辟谷御剑，寿元大增',
-    desc: '丹田灵气成液态，修士可辟谷、长时间御剑飞行，神识倍增，寿元达200-250岁。能使用先天真火炼丹炼器，为结丹打基础。'
+    short: '灵气液化成灵池，金光环绕，飞剑待发',
+    desc: '灵气液化成灵池，金光环绕，飞剑待发，正式踏入修仙之途。'
   },
   {
-    kills: 35, name: '结丹', tier: '下', tierName: '下境界',
-    color: '#a78bfa', glow: 'rgba(167,139,250,0.55)', sword: '#6d28d9',
-    short: '凝结金丹，真元深厚，可炼本命法宝',
-    desc: '丹田灵气凝结成固体金丹，真元由气态变液态，可炼制本命法宝，不借助法器飞行，寿元500-600岁。结丹巅峰称假婴境。'
+    kills: 35, name: '结丹', tier: '下', tierName: '下境界', fx: 'jiedan',
+    color: '#fbbf24', glow: 'rgba(251,191,36,0.55)', sword: '#b45309',
+    short: '金丹凝聚，金光四射，本命法宝虚影浮现',
+    desc: '金丹凝聚，金光四射，本命法宝虚影浮现，实力质变。'
   },
   {
-    kills: 70, name: '元婴', tier: '下', tierName: '下境界',
+    kills: 70, name: '元婴', tier: '下', tierName: '下境界', fx: 'yuanying',
     color: '#f472b6', glow: 'rgba(244,114,182,0.55)', sword: '#be185d',
-    short: '金丹化婴，可夺舍重生，人界高端战力',
-    desc: '金丹孕育出元婴，寿元约1000-1200岁。元婴可脱离肉身行动，即使肉身被毁也能夺舍重生，对天地元气感应敏锐。'
+    short: '金丹破裂，元婴诞生，金光与灵气交织',
+    desc: '金丹破裂，元婴诞生，金光与灵气交织，可夺舍重生。'
   },
   {
-    kills: 120, name: '化神', tier: '下', tierName: '下境界',
-    color: '#fbbf24', glow: 'rgba(251,191,36,0.6)', sword: '#b45309',
-    short: '元婴向元神过渡，可调动天地灵气',
-    desc: '元婴成长为幼年状态，向元神过渡，可调动天地灵气作战，人界灵气稀薄出手耗寿，寿元2000-2500岁。少参与争斗，寻飞升机缘。'
+    kills: 120, name: '化神', tier: '下', tierName: '下境界', fx: 'huashen',
+    color: '#22d3ee', glow: 'rgba(34,211,238,0.55)', sword: '#0e7490',
+    short: '天地灵气龙卷汇聚，云海雷电磅礴气势',
+    desc: '天地灵气龙卷汇聚，元婴成长为幼年形态，云海雷电磅礴气势。'
   },
   {
-    kills: 180, name: '炼虚', tier: '中', tierName: '中境界',
+    kills: 180, name: '炼虚', tier: '中', tierName: '中境界', fx: 'lianxu',
     color: '#2dd4bf', glow: 'rgba(45,212,191,0.55)', sword: '#0f766e',
-    short: '元婴成少年，炼化天地元气，近乎长生',
-    desc: '元婴成长为少年状态，可化为虚影，能炼化天地元气为己用。每3000年一大天劫，一般最多扛过三次，寿命约一万三千年。'
+    short: '少年元婴虚影若隐若现，元气化形为灵禽瑞兽',
+    desc: '少年元婴虚影若隐若现，元气化形为灵禽瑞兽，炼虚合道。'
   },
   {
-    kills: 260, name: '合体', tier: '中', tierName: '中境界',
-    color: '#818cf8', glow: 'rgba(129,140,248,0.55)', sword: '#4338ca',
-    short: '虚影合身，掌属性抗天劫，动用法则雏形',
-    desc: '元婴成长为青年，将虚影与本体融合，可掌握一种五行或变异属性抗衡天劫。强者可扛过10次大天劫，活四五万年，能驱使天地元气化形。'
+    kills: 260, name: '合体', tier: '中', tierName: '中境界', fx: 'heti',
+    color: '#a78bfa', glow: 'rgba(167,139,250,0.55)', sword: '#6d28d9',
+    short: '青年元婴与本体融合，五色光芒环绕',
+    desc: '青年元婴与本体融合，五色光芒环绕，法则符文浮现，天人合一。'
   },
   {
-    kills: 360, name: '大乘', tier: '中', tierName: '中境界',
+    kills: 360, name: '大乘', tier: '中', tierName: '中境界', fx: 'dacheng',
     color: '#fb7185', glow: 'rgba(251,113,133,0.55)', sword: '#be123c',
-    short: '神游太虚，掌多属性，初用法则之力',
-    desc: '元婴成长为成人状态，完全脱离肉身限制，神游太虚。可掌握两种及以上属性，至少可活10万年，顶级可活百万年，能初步使用法则之力。'
+    short: '元婴神游太虚，法则光环如行星环绕',
+    desc: '元婴神游太虚，法则光环如行星环绕，端坐莲台，威压四方。'
   },
   {
-    kills: 480, name: '真仙', tier: '上', tierName: '上境界',
+    kills: 480, name: '真仙', tier: '上', tierName: '上境界', fx: 'zhenxian',
     color: '#fde68a', glow: 'rgba(253,230,138,0.6)', sword: '#ca8a04',
-    short: '领悟法则，开仙窍，渡天人五衰',
-    desc: '需领悟法则之力，三个小境界各炼12仙窍，至36窍可进阶金仙。有天人五衰之劫；未悟法则则为散仙、地仙等。'
+    short: '仙光冲天，劫云雷电交织，飞升成仙',
+    desc: '仙光冲天，仙窍如星辰点亮，劫云雷电交织，飞升成仙。'
   },
   {
-    kills: 620, name: '金仙', tier: '上', tierName: '上境界',
+    kills: 620, name: '金仙', tier: '上', tierName: '上境界', fx: 'jinxian',
     color: '#fdba74', glow: 'rgba(253,186,116,0.6)', sword: '#c2410c',
-    short: '渡魂衰煞衰，凝法则之丝，展灵域',
-    desc: '需渡过天人五衰最后两衰（魂衰、煞衰），可凝聚法则之丝，施展基础灵域。打开108个仙窍后可进阶太乙。'
+    short: '金身璀璨，法则之丝缠绕，灵域展开',
+    desc: '金身璀璨，法则之丝缠绕，灵域展开，仙窍如周天星斗。'
   },
   {
-    kills: 780, name: '太乙', tier: '上', tierName: '上境界',
+    kills: 780, name: '太乙', tier: '上', tierName: '上境界', fx: 'taiyi',
     color: '#e7e5e4', glow: 'rgba(231,229,228,0.65)', sword: '#78716c',
-    short: '玉体法力无尽，灵域可演化小世界',
-    desc: '肉身变为法力无限的玉体，能更好凝聚法则。领悟一种法则可掌握一方天地，灵域可演化成小世界。'
+    short: '玉体晶莹如琉璃，灵域演化小世界',
+    desc: '玉体晶莹如琉璃，灵域演化小世界，山川日月尽在其中。'
   },
   {
-    kills: 960, name: '大罗', tier: '上', tierName: '上境界',
+    kills: 960, name: '大罗', tier: '上', tierName: '上境界', fx: 'daluo',
     color: '#c4b5fd', glow: 'rgba(196,181,253,0.65)', sword: '#6d28d9',
-    short: '斩三尸断尘缘，法体神魂不灭',
-    desc: '进阶道祖需斩三次尸魂（恶、善、自我），禁断尘缘。法体神魂不灭，灵域化界，身法神魂凝炼一体。'
+    short: '三尸魂影环绕，法体神魂三位一体',
+    desc: '三尸魂影环绕，玄天法则本源悬浮，法体神魂三位一体，大罗道果。'
   },
   {
-    kills: 1200, name: '道祖', tier: '上', tierName: '上境界',
+    kills: 1200, name: '道祖', tier: '上', tierName: '上境界', fx: 'daozu',
     color: '#fff7ed', glow: 'rgba(255,247,237,0.75)', sword: '#9a3412',
-    short: '融合三千大道，法则至尊',
-    desc: '融合三千大道，成为法则至尊，天地间无敌，除非遇到同境道祖。'
+    short: '三千大道如星系环绕，法则光柱冲天',
+    desc: '三千大道如星系环绕，法则光柱冲天，天地万象尽在掌控，至尊无敌。'
   }
 ]
 
@@ -132,32 +138,64 @@ function playerMaxHpByRealm(realm) {
   return 48 + realm.lv * 16 + tierBonus
 }
 
-const TOMB_COUNT = 4
-const TOMB_PATHS = buildAnimPaths('tombs', 'tomb', TOMB_COUNT)
-
-/** 任务角色固定为指定原图，不再随机换皮 */
+/** 任务角色：炼气起持剑；凡人打坐分镜 */
 const PLAYER_PATH = assetUrl('heroes/player_fixed.png')
-
-const GRASS_PATH = assetUrl('bg_forest.png')
-
-function realmByKills(kills) {
-  let r = REALMS[0]
-  let lv = 1
+const MORTAL_MEDITATE_PATHS = [
+  assetUrl('heroes/mortal/meditate_00.png'),
+  assetUrl('heroes/mortal/meditate_01.png'),
+  assetUrl('heroes/mortal/meditate_02.png'),
+  assetUrl('heroes/mortal/meditate_03.png')
+]
+/** 凡人吸纳天地灵气：满后突破炼气 */
+const MORTAL_QI_NEED = 100
+const MORTAL_QI_RATE = 5.5
+/** 草地背景固定一套 */
+const GRASS_PATH = assetUrl('bg_field.jpg')
+/** 劫尸（升级前 Boss）：行走 / 喷黑液 */
+const BOSS_WALK_PATH = assetUrl('boss/boss_walk.png')
+const BOSS_SKILL_PATH = assetUrl('boss/boss_skill.png')
+/** 突破前精神领域：sj → sj02 → 化光入眉心 */
+const SPIRIT_SJ_PATH = assetUrl('fx/sj.jpg')
+const SPIRIT_SJ02_PATH = assetUrl('fx/sj02.jpg')
+/** 左下角太极：自动 / 手动切换 */
+const TAIJI_PATH = assetUrl('fx/taiji.png')
+/** 元婴境界解锁灵狐帮手；凡人起算：元婴=lv5 */
+const HELPER_UNLOCK_LV = 5 // 元婴
+/** 构建各境界突破配图路径表 */
+function buildRealmFxPaths(folder) {
+  const map = {}
   for (let i = 0; i < REALMS.length; i++) {
-    if (kills >= REALMS[i].kills) {
-      r = REALMS[i]
-      lv = i + 1
-    }
+    const key = REALMS[i].fx
+    if (key) map[key] = assetUrl(folder + '/' + key + '.jpg')
   }
-  // 尸体积随境界放大
-  const bodyScale = 1 + (lv - 1) * 0.09
-  return Object.assign({}, r, { lv, bodyScale })
+  return map
+}
+/** 突破立绘（仅 V1） */
+const REALM_FX_PATHS = buildRealmFxPaths('fx/realms')
+const REALM_FX_KEYS = Object.keys(REALM_FX_PATHS)
+/** 灵狐：跟随 / 流光突袭分镜 */
+const HELPER_WALK_PATHS = [
+  assetUrl('helper/fox/fox_00.png'),
+  assetUrl('helper/fox/fox_01.png')
+]
+const HELPER_SKILL_PATHS = [
+  assetUrl('helper/fox/fox_02.png'),
+  assetUrl('helper/fox/fox_03.png')
+]
+const HELPER_SKILL_DUR = 0.72
+const HELPER_SKILL_CD = 2.8
+
+/** 按已解锁境界等级取配置（与击杀数解耦，需先击败劫尸才升境） */
+function realmByLv(lv) {
+  const idx = Math.max(0, Math.min(REALMS.length - 1, (lv || 1) - 1))
+  const r = REALMS[idx]
+  const bodyScale = 1 + idx * 0.09
+  return Object.assign({}, r, { lv: idx + 1, bodyScale })
 }
 
-/** 经验进度：当前境界 → 下一境界 */
-function realmExpProgress(kills) {
-  const r = realmByKills(kills)
-  const idx = r.lv - 1
+/** 经验进度：当前境界 → 下一境界（满条后等劫尸） */
+function realmExpProgress(kills, realmLv) {
+  const idx = Math.max(0, Math.min(REALMS.length - 1, (realmLv || 1) - 1))
   const cur = REALMS[idx].kills
   const hasNext = idx + 1 < REALMS.length
   const next = hasNext ? REALMS[idx + 1].kills : cur
@@ -166,15 +204,18 @@ function realmExpProgress(kills) {
   const ratio = hasNext ? Math.min(1, Math.max(0, (kills - cur) / span)) : 1
   return {
     ratio: ratio,
-    cur: kills - cur,
+    cur: Math.min(span, Math.max(0, kills - cur)),
     need: span,
     nextName: nextName,
-    maxed: !hasNext
+    maxed: !hasNext,
+    awaitBoss: hasNext && kills >= next
   }
 }
 
 const CORPSE_DAN_NEED = 50
 const GENG_SWORD_COUNT = 64
+/** 御剑上限：周身环绕与出击杀敌共用此数目 */
+const MAX_SWORD_COUNT = 64
 
 /** 境界说明分组，供面板展示 */
 function buildRealmInfoList() {
@@ -199,7 +240,7 @@ Page({
   data: {
     kills: 0,
     realmLv: 1,
-    realmName: '炼气',
+    realmName: '凡人',
     realmTierName: '下境界',
     swordCount: 1,
     wave: 1,
@@ -207,7 +248,7 @@ Page({
     maxHp: 48,
     over: false,
     perfect: false,
-    autoPilot: false,
+    autoPilot: true,
     showRealmInfo: false,
     corpseDan: 0,
     corpseDanNeed: 50,
@@ -233,6 +274,18 @@ Page({
   onTouchStart(e) {
     const t = e.touches && e.touches[0]
     if (!t || this._over || this._perfect) return
+    // 凡人打坐阶段不可移动
+    if (this._isMortalCultivate()) {
+      this._dragging = false
+      return
+    }
+    // 太极钮：仅切换自动/手动，按下微沉
+    if (!this.data.showRealmInfo && this._hitTaiji(t.x, t.y)) {
+      this._taijiPressed = true
+      this._dragging = false
+      this._moved = false
+      return
+    }
     this._dragging = true
     this._moved = false
     this._touchX = t.x
@@ -242,7 +295,9 @@ Page({
 
   onTouchMove(e) {
     const t = e.touches && e.touches[0]
-    if (!t || !this._dragging || this._perfect) return
+    if (!t || this._perfect) return
+    if (this._taijiPressed) return
+    if (!this._dragging) return
     if (Math.abs(t.x - this._touchX) > 8 || Math.abs(t.y - this._touchY) > 8) {
       this._moved = true
     }
@@ -250,26 +305,28 @@ Page({
   },
 
   onTouchEnd(e) {
+    if (this._taijiPressed) {
+      this._taijiPressed = false
+      this._toggleAutoByTaiji()
+      return
+    }
     if (this._dragging && !this._moved) {
       const t = (e.changedTouches && e.changedTouches[0]) || {}
       const x = t.x != null ? t.x : this._touchX
       const y = t.y != null ? t.y : this._touchY
-      // 先点底部开关，再锁定僵尸
-      if (!this._tryTapCtrl(x, y)) {
-        this._tryFocusZombie(x, y)
-      }
+      this._tryFocusZombie(x, y)
     }
     this._dragging = false
   },
 
   restart() {
     this._resetGame()
-    const r = realmByKills(0)
+    const r = realmByLv(1)
     this.setData({
       kills: 0,
       realmLv: 1,
-      realmName: '炼气',
-      realmTierName: '下境界',
+      realmName: r.name,
+      realmTierName: r.tierName,
       swordCount: 1,
       wave: 1,
       hp: r.maxHp || playerMaxHpByRealm(r),
@@ -277,7 +334,7 @@ Page({
       over: false,
       perfect: false,
       showRealmInfo: false,
-      autoPilot: this.data.autoPilot,
+      autoPilot: true,
       corpseDan: 0,
       corpseDanNeed: CORPSE_DAN_NEED
     })
@@ -291,69 +348,68 @@ Page({
     this.setData({ showRealmInfo: false })
   },
 
-  /** 开关：自动御剑捡包 + 躲尸/躲雷 */
-  toggleAutoPilot() {
-    const on = !this.data.autoPilot
-    this.setData({ autoPilot: on })
-    wx.showToast({
-      title: on ? '自动飞行已开' : '自动飞行已关',
-      icon: 'none',
-      duration: 1200
-    })
+  /** 太极：点一下自动，再点一下手动 */
+  _toggleAutoByTaiji() {
+    if (this._over || this._perfect) return
+    this.setData({ autoPilot: !this.data.autoPilot })
   },
 
-  /** 画布底部按钮热区（cover-view 不可见时仍可点） */
-  _getCtrlRects() {
-    const w = this._w || 300
+  /** 左下角太极热区 */
+  _getTaijiRect() {
+    const size = 64
+    const m = 14
     const h = this._h || 500
-    const btnW = 72
-    const btnH = 26
-    const gap = 10
-    const y = h - 64
-    const x0 = (w - (btnW * 2 + gap)) / 2
     return {
-      auto: { x: x0, y: y, w: btnW, h: btnH },
-      realm: { x: x0 + btnW + gap, y: y, w: btnW, h: btnH }
+      x: m,
+      y: h - size - m - 8,
+      w: size,
+      h: size,
+      cx: m + size / 2,
+      cy: h - size / 2 - m - 8,
+      r: size / 2
     }
   },
 
-  _tryTapCtrl(x, y) {
-    if (this._over || this._perfect || this.data.showRealmInfo) return false
-    const r = this._getCtrlRects()
-    if (x >= r.auto.x && x <= r.auto.x + r.auto.w && y >= r.auto.y && y <= r.auto.y + r.auto.h) {
-      this.toggleAutoPilot()
-      return true
-    }
-    if (x >= r.realm.x && x <= r.realm.x + r.realm.w && y >= r.realm.y && y <= r.realm.y + r.realm.h) {
-      this.toggleRealmInfo()
-      return true
-    }
-    return false
+  _hitTaiji(x, y) {
+    const b = this._getTaijiRect()
+    const dx = x - b.cx
+    const dy = y - b.cy
+    return dx * dx + dy * dy <= (b.r + 4) * (b.r + 4)
   },
 
+  /** 左下角太极：无文字；自动旋转，手动静止 */
   _drawCtrlButtons(ctx) {
-    if (this._over || this._perfect || this.data.showRealmInfo) return
-    const rects = this._getCtrlRects()
-    const labels = [
-      { key: 'auto', text: this.data.autoPilot ? '自动中' : '自动', on: this.data.autoPilot },
-      { key: 'realm', text: '境界', on: false }
-    ]
-    for (let i = 0; i < labels.length; i++) {
-      const conf = labels[i]
-      const box = rects[conf.key]
-      ctx.save()
-      ctx.fillStyle = conf.on ? 'rgba(22,101,52,0.88)' : 'rgba(15,23,42,0.82)'
-      ctx.fillRect(box.x, box.y, box.w, box.h)
-      ctx.strokeStyle = conf.on ? 'rgba(134,239,172,0.75)' : 'rgba(248,250,252,0.3)'
-      ctx.lineWidth = 1
-      ctx.strokeRect(box.x, box.y, box.w, box.h)
-      ctx.fillStyle = conf.on ? '#bbf7d0' : '#f8fafc'
-      ctx.font = 'bold 11px sans-serif'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(conf.text, box.x + box.w / 2, box.y + box.h / 2 + 1)
-      ctx.restore()
+    if (this._over || this._perfect || this.data.showRealmInfo || this._isMortalCultivate()) return
+    const b = this._getTaijiRect()
+    const img = this._taijiImg
+    const auto = !!this.data.autoPilot
+    const pressed = !!this._taijiPressed
+    const rot = auto ? (this._animT || 0) * 1.6 : (this._taijiRestAngle || 0)
+    if (auto) this._taijiRestAngle = rot
+
+    ctx.save()
+    ctx.fillStyle = 'rgba(0,0,0,0.28)'
+    ctx.beginPath()
+    ctx.ellipse(b.cx, b.cy + b.r * 0.55, b.r * 0.72, b.r * 0.18, 0, 0, Math.PI * 2)
+    ctx.fill()
+
+    ctx.translate(b.cx, b.cy + (pressed ? 3 : 0))
+    ctx.rotate(rot)
+    const s = pressed ? 0.94 : 1
+    ctx.scale(s, s)
+    if (img) {
+      ctx.drawImage(img, -b.w / 2, -b.h / 2, b.w, b.h)
+    } else {
+      ctx.beginPath()
+      ctx.arc(0, 0, b.r, 0, Math.PI * 2)
+      ctx.fillStyle = '#f8fafc'
+      ctx.fill()
+      ctx.fillStyle = '#111'
+      ctx.beginPath()
+      ctx.arc(0, 0, b.r, -Math.PI / 2, Math.PI / 2)
+      ctx.fill()
     }
+    ctx.restore()
   },
 
   _initCanvas() {
@@ -380,9 +436,17 @@ Page({
         this._w = width
         this._h = height
         this._animImgs = { idle: [], walk: [], attack: [], hurt: [], dead: [] }
-        this._tombImgs = []
         this._playerImg = null
+        this._mortalMeditateImgs = []
         this._grassImg = null
+        this._bossWalkImg = null
+        this._bossSkillImg = null
+        this._spiritSjImg = null
+        this._spiritSj02Img = null
+        this._realmFxImgs = {}
+        this._taijiImg = null
+        this._helperWalkImgs = []
+        this._helperSkillImgs = []
         this._resetGame()
         this._loadImages(() => this._loop())
       })
@@ -392,24 +456,45 @@ Page({
     const canvas = this._canvas
     if (!canvas) return
     const animKeys = Object.keys(ANIM_DEFS)
-    let left = 1 + TOMB_COUNT + 1
+    const realmFxKeys = REALM_FX_KEYS
+    // 玩家+凡人打坐4+草地1+劫尸2+精神2+太极+帮手+境界突破图
+    let left = 1 + MORTAL_MEDITATE_PATHS.length + 1 + 2 + 2 + 1 + HELPER_WALK_PATHS.length + HELPER_SKILL_PATHS.length + realmFxKeys.length
     for (let k = 0; k < animKeys.length; k++) left += ANIM_DEFS[animKeys[k]].paths.length
 
     const animImgs = { idle: [], walk: [], attack: [], hurt: [], dead: [] }
-    const tombImgs = new Array(TOMB_COUNT)
     let playerImg = null
+    const mortalMeditateImgs = new Array(MORTAL_MEDITATE_PATHS.length)
     let grassImg = null
+    let bossWalkImg = null
+    let bossSkillImg = null
+    let spiritSjImg = null
+    let spiritSj02Img = null
+    let taijiImg = null
+    const realmFxImgs = {}
+    const helperWalkImgs = new Array(HELPER_WALK_PATHS.length)
+    const helperSkillImgs = new Array(HELPER_SKILL_PATHS.length)
 
     const finish = () => {
       if (left > 0) return
       this._animImgs = animImgs
-      this._tombImgs = tombImgs
       this._playerImg = playerImg
+      this._mortalMeditateImgs = mortalMeditateImgs
       this._grassImg = grassImg
+      this._bossWalkImg = bossWalkImg
+      this._bossSkillImg = bossSkillImg
+      this._spiritSjImg = spiritSjImg
+      this._spiritSj02Img = spiritSj02Img
+      this._realmFxImgs = realmFxImgs
+      this._taijiImg = taijiImg
+      this._helperWalkImgs = helperWalkImgs
+      this._helperSkillImgs = helperSkillImgs
       this.setData({ hp: Math.ceil(this._hp), maxHp: this._maxHp })
       if (!playerImg || !grassImg) {
         console.warn('仙途资源未就绪，请确认已上传到', ASSET_BASE)
         wx.showToast({ title: '游戏资源加载失败', icon: 'none', duration: 2500 })
+      }
+      if (!spiritSjImg || !spiritSj02Img) {
+        console.warn('精神领域图未就绪', { sj: !!spiritSjImg, sj02: !!spiritSj02Img })
       }
       if (done) done()
     }
@@ -437,11 +522,38 @@ Page({
         loadOne(paths[i], ((kk, ii) => (img) => { animImgs[kk][ii] = img })(key, i))
       }
     }
-    for (let i = 0; i < TOMB_COUNT; i++) {
-      loadOne(TOMB_PATHS[i], (img) => { tombImgs[i] = img })
-    }
     loadOne(PLAYER_PATH, (img) => { playerImg = img })
+    for (let i = 0; i < MORTAL_MEDITATE_PATHS.length; i++) {
+      loadOne(MORTAL_MEDITATE_PATHS[i], ((ii) => (img) => { mortalMeditateImgs[ii] = img })(i))
+    }
     loadOne(GRASS_PATH, (img) => { grassImg = img })
+    loadOne(BOSS_WALK_PATH, (img) => { bossWalkImg = img })
+    loadOne(BOSS_SKILL_PATH, (img) => { bossSkillImg = img })
+    loadOne(SPIRIT_SJ_PATH, (img) => { spiritSjImg = img })
+    loadOne(SPIRIT_SJ02_PATH, (img) => { spiritSj02Img = img })
+    loadOne(TAIJI_PATH, (img) => { taijiImg = img })
+    for (let i = 0; i < realmFxKeys.length; i++) {
+      const fk = realmFxKeys[i]
+      loadOne(REALM_FX_PATHS[fk], ((key) => (img) => { realmFxImgs[key] = img })(fk))
+    }
+    for (let i = 0; i < HELPER_WALK_PATHS.length; i++) {
+      loadOne(HELPER_WALK_PATHS[i], ((ii) => (img) => { helperWalkImgs[ii] = img })(i))
+    }
+    for (let i = 0; i < HELPER_SKILL_PATHS.length; i++) {
+      loadOne(HELPER_SKILL_PATHS[i], ((ii) => (img) => { helperSkillImgs[ii] = img })(i))
+    }
+  },
+
+  /** 取目标境界的突破配图 */
+  _realmFxImage(realm) {
+    const key = realm && realm.fx
+    if (key && this._realmFxImgs && this._realmFxImgs[key]) return this._realmFxImgs[key]
+    return this._spiritSjImg
+  },
+
+  /** 是否处于凡人吸纳灵气阶段（未开始打怪） */
+  _isMortalCultivate() {
+    return (this._realmLv || 1) <= 1 && !this._spiritFx && !this._breakFx
   },
 
   _resetGame() {
@@ -458,7 +570,6 @@ Page({
     this._particles = []
     this._trails = []
     this._bolts = []
-    this._tombs = this._buildTombs(w, h)
     this._scenery = this._buildScenery(w, h)
     this._focusZombie = null
     this._nextZid = 1
@@ -479,12 +590,23 @@ Page({
     this._breakFx = null
     this._breakMute = 0
     this._realmLv = 1
+    this._qiAbsorb = 0
+    this._mortalHandAcc = 0
     this._freezeT = 0
     this._playerHurtT = 0
     this._swordEnchant = null
     this._corpseDan = 0
     this._gengFx = null
-    const r0 = realmByKills(0)
+    this._bossActive = false
+    this._bossDeferred = false
+    this._gooShots = []
+    this._gooPools = []
+    this._spiritFx = null
+    this._taijiPressed = false
+    this._taijiRestAngle = 0
+    this._helper = null
+    this._helperAnnounced = false
+    const r0 = realmByLv(1)
     this._maxHp = playerMaxHpByRealm(r0)
     this._hp = this._maxHp
   },
@@ -512,36 +634,53 @@ Page({
     }
   },
 
-  /** 草地上散落卡通墓碑（装饰，不挡碰撞） */
-  _buildTombs(w, h) {
-    const list = []
-    const m = 36
-    // 固定几处显眼落点，再补随机，确保新墓碑一眼能看到
-    const spots = [
-      { x: w * 0.18, y: h * 0.28 },
-      { x: w * 0.78, y: h * 0.32 },
-      { x: w * 0.22, y: h * 0.58 },
-      { x: w * 0.72, y: h * 0.62 },
-      { x: w * 0.48, y: h * 0.22 },
-      { x: w * 0.55, y: h * 0.72 }
-    ]
-    for (let i = 0; i < spots.length; i++) {
-      list.push({
-        x: spots[i].x,
-        y: spots[i].y,
-        idx: i % TOMB_COUNT,
-        scale: 1.15 + (i % 3) * 0.12
-      })
+  /**
+   * 背景图上半是山/树，下半才是可玩草地。
+   * 僵尸只落在此矩形内，避免出现在山上/树上。
+   */
+  _grassRect() {
+    const w = this._w || 300
+    const h = this._h || 500
+    const m = this._margin || 28
+    return {
+      minX: m,
+      maxX: w - m,
+      // 约画面中部以下为草地（树线之下）
+      minY: Math.floor(h * 0.48),
+      maxY: h - m
     }
-    for (let i = 0; i < 4; i++) {
-      list.push({
-        x: m + Math.random() * (w - m * 2),
-        y: m + 50 + Math.random() * (h - m * 2 - 100),
-        idx: i % TOMB_COUNT,
-        scale: 0.95 + Math.random() * 0.35
-      })
+  },
+
+  _clampToGrass(x, y) {
+    const g = this._grassRect()
+    return {
+      x: Math.max(g.minX, Math.min(g.maxX, x)),
+      y: Math.max(g.minY, Math.min(g.maxY, y))
     }
-    return list
+  },
+
+  /** 草地上随机出土点（远离玩家） */
+  _spawnPointOnGrass() {
+    const g = this._grassRect()
+    let best = null
+    let bestD = -1
+    for (let i = 0; i < 6; i++) {
+      const p = this._clampToGrass(
+        g.minX + Math.random() * (g.maxX - g.minX),
+        g.minY + Math.random() * (g.maxY - g.minY)
+      )
+      const dx = p.x - this._playerX
+      const dy = p.y - this._playerY
+      const d = dx * dx + dy * dy
+      if (d > bestD) {
+        bestD = d
+        best = p
+      }
+    }
+    return best || {
+      x: g.minX + Math.random() * (g.maxX - g.minX),
+      y: g.minY + Math.random() * (g.maxY - g.minY)
+    }
   },
 
   _stop() {
@@ -552,16 +691,156 @@ Page({
     }
   },
 
-  /** 全地图行走，边缘留边 */
+  /** 全地图行走，限制在草地区域（不上山/树） */
   _movePlayerTo(x, y) {
-    const m = this._margin || 28
-    const w = this._w || 300
-    const h = this._h || 500
-    const minY = 56
-    this._playerX = Math.max(m, Math.min(w - m, x))
+    const g = this._grassRect()
+    this._playerX = Math.max(g.minX, Math.min(g.maxX, x))
     if (y != null) {
-      this._playerY = Math.max(minY, Math.min(h - m, y))
+      this._playerY = Math.max(g.minY, Math.min(g.maxY, y))
     }
+  },
+
+  /**
+   * 凡人打坐：吸纳天地灵气；僵尸手从地底伸出但不伤人
+   */
+  _updateMortalCultivate(dt, realm) {
+    if (this._breakMute > 0) {
+      this._breakMute = Math.max(0, this._breakMute - dt)
+    }
+    // 固定打坐位置（画面偏中下）
+    const seat = this._clampToGrass(this._w * 0.5, this._h * 0.62)
+    this._playerX = seat.x
+    this._playerY = seat.y
+    this._prevPlayerX = seat.x
+    this._prevPlayerY = seat.y
+
+    // 灵气入体
+    const before = this._qiAbsorb || 0
+    this._qiAbsorb = Math.min(MORTAL_QI_NEED, before + MORTAL_QI_RATE * dt)
+    this._spawnQiParticles(dt)
+
+    // 僵尸手：只出土到手部高度，不追人
+    this._mortalHandAcc = (this._mortalHandAcc || 0) + dt
+    const hands = (this._zombies || []).filter((z) => z.handOnly)
+    if (hands.length < 5 && this._mortalHandAcc >= 1.15) {
+      this._mortalHandAcc = 0
+      this._spawnMortalHand()
+    }
+    for (let i = this._zombies.length - 1; i >= 0; i--) {
+      const z = this._zombies[i]
+      if (!z.handOnly) {
+        this._zombies.splice(i, 1)
+        continue
+      }
+      z.life = (z.life == null ? 4.5 : z.life) - dt
+      z.state = 'emerge'
+      // 保持「手」帧上下蠕动
+      z.emerge = 0.22 + 0.2 * (0.5 + 0.5 * Math.sin(this._animT * 2.4 + z.id))
+      z.frameT = (z.frameT || 0) + dt
+      if (z.life <= 0) {
+        this._zombies.splice(i, 1)
+      }
+    }
+
+    for (let i = this._particles.length - 1; i >= 0; i--) {
+      const p = this._particles[i]
+      p.life -= dt
+      p.x += (p.vx || 0) * dt
+      p.y += (p.vy || 0) * dt
+      if (p.life <= 0) this._particles.splice(i, 1)
+    }
+
+    if (this._qiAbsorb >= MORTAL_QI_NEED) {
+      this._startMortalBreakthrough()
+    }
+  },
+
+  /** 天地灵气粒子汇聚入丹田 */
+  _spawnQiParticles(dt) {
+    const px = this._playerX
+    const py = this._playerY - 8
+    const n = Math.random() < 0.85 ? 2 : 1
+    for (let i = 0; i < n; i++) {
+      const ang = Math.random() * Math.PI * 2
+      const dist = 48 + Math.random() * 90
+      const x = px + Math.cos(ang) * dist
+      const y = py + Math.sin(ang) * dist * 0.65
+      this._particles.push({
+        x: x,
+        y: y,
+        vx: (px - x) * (1.1 + Math.random() * 0.8),
+        vy: (py - y) * (1.1 + Math.random() * 0.8),
+        life: 0.55 + Math.random() * 0.35,
+        color: Math.random() < 0.45 ? '#67e8f9' : (Math.random() < 0.5 ? '#a5f3fc' : '#e0f2fe')
+      })
+    }
+    // 丹田漩涡点
+    if (Math.random() < 0.5) {
+      const a = this._animT * 4 + Math.random()
+      this._particles.push({
+        x: px + Math.cos(a) * 14,
+        y: py + 6 + Math.sin(a) * 8,
+        vx: -Math.sin(a) * 18,
+        vy: Math.cos(a) * 12,
+        life: 0.4,
+        color: '#22d3ee'
+      })
+    }
+  },
+
+  /** 凡人修炼时从草地伸出的僵尸手（无伤害） */
+  _spawnMortalHand() {
+    const realm = realmByLv(1)
+    let pos = this._spawnPointOnGrass()
+    const pdx = pos.x - this._playerX
+    const pdy = pos.y - this._playerY
+    // 不要紧贴打坐点
+    if (pdx * pdx + pdy * pdy < 70 * 70) {
+      pos = this._spawnPointOnGrass()
+    }
+    pos = this._clampToGrass(pos.x, pos.y)
+    this._zombies.push({
+      id: this._nextZid++,
+      x: pos.x,
+      y: pos.y,
+      r: 18 * realm.bodyScale,
+      hp: 1,
+      maxHp: 1,
+      speedBonus: 0,
+      frameT: 0,
+      emerge: 0.2,
+      state: 'emerge',
+      handOnly: true,
+      life: 3.8 + Math.random() * 2.2,
+      kx: 0,
+      ky: 0,
+      flash: 0,
+      facing: 0
+    })
+  },
+
+  /** 灵气足够：进入精神领域，突破至炼气，开始斩尸 */
+  _startMortalBreakthrough() {
+    if (this._spiritFx || this._breakFx) return
+    this._qiAbsorb = MORTAL_QI_NEED
+    this._zombies = []
+    this._swords = []
+    this._focusZombie = null
+    this._breakMute = 12
+    this._ensureSpiritImages()
+    const nextLv = 2
+    const nr = realmByLv(nextLv)
+    this._spiritFx = {
+      t: 0,
+      nextLv: nextLv,
+      realm: nr,
+      sjDur: 1.8,
+      sj02Dur: 2.0,
+      absorbDur: 1.4
+    }
+    console.log('凡人灵气圆满，突破炼气', {
+      sj: !!this._spiritSjImg
+    })
   },
 
   /**
@@ -699,6 +978,11 @@ Page({
         this._draw()
         return
       }
+      if (this._spiritFx) {
+        this._updateSpiritDomain(dt)
+        this._draw()
+        return
+      }
       this._update(dt)
       this._draw()
     }
@@ -708,8 +992,14 @@ Page({
   _update(dt) {
     this._animT += dt
     this._wave = 1 + Math.floor(this._kills / 12)
-    const realm = realmByKills(this._kills)
+    const realm = realmByLv(this._realmLv)
     this._syncPlayerHpCap(realm)
+
+    // 凡人阶段：盘膝吸纳灵气，不进入战斗循环
+    if (this._isMortalCultivate()) {
+      this._updateMortalCultivate(dt, realm)
+      return
+    }
 
     // 自动飞行：捡包、躲尸、躲雷罚（拖动时暂停，手控优先）
     this._updateAutoPilot(dt)
@@ -743,7 +1033,8 @@ Page({
     const spawnEvery = Math.max(1.35, 2.6 - this._wave * 0.06 - realm.lv * 0.04)
     const maxZ = Math.min(5, 2 + Math.floor(realm.lv / 3))
     this._spawnAcc += dt
-    if (!this._gengFx && this._breakMute <= 0 && this._zombies.length < maxZ && this._spawnAcc >= spawnEvery) {
+    // 劫尸战期间不刷普通尸；突破静默期也不刷
+    if (!this._bossActive && !this._gengFx && this._breakMute <= 0 && this._zombies.length < maxZ && this._spawnAcc >= spawnEvery) {
       this._spawnAcc = 0
       this._spawnZombie()
     }
@@ -763,9 +1054,10 @@ Page({
     // 随机雷罚
     if (!this._gengFx) this._updateLightning(dt, realm)
 
-    const shootEvery = Math.max(0.22, 0.55 - realm.lv * 0.045)
+    const shootEvery = Math.max(0.28, 0.55 - realm.lv * 0.04)
     this._swordAcc += dt
-    if (!this._gengFx && this._swordAcc >= shootEvery) {
+    // 周身剑出去杀敌：场上还有出击剑时不叠发，归队后再发
+    if (!this._gengFx && !this._spiritFx && !this._breakFx && this._swordAcc >= shootEvery && !(this._swords && this._swords.length)) {
       this._swordAcc = 0
       this._launchSwords(realm)
     }
@@ -891,11 +1183,12 @@ Page({
       }
 
       if (z.state === 'dead') {
-        const deadLen = ANIM_DEFS.dead.paths.length / ANIM_DEFS.dead.fps
+        const deadLen = z.isBoss ? 0.55 : (ANIM_DEFS.dead.paths.length / ANIM_DEFS.dead.fps)
         if (z.frameT >= deadLen) {
+          const wasBoss = !!z.isBoss
           if (this._focusZombie === z) this._focusZombie = null
           this._zombies.splice(i, 1)
-          this._registerKill()
+          this._registerKill(wasBoss ? { boss: true, skipDan: true } : null)
         }
         continue
       }
@@ -915,12 +1208,18 @@ Page({
       // 出土动画：手 → 露头 → 半身，约 1 秒播完再追人
       if (z.state === 'emerge' || z.emerge < 1) {
         z.state = 'emerge'
-        z.emerge = Math.min(1, z.emerge + dt / 1.05)
+        z.emerge = Math.min(1, (z.emerge || 0) + dt / (z.isBoss ? 0.7 : 1.05))
         if (z.emerge >= 1) {
           z.state = 'walk'
           z.frameT = 0
           z.emerge = 1
         }
+        continue
+      }
+
+      // 劫尸：追击 + 喷黑液技能
+      if (z.isBoss) {
+        this._updateBossZombie(z, dt, realm, baseSpeed)
         continue
       }
 
@@ -969,6 +1268,9 @@ Page({
       const spd = (baseSpeed + z.speedBonus) * dt
       z.x += (dx / dist) * spd
       z.y += (dy / dist) * spd
+      const clamped = this._clampToGrass(z.x, z.y)
+      z.x = clamped.x
+      z.y = clamped.y
       z.facing = Math.atan2(dy, dx)
       if (dist <= z.r + 18) {
         z.state = 'attack'
@@ -989,6 +1291,9 @@ Page({
       if (this._trails[i].life <= 0) this._trails.splice(i, 1)
     }
 
+    this._updateGoo(dt, realm)
+    this._updateHelper(dt, realm)
+
     if (this.data.wave !== this._wave || this.data.hp !== Math.ceil(this._hp)) {
       this.setData({ wave: this._wave, hp: Math.ceil(this._hp), maxHp: this._maxHp })
     }
@@ -999,7 +1304,7 @@ Page({
     if (!p) return
     const def = LOOT_DEFS[p.key] || LOOT_DEFS.sword
     if (p.key === 'sword') {
-      this._swordCount = Math.min(12, this._swordCount + 1)
+      this._swordCount = Math.min(MAX_SWORD_COUNT, this._swordCount + 1)
       this.setData({ swordCount: this._swordCount })
     } else if (p.key === 'hp') {
       this._healPlayer(Math.floor(this._maxHp * 0.28))
@@ -1112,6 +1417,7 @@ Page({
 
   _hurtPlayer(dmg, fromX, fromY) {
     if (this._perfect || this._over) return
+    if (this._isMortalCultivate() || (this._realmLv || 1) <= 1) return
     this._hp -= dmg
     this._playerHurtT = 0.35
     this._burst(this._playerX, this._playerY, '#f87171', 8)
@@ -1169,10 +1475,14 @@ Page({
   },
 
   _spawnBoltWarn() {
-    const m = 40
+    const g = this._grassRect()
+    const p = this._clampToGrass(
+      g.minX + Math.random() * (g.maxX - g.minX),
+      g.minY + Math.random() * (g.maxY - g.minY)
+    )
     this._bolts.push({
-      x: m + Math.random() * (this._w - m * 2),
-      y: m + Math.random() * (this._h - m * 2),
+      x: p.x,
+      y: p.y,
       r: 42,
       t: 0,
       warnDur: 1.15,
@@ -1189,13 +1499,15 @@ Page({
   _spawnLoot(key) {
     const def = LOOT_DEFS[key]
     if (!def) return
-    const m = this._margin || 28
-    const x = m + Math.random() * (this._w - m * 2)
-    const y = 80 + Math.random() * Math.max(40, this._h - 180)
+    const g = this._grassRect()
+    const p = this._clampToGrass(
+      g.minX + Math.random() * (g.maxX - g.minX),
+      g.minY + Math.random() * (g.maxY - g.minY)
+    )
     this._pickups.push({
       key,
-      x,
-      y,
+      x: p.x,
+      y: p.y,
       spin: 0,
       bob: Math.random() * 3,
       life: def.kind === 'enchant' ? 16 : 14,
@@ -1267,29 +1579,22 @@ Page({
     return best
   },
 
-  /** 全草地随机钻出（少而硬） */
+  /** 草地上出土普通僵尸 */
   _spawnZombie() {
-    const realm = realmByKills(this._kills)
+    const realm = realmByLv(this._realmLv)
     const hp = 10 + Math.floor(this._wave * 3.5) + realm.lv * 5 + Math.floor(this._kills / 25)
     const r = (20 + Math.min(8, this._wave * 0.35)) * realm.bodyScale
-    const m = this._margin || 28
-    const w = this._w
-    const h = this._h
-    let x = m + Math.random() * (w - m * 2)
-    let y = 70 + Math.random() * Math.max(40, h - 140)
-    const pdx = x - this._playerX
-    const pdy = y - this._playerY
-    if (pdx * pdx + pdy * pdy < 130 * 130) {
-      const ang = Math.random() * Math.PI * 2
-      x = this._playerX + Math.cos(ang) * (160 + Math.random() * 90)
-      y = this._playerY + Math.sin(ang) * (160 + Math.random() * 90)
-      x = Math.max(m, Math.min(w - m, x))
-      y = Math.max(70, Math.min(h - m, y))
+    let pos = this._spawnPointOnGrass()
+    const pdx = pos.x - this._playerX
+    const pdy = pos.y - this._playerY
+    if (pdx * pdx + pdy * pdy < 110 * 110) {
+      pos = this._spawnPointOnGrass()
     }
+    pos = this._clampToGrass(pos.x, pos.y)
     this._zombies.push({
       id: this._nextZid++,
-      x,
-      y,
+      x: pos.x,
+      y: pos.y,
       r,
       hp,
       maxHp: hp,
@@ -1304,39 +1609,608 @@ Page({
     })
   },
 
-  /** 击杀入账；尸丹累计；跨境界清场 */
+  /** 击杀入账；尸丹累计；达门槛召唤劫尸，击败劫尸后才突破 */
   _registerKill(opt) {
-    const prevLv = this._realmLv || 1
+    const isBoss = !!(opt && opt.boss)
     this._kills += 1
-    const nr = realmByKills(this._kills)
-    this._realmLv = nr.lv
 
     let triggerGeng = false
-    // 剑阵斩杀不加尸丹，避免连环触发
     if (!(opt && opt.skipDan) && !this._gengFx) {
       this._corpseDan = (this._corpseDan || 0) + 1
       if (this._corpseDan >= CORPSE_DAN_NEED) {
-        this._corpseDan = 0
         triggerGeng = true
       }
     }
 
+    const cur = realmByLv(this._realmLv)
     this.setData({
       kills: this._kills,
       wave: this._wave,
-      realmLv: nr.lv,
-      realmName: nr.name,
-      realmTierName: nr.tierName,
+      realmLv: cur.lv,
+      realmName: cur.name,
+      realmTierName: cur.tierName,
       corpseDan: this._corpseDan || 0,
       corpseDanNeed: CORPSE_DAN_NEED
     })
-    // 先突破清场，再开剑阵刷尸，避免被突破清掉
-    if (nr.lv > prevLv) {
-      this._onRealmBreakthrough(nr)
+
+    if (isBoss) {
+      this._onBossDefeated()
+    } else {
+      this._maybeStartBossChallenge()
     }
-    if (triggerGeng) {
+
+    if (triggerGeng && !this._bossActive) {
+      this._corpseDan = 0
+      this.setData({ corpseDan: 0 })
       this._startGengFormation()
     }
+  },
+
+  /** 经验满条：清小尸，召唤升级劫尸 */
+  _maybeStartBossChallenge() {
+    if (this._bossActive || this._perfect || this._over || this._breakFx || this._spiritFx) return
+    if ((this._realmLv || 1) <= 1) return
+    if ((this._realmLv || 1) >= REALMS.length) return
+    const need = REALMS[this._realmLv].kills
+    if (this._kills < need) return
+    // 剑阵进行中延迟到结束后再召唤
+    if (this._gengFx) {
+      this._bossDeferred = true
+      return
+    }
+    this._startBossChallenge()
+  },
+
+  _startBossChallenge() {
+    if (this._bossActive || this._perfect || this._over) return
+    this._bossDeferred = false
+    const realm = realmByLv(this._realmLv)
+    const zombies = this._zombies || []
+    for (let i = 0; i < zombies.length; i++) {
+      this._burst(zombies[i].x, zombies[i].y, '#1f2937', 8)
+    }
+    this._zombies = []
+    this._gooShots = []
+    this._gooPools = []
+    this._focusZombie = null
+    this._spawnAcc = 0
+    this._bossActive = true
+
+    const g = this._grassRect()
+    const pos = this._clampToGrass(
+      this._playerX < this._w * 0.5 ? g.maxX - 36 : g.minX + 36,
+      (g.minY + g.maxY) * 0.55
+    )
+    const hp = 90 + (this._realmLv || 1) * 42 + Math.floor(this._wave * 6)
+    const r = 42 + Math.min(16, (this._realmLv || 1) * 1.8)
+    const boss = {
+      id: this._nextZid++,
+      isBoss: true,
+      x: pos.x,
+      y: pos.y,
+      r,
+      hp,
+      maxHp: hp,
+      speedBonus: 8,
+      frameT: 0,
+      emerge: 0,
+      state: 'emerge',
+      kx: 0,
+      ky: 0,
+      flash: 0,
+      facing: 0,
+      skillCd: 1.6,
+      skillT: 0,
+      skillFired: false
+    }
+    this._zombies.push(boss)
+    this._focusZombie = boss
+    this._burst(pos.x, pos.y, '#111827', 18)
+    wx.showToast({ title: '劫尸降临！击败后突破', icon: 'none', duration: 1800 })
+    console.log('仙途劫尸降临', { realm: realm.name, hp, next: REALMS[this._realmLv] && REALMS[this._realmLv].name })
+  },
+
+  /** 击败劫尸后：先播精神领域，再正式突破 */
+  _onBossDefeated() {
+    this._bossActive = false
+    this._gooShots = []
+    this._gooPools = []
+    const nextLv = Math.min(REALMS.length, (this._realmLv || 1) + 1)
+    const nr = realmByLv(nextLv)
+    const zombies = this._zombies || []
+    for (let i = 0; i < zombies.length; i++) {
+      this._burst(zombies[i].x, zombies[i].y, '#fde68a', 8)
+    }
+    this._zombies = []
+    this._swords = []
+    this._focusZombie = null
+    this._spawnAcc = 0
+    this._breakMute = 12
+    // 若进图时 sj 未加载成功，开场再拉一次
+    this._ensureSpiritImages()
+    this._spiritFx = {
+      t: 0,
+      nextLv: nextLv,
+      realm: nr,
+      sjDur: 1.8,
+      sj02Dur: 2.0,
+      absorbDur: 1.4
+    }
+    console.log('仙途精神领域展开', nr.name, {
+      sj: !!this._spiritSjImg,
+      sj02: !!this._spiritSj02Img
+    })
+  },
+
+  /** 精神领域图缺失时补载（不阻塞演出） */
+  _ensureSpiritImages() {
+    const canvas = this._canvas
+    if (!canvas) return
+    if (!this._realmFxImgs) this._realmFxImgs = {}
+    const load = (src, onOk) => {
+      const img = canvas.createImage()
+      img.onload = () => onOk(img)
+      img.onerror = () => {
+        console.warn('精神领域图加载失败', src)
+      }
+      img.src = src
+    }
+    if (!this._spiritSjImg) {
+      load(SPIRIT_SJ_PATH, (img) => {
+        this._spiritSjImg = img
+        console.log('精神领域图就绪 _spiritSjImg', img.width, img.height)
+      })
+    }
+    if (!this._spiritSj02Img) {
+      load(SPIRIT_SJ02_PATH, (img) => {
+        this._spiritSj02Img = img
+        console.log('精神领域图就绪 _spiritSj02Img', img.width, img.height)
+      })
+    }
+    if (!this._grassImg) {
+      load(GRASS_PATH, (img) => {
+        this._grassImg = img
+      })
+    }
+    const keys = REALM_FX_KEYS
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]
+      if (this._realmFxImgs[key]) continue
+      load(REALM_FX_PATHS[key], ((k) => (img) => {
+        this._realmFxImgs[k] = img
+      })(key))
+    }
+  },
+
+  /** 精神领域演出：sj → sj02 → 化光入眉心 → 突破 */
+  _updateSpiritDomain(dt) {
+    const fx = this._spiritFx
+    if (!fx) return
+    fx.t += dt
+    this._animT += dt
+    const total = fx.sjDur + fx.sj02Dur + fx.absorbDur
+    const absorbStart = fx.sjDur + fx.sj02Dur
+    if (fx.t >= absorbStart && fx.t < total) {
+      const u = (fx.t - absorbStart) / fx.absorbDur
+      if (Math.random() < 0.55) {
+        const browX = this._playerX
+        const browY = this._playerY - 30
+        const ang = Math.random() * Math.PI * 2
+        const dist = 40 + (1 - u) * 90
+        this._particles.push({
+          x: browX + Math.cos(ang) * dist,
+          y: browY + Math.sin(ang) * dist * 0.7,
+          vx: (browX - (browX + Math.cos(ang) * dist)) * 2.2,
+          vy: (browY - (browY + Math.sin(ang) * dist * 0.7)) * 2.2,
+          life: 0.35,
+          color: '#fde68a'
+        })
+      }
+    }
+    for (let i = this._particles.length - 1; i >= 0; i--) {
+      const p = this._particles[i]
+      p.life -= dt
+      p.x += p.vx * dt
+      p.y += p.vy * dt
+      if (p.life <= 0) this._particles.splice(i, 1)
+    }
+    if (fx.t >= total) {
+      this._finishSpiritDomain()
+    }
+  },
+
+  _finishSpiritDomain() {
+    const fx = this._spiritFx
+    if (!fx) return
+    const nr = fx.realm
+    const nextLv = fx.nextLv
+    this._spiritFx = null
+    this._realmLv = nextLv
+    this.setData({
+      realmLv: nr.lv,
+      realmName: nr.name,
+      realmTierName: nr.tierName
+    })
+    this._burst(this._playerX, this._playerY - 30, '#fff7ed', 28)
+    console.log('仙途劫尸击败，突破', nr.name)
+    this._onRealmBreakthrough(nr)
+    this._ensureHelper()
+  },
+
+  /** 元婴起召唤灵狐帮手（跟随 + 化作流光突袭） */
+  _ensureHelper() {
+    if ((this._realmLv || 1) < HELPER_UNLOCK_LV) return
+    if (this._helper) return
+    const g = this._clampToGrass(this._playerX - 42, this._playerY + 12)
+    this._helper = {
+      x: g.x,
+      y: g.y,
+      state: 'follow',
+      frameT: 0,
+      skillCd: 1.0,
+      skillHit: false,
+      facing: 1,
+      dashFromX: 0,
+      dashFromY: 0,
+      dashToX: 0,
+      dashToY: 0,
+      trails: []
+    }
+    if (!this._helperAnnounced) {
+      this._helperAnnounced = true
+      wx.showToast({ title: '元婴灵狐相助', icon: 'none', duration: 1600 })
+      console.log('仙途帮手解锁：元婴灵狐')
+    }
+  },
+
+  _updateHelper(dt, realm) {
+    this._ensureHelper()
+    const h = this._helper
+    if (!h || this._spiritFx || this._breakFx || this._perfect || this._perfectFx) return
+    h.frameT += dt
+    h.skillCd = (h.skillCd || 0) - dt
+
+    // 流光拖尾衰减
+    if (h.trails && h.trails.length) {
+      for (let i = h.trails.length - 1; i >= 0; i--) {
+        h.trails[i].life -= dt
+        if (h.trails[i].life <= 0) h.trails.splice(i, 1)
+      }
+    }
+
+    if (h.state === 'skill') {
+      const u = Math.min(1, h.frameT / HELPER_SKILL_DUR)
+      // 前半冲向目标，后半折返侧后方
+      const mid = 0.48
+      let px
+      let py
+      if (u <= mid) {
+        const t = u / mid
+        const e = t * t * (3 - 2 * t)
+        px = h.dashFromX + (h.dashToX - h.dashFromX) * e
+        py = h.dashFromY + (h.dashToY - h.dashFromY) * e
+      } else {
+        const t = (u - mid) / (1 - mid)
+        const e = t * t * (3 - 2 * t)
+        const backX = this._playerX - 40
+        const backY = this._playerY + 10
+        px = h.dashToX + (backX - h.dashToX) * e
+        py = h.dashToY + (backY - h.dashToY) * e
+      }
+      h.x = px
+      h.y = py
+      h.facing = (h.dashToX >= h.dashFromX) ? 1 : -1
+      // 流光粒子
+      if (Math.random() < 0.9) {
+        if (!h.trails) h.trails = []
+        h.trails.push({
+          x: h.x + (Math.random() - 0.5) * 8,
+          y: h.y + (Math.random() - 0.5) * 6,
+          life: 0.22 + Math.random() * 0.18,
+          r: 2 + Math.random() * 3
+        })
+      }
+      // 冲刺中段命中路径上的僵尸
+      if (!h.skillHit && u >= 0.28) {
+        h.skillHit = true
+        this._helperSkillHit(h, realm)
+      }
+      if (h.frameT >= HELPER_SKILL_DUR) {
+        h.state = 'follow'
+        h.frameT = 0
+        h.skillHit = false
+        h.skillCd = HELPER_SKILL_CD
+        h.trails = []
+      }
+      return
+    }
+
+    // 跟随主角侧后方
+    const tx = this._playerX - 40
+    const ty = this._playerY + 10
+    let dx = tx - h.x
+    let dy = ty - h.y
+    let dist = Math.sqrt(dx * dx + dy * dy) || 1
+    if (dist > 6) {
+      const spd = Math.min(190, 100 + dist * 2) * dt
+      h.x += (dx / dist) * spd
+      h.y += (dy / dist) * spd
+      const c = this._clampToGrass(h.x, h.y)
+      h.x = c.x
+      h.y = c.y
+    }
+    if (Math.abs(dx) > 2) h.facing = dx >= 0 ? 1 : -1
+
+    // 附近有尸则化作流光突袭
+    if ((h.skillCd || 0) > 0 || this._gengFx || this._bossActive) return
+    let best = null
+    let bestD = 170 * 170
+    const zs = this._zombies || []
+    for (let i = 0; i < zs.length; i++) {
+      const z = zs[i]
+      if (!z || z.state === 'dead' || (z.emerge || 0) < 0.85) continue
+      const zx = z.x - h.x
+      const zy = z.y - h.y
+      const d = zx * zx + zy * zy
+      if (d < bestD) {
+        bestD = d
+        best = z
+      }
+    }
+    if (!best) return
+    h.state = 'skill'
+    h.frameT = 0
+    h.skillHit = false
+    h.dashFromX = h.x
+    h.dashFromY = h.y
+    h.dashToX = best.x
+    h.dashToY = best.y
+    h.facing = best.x >= h.x ? 1 : -1
+    h.trails = []
+  },
+
+  /** 流光斩击：路径附近僵尸受伤 */
+  _helperSkillHit(h, realm) {
+    const r = 46 + Math.min(20, (realm.lv || 1) * 1.6)
+    const dmg = 7 + Math.floor((realm.lv || 1) * 2)
+    const zs = this._zombies || []
+    // 对起点→终点线段附近的尸造成伤害
+    const x0 = h.dashFromX
+    const y0 = h.dashFromY
+    const x1 = h.dashToX
+    const y1 = h.dashToY
+    const segDx = x1 - x0
+    const segDy = y1 - y0
+    const segLen2 = segDx * segDx + segDy * segDy || 1
+    for (let i = 0; i < zs.length; i++) {
+      const z = zs[i]
+      if (!z || z.state === 'dead') continue
+      const t = Math.max(0, Math.min(1, ((z.x - x0) * segDx + (z.y - y0) * segDy) / segLen2))
+      const cx = x0 + segDx * t
+      const cy = y0 + segDy * t
+      const dx = z.x - cx
+      const dy = z.y - cy
+      if (dx * dx + dy * dy <= r * r) {
+        this._hitZombie(z, dmg, h.x, h.y, realm, null, true)
+      }
+    }
+    this._burst(h.dashToX, h.dashToY - 6, '#fbbf24', 16)
+    this._burst(h.dashToX, h.dashToY - 6, '#fdba74', 10)
+  },
+
+  _drawHelper(ctx) {
+    const h = this._helper
+    if (!h || this._spiritFx || this._breakFx) return
+    const walk = this._helperWalkImgs || []
+    const skill = this._helperSkillImgs || []
+
+    // 流光拖尾
+    if (h.trails && h.trails.length) {
+      ctx.save()
+      for (let i = 0; i < h.trails.length; i++) {
+        const p = h.trails[i]
+        ctx.globalAlpha = Math.max(0, p.life * 3.2)
+        ctx.fillStyle = i % 2 ? '#fde68a' : '#fb923c'
+        ctx.beginPath()
+        ctx.arc(p.x, p.y - 4, p.r || 3, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.restore()
+    }
+
+    // 突袭时画一道金色流光线
+    if (h.state === 'skill') {
+      ctx.save()
+      ctx.globalAlpha = 0.55
+      ctx.strokeStyle = '#fbbf24'
+      ctx.lineWidth = 5
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.moveTo(h.dashFromX, h.dashFromY - 4)
+      ctx.lineTo(h.x, h.y - 4)
+      ctx.stroke()
+      ctx.globalAlpha = 0.35
+      ctx.strokeStyle = '#fff7ed'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(h.dashFromX, h.dashFromY - 4)
+      ctx.lineTo(h.x, h.y - 4)
+      ctx.stroke()
+      ctx.restore()
+    }
+
+    let img = null
+    let size = 52
+    if (h.state === 'skill' && skill.length) {
+      const fi = Math.min(skill.length - 1, Math.floor((h.frameT / HELPER_SKILL_DUR) * skill.length))
+      img = skill[fi] || skill[0]
+      size = 64
+    } else if (walk.length) {
+      const fi = Math.floor((h.frameT || 0) * 6) % walk.length
+      img = walk[fi] || walk[0]
+    }
+    if (!img) return
+    ctx.save()
+    ctx.translate(h.x, h.y - 4)
+    if (h.facing < 0) ctx.scale(-1, 1)
+    // 突袭时略透明，更像流光化形
+    if (h.state === 'skill') ctx.globalAlpha = 0.85
+    this._drawSprite(ctx, img, 0, 0, size, h.state === 'skill' ? 'rgba(251,191,36,0.35)' : null, null)
+    ctx.restore()
+  },
+
+  /** 劫尸 AI：靠近喷黑液，贴身近战 */
+  _updateBossZombie(z, dt, realm, baseSpeed) {
+    if ((z.iceT || 0) > 0) {
+      z.state = 'idle'
+      return
+    }
+    if ((z.windT || 0) > 0) {
+      z.state = 'idle'
+      z.windA = (z.windA || 0) + dt * 2.4
+      const wr = z.windR || 36
+      z.x = (z.windCx || z.x) + Math.cos(z.windA) * wr
+      z.y = (z.windCy || z.y) + Math.sin(z.windA) * wr * 0.55
+      return
+    }
+    if (this._gengFx) {
+      z.state = 'idle'
+      return
+    }
+
+    z.skillCd = (z.skillCd || 0) - dt
+    const dx = this._playerX - z.x
+    const dy = this._playerY - z.y
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1
+    z.facing = Math.atan2(dy, dx)
+
+    if (z.state === 'skill') {
+      z.skillT = (z.skillT || 0) + dt
+      if (z.skillT >= 0.22 && !z.skillFired) {
+        z.skillFired = true
+        this._fireBossGoo(z, realm)
+      }
+      if (z.skillT >= 0.9) {
+        z.state = 'walk'
+        z.skillCd = Math.max(2.4, 3.6 - realm.lv * 0.08)
+        z.skillFired = false
+        z.skillT = 0
+      }
+      return
+    }
+
+    if (z.state === 'attack') {
+      const atkLen = 0.55
+      if (z.frameT >= atkLen * 0.45 && !z.hitDone) {
+        z.hitDone = true
+        this._hurtPlayer(14 + realm.lv * 3, z.x, z.y)
+      }
+      if (z.frameT >= atkLen) {
+        z.state = 'walk'
+        z.frameT = 0
+        z.hitDone = false
+      }
+      return
+    }
+
+    z.state = 'walk'
+    const spd = (baseSpeed * 0.72 + z.speedBonus) * dt
+    z.x += (dx / dist) * spd
+    z.y += (dy / dist) * spd
+    const clamped = this._clampToGrass(z.x, z.y)
+    z.x = clamped.x
+    z.y = clamped.y
+
+    if ((z.skillCd || 0) <= 0 && dist < 230 && dist > 55) {
+      z.state = 'skill'
+      z.skillT = 0
+      z.skillFired = false
+      z.frameT = 0
+      return
+    }
+    if (dist <= z.r + 20) {
+      z.state = 'attack'
+      z.frameT = 0
+      z.hitDone = false
+    }
+  },
+
+  /** 黑液喷吐：弹道 + 落地毒潭 */
+  _fireBossGoo(z, realm) {
+    const dx = this._playerX - z.x
+    const dy = this._playerY - z.y
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1
+    const ux = dx / dist
+    const uy = dy / dist
+    if (!this._gooShots) this._gooShots = []
+    for (let i = 0; i < 6; i++) {
+      const spread = (i - 2.5) * 0.08
+      const c = Math.cos(spread)
+      const s = Math.sin(spread)
+      const vx = (ux * c - uy * s) * (150 + i * 10)
+      const vy = (ux * s + uy * c) * (150 + i * 10)
+      this._gooShots.push({
+        x: z.x + ux * (z.r * 0.55),
+        y: z.y + uy * (z.r * 0.25) - 8,
+        vx,
+        vy,
+        r: 9 + i * 1.5,
+        life: 1.15,
+        dmg: 7 + realm.lv * 2
+      })
+    }
+    this._burst(z.x + ux * 20, z.y + uy * 12, '#0f172a', 10)
+  },
+
+  _updateGoo(dt, realm) {
+    const shots = this._gooShots || []
+    for (let i = shots.length - 1; i >= 0; i--) {
+      const g = shots[i]
+      g.life -= dt
+      g.x += g.vx * dt
+      g.y += g.vy * dt
+      g.vy += 40 * dt
+      const pdx = g.x - this._playerX
+      const pdy = g.y - this._playerY
+      if (pdx * pdx + pdy * pdy < (18 + g.r) * (18 + g.r)) {
+        this._hurtPlayer(g.dmg, g.x, g.y)
+        this._spawnGooPool(g.x, g.y, realm)
+        shots.splice(i, 1)
+        continue
+      }
+      if (g.life <= 0) {
+        this._spawnGooPool(g.x, g.y, realm)
+        shots.splice(i, 1)
+      }
+    }
+    const pools = this._gooPools || []
+    for (let i = pools.length - 1; i >= 0; i--) {
+      const p = pools[i]
+      p.life -= dt
+      p.tick = (p.tick || 0) - dt
+      if (p.tick <= 0) {
+        p.tick = 0.45
+        const dx = p.x - this._playerX
+        const dy = p.y - this._playerY
+        if (dx * dx + dy * dy < (p.r + 14) * (p.r + 14)) {
+          this._hurtPlayer(p.dmg, p.x, p.y)
+        }
+      }
+      if (p.life <= 0) pools.splice(i, 1)
+    }
+  },
+
+  _spawnGooPool(x, y, realm) {
+    if (!this._gooPools) this._gooPools = []
+    const p = this._clampToGrass(x, y)
+    this._gooPools.push({
+      x: p.x,
+      y: p.y,
+      r: 22 + Math.min(10, realm.lv),
+      life: 3.2,
+      tick: 0.2,
+      dmg: 4 + Math.floor(realm.lv * 1.2)
+    })
   },
 
   /**
@@ -1345,7 +2219,7 @@ Page({
    * 剑离身后，人物周围环剑/御剑暂时消失
    */
   _startGengFormation() {
-    if (this._perfect || this._over) return
+    if (this._perfect || this._over || this._bossActive) return
     const n = 14 + Math.min(10, Math.floor((this._realmLv || 1) / 2))
     for (let i = 0; i < n; i++) this._spawnZombie()
 
@@ -1550,6 +2424,7 @@ Page({
         this._gengFx = null
         this._corpseDan = 0
         this.setData({ corpseDan: 0 })
+        if (this._bossDeferred) this._maybeStartBossChallenge()
       }
     }
   },
@@ -1595,7 +2470,8 @@ Page({
       tierName: realm.tierName,
       short: realm.short,
       color: realm.color,
-      tier: realm.tier
+      tier: realm.tier,
+      fxKey: realm.fx || ''
     }
   },
 
@@ -1622,18 +2498,20 @@ Page({
   },
 
   _launchSwords(realm) {
-    const n = this._swordCount
+    const n = Math.max(1, Math.min(MAX_SWORD_COUNT, this._swordCount || 1))
     const baseAngle = -Math.PI / 2
-    const spread = Math.min(1.1, 0.12 * (n - 1))
+    const spread = Math.min(Math.PI * 1.6, 0.11 * (n - 1))
     const enc = this._swordEnchant
     const encType = enc && enc.t > 0 ? enc.type : null
     const encColor = encType && LOOT_DEFS[encType] ? LOOT_DEFS[encType].color : null
+    const orbitR = 28
     for (let i = 0; i < n; i++) {
-      const t = n === 1 ? 0.5 : i / (n - 1)
-      const ang = baseAngle - spread / 2 + t * spread
+      // 从周身环位飞出，视觉上就是环剑出去杀敌
+      const a = (Math.PI * 2 * i) / n + (this._animT || 0) * 1.25
+      const ang = n === 1 ? baseAngle : (baseAngle - spread / 2 + (i / Math.max(1, n - 1)) * spread)
       this._swords.push({
-        x: this._playerX + Math.cos(ang + Math.PI / 2) * 6,
-        y: this._playerY - 20,
+        x: this._playerX + Math.cos(a) * orbitR,
+        y: this._playerY + Math.sin(a) * orbitR,
         angle: ang,
         speed: 270 + realm.lv * 35 + (encType === 'wind' ? 40 : 0),
         dmg: 2 + Math.floor(realm.lv * 0.85),
@@ -1667,7 +2545,7 @@ Page({
       over: true,
       kills: this._kills,
       wave: this._wave,
-      realmName: realmByKills(this._kills).name
+      realmName: realmByLv(this._realmLv).name
     })
   },
 
@@ -1882,29 +2760,20 @@ Page({
     const w = this._w
     const h = this._h
     if (!ctx) return
-    const realm = realmByKills(this._kills)
+    const realm = realmByLv(this._realmLv)
 
     if (this._grassImg) {
-      // 全屏森林地图背景（远程图）
+      // 全屏 2D 草原山景背景（远程图，拉伸铺满画布）
       ctx.drawImage(this._grassImg, 0, 0, w, h)
     } else {
-      ctx.fillStyle = '#2f6b3a'
+      ctx.fillStyle = '#5a9e4a'
       ctx.fillRect(0, 0, w, h)
     }
 
     // 新背景已含山石小路，不再叠画程序风景，避免挡画面
 
-    const tombs = this._tombs || []
-    for (let ti = 0; ti < tombs.length; ti++) {
-      const t = tombs[ti]
-      const img = this._tombImgs && this._tombImgs[t.idx]
-      if (!img) continue
-      const tw = 64 * t.scale
-      const th = 78 * t.scale
-      ctx.globalAlpha = 1
-      ctx.drawImage(img, t.x - tw / 2, t.y - th, tw, th)
-      ctx.globalAlpha = 1
-    }
+    // 黑液毒潭（在角色之下）
+    this._drawGooPools(ctx)
 
     // 遁光尾巴（在人物之下）
     for (let i = 0; i < this._trails.length; i++) {
@@ -1923,11 +2792,15 @@ Page({
     for (let zi = 0; zi < this._zombies.length; zi++) {
       const z = this._zombies[zi]
       const animKey = z.state || 'walk'
-      const img = this._zombieFrame(z, animKey)
-      const emerge = Math.max(0.05, Math.min(1, z.emerge))
+      let img = z.isBoss
+        ? ((z.state === 'skill') ? (this._bossSkillImg || this._bossWalkImg) : this._bossWalkImg)
+        : this._zombieFrame(z, animKey)
+      if (!img && z.isBoss) img = this._bossWalkImg
+      const emerge = Math.max(0.05, Math.min(1, z.emerge == null ? 1 : z.emerge))
       let size = z.r * 2.55 * (0.35 + 0.65 * emerge)
+      if (z.isBoss) size = z.r * (2.9 + emerge * 0.5)
       // 出土帧自带土堆，用更大画幅、不透明度拉满
-      if (z.state === 'emerge') size = z.r * (2.8 + emerge * 0.6)
+      if (!z.isBoss && z.state === 'emerge') size = z.r * (2.8 + emerge * 0.6)
       if (z.gengScale != null) size *= z.gengScale
       if (z.state === 'walk') size *= 1 + Math.sin(z.frameT * 10) * 0.04
       if (z.state === 'hurt') size *= 1.08
@@ -1945,12 +2818,18 @@ Page({
 
       const hideBar = z.state === 'emerge' || (this._gengFx && (this._gengFx.phase === 'suck' || this._gengFx.phase === 'zap' || this._gengFx.phase === 'end'))
       if (emerge > 0.5 && z.state !== 'dead' && !hideBar) {
-        const bw = z.r * 2.2 * (z.gengScale != null ? z.gengScale : 1)
+        const bw = z.r * 2.2 * (z.gengScale != null ? z.gengScale : 1) * (z.isBoss ? 1.15 : 1)
         const ratio = Math.max(0, z.hp / z.maxHp)
         ctx.fillStyle = '#1f2937'
         ctx.fillRect(z.x - bw / 2, drawY - z.r - 16, bw, 4)
-        ctx.fillStyle = ratio > 0.4 ? '#4ade80' : '#f87171'
+        ctx.fillStyle = z.isBoss ? '#fbbf24' : (ratio > 0.4 ? '#4ade80' : '#f87171')
         ctx.fillRect(z.x - bw / 2, drawY - z.r - 16, bw * ratio, 4)
+        if (z.isBoss) {
+          ctx.fillStyle = '#fef3c7'
+          ctx.font = '10px sans-serif'
+          ctx.textAlign = 'center'
+          ctx.fillText('劫尸', z.x, drawY - z.r - 22)
+        }
       }
 
       if (z === this._focusZombie && z.state !== 'dead') {
@@ -1962,17 +2841,29 @@ Page({
       }
     }
 
+    this._drawGooShots(ctx)
     this._drawLightning(ctx)
 
-    const heroImg = this._playerImg
-    // 剑阵期间：环剑/御剑已离体参阵，人物身边不再画剑
-    if (!this._gengFx) {
+    // 元婴剑侍（画在主角下层，技能帧带剑气）
+    this._drawHelper(ctx)
+
+    const heroImg = this._isMortalCultivate()
+      ? this._mortalMeditateFrame()
+      : this._playerImg
+    // 升级演出中隐藏本体；剑阵期间环剑离体参阵也不画周身剑
+    const upgrading = !!(this._spiritFx || this._breakFx)
+    const mortal = this._isMortalCultivate()
+    if (!this._gengFx && !upgrading && !mortal) {
       this._drawRideSword(ctx, realm)
       if (!this._perfect) this._drawOrbitSwords(ctx, realm)
     }
-    const hurtFlash = this._playerHurtT > 0 ? 'rgba(248,113,113,0.45)' : realm.glow
-    this._drawSprite(ctx, heroImg, this._playerX, this._playerY - 6, 58, hurtFlash, realm.color)
-    if (!this._perfectFx) this._drawRealmBadge(ctx, realm)
+    if (!upgrading) {
+      if (mortal) this._drawMortalQiAura(ctx)
+      const hurtFlash = this._playerHurtT > 0 ? 'rgba(248,113,113,0.45)' : realm.glow
+      const size = mortal ? 96 : 72
+      this._drawSprite(ctx, heroImg, this._playerX, this._playerY - (mortal ? 10 : 6), size, hurtFlash, mortal ? '#22d3ee' : realm.color)
+      if (!this._perfectFx) this._drawRealmBadge(ctx, realm)
+    }
 
     for (let i = 0; i < this._particles.length; i++) {
       const p = this._particles[i]
@@ -1988,6 +2879,7 @@ Page({
     this._drawCtrlButtons(ctx)
     if (this._gengFx) this._drawGengFormation(ctx)
 
+    if (this._spiritFx) this._drawSpiritDomain(ctx, this._spiritFx)
     if (this._breakFx) this._drawBreakthrough(ctx, this._breakFx)
     if (this._perfectFx || this._perfect) this._drawPerfect(ctx)
 
@@ -2133,14 +3025,52 @@ Page({
   },
 
   /** 御剑座下飞剑 */
+  /** 御剑飞行：脚下只保留境界遁光光线，不再画剑体 */
   _drawRideSword(ctx, realm) {
     const enc = this._swordEnchant
-    const color = (enc && enc.t > 0 && enc.color) || realm.sword || realm.color
+    const color = (enc && enc.t > 0 && enc.color) || realm.color
+    const t = this._animT || 0
+    const lv = Math.max(1, realm.lv || 1)
+    const px = this._playerX
+    const py = this._playerY + 18
+    const beamN = 2 + Math.min(5, Math.floor(lv / 2))
+    const len = 22 + lv * 2.2
     ctx.save()
-    ctx.translate(this._playerX, this._playerY + 18)
-    ctx.rotate(-0.2 + Math.sin(this._animT * 4) * 0.05)
-    this._paintInkSword(ctx, color, 0.72)
-    if (enc && enc.t > 0) this._paintSwordEnchantFx(ctx, enc.type)
+    // 足底光盘
+    const g = ctx.createRadialGradient(px, py, 2, px, py, 16 + lv * 1.2)
+    g.addColorStop(0, color)
+    g.addColorStop(0.45, realm.glow || 'rgba(255,255,255,0.35)')
+    g.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.globalAlpha = 0.55 + Math.min(0.35, lv * 0.02)
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.ellipse(px, py, 18 + lv * 0.8, 7 + lv * 0.25, 0, 0, Math.PI * 2)
+    ctx.fill()
+    // 向后发散的遁光光线（随境界加多加长）
+    for (let i = 0; i < beamN; i++) {
+      const wobble = Math.sin(t * (3.2 + i * 0.4) + i) * 0.12
+      const ang = Math.PI * 0.5 + (i - (beamN - 1) / 2) * 0.18 + wobble
+      const pulse = 0.45 + 0.35 * Math.sin(t * 5 + i * 1.1)
+      const x2 = px + Math.cos(ang) * len
+      const y2 = py + Math.sin(ang) * (len * 0.55)
+      ctx.globalAlpha = pulse * (0.35 + Math.min(0.4, lv * 0.03))
+      ctx.strokeStyle = color
+      ctx.lineWidth = 1.4 + Math.min(2.2, lv * 0.12)
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.moveTo(px, py)
+      ctx.lineTo(x2, y2)
+      ctx.stroke()
+    }
+    // 附魔时额外一圈足底光晕（仍不画剑）
+    if (enc && enc.t > 0) {
+      ctx.globalAlpha = 0.45 + Math.sin(t * 8) * 0.15
+      ctx.strokeStyle = enc.color || color
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.ellipse(px, py, 22 + Math.sin(t * 6) * 2, 8, 0, 0, Math.PI * 2)
+      ctx.stroke()
+    }
     ctx.restore()
   },
 
@@ -2177,8 +3107,56 @@ Page({
     }
   },
 
+  /** 凡人打坐分镜（循环） */
+  _mortalMeditateFrame() {
+    const imgs = this._mortalMeditateImgs || []
+    if (!imgs.length) return this._playerImg
+    const fps = 2.4
+    const idx = Math.floor((this._animT || 0) * fps) % imgs.length
+    return imgs[idx] || imgs[0] || this._playerImg
+  },
+
+  /** 天地灵气入体：丹田漩涡 + 环绕光带 */
+  _drawMortalQiAura(ctx) {
+    const px = this._playerX
+    const py = this._playerY - 8
+    const t = this._animT || 0
+    const ratio = Math.min(1, (this._qiAbsorb || 0) / MORTAL_QI_NEED)
+    ctx.save()
+    // 地面灵纹
+    ctx.globalAlpha = 0.35 + ratio * 0.35
+    ctx.strokeStyle = '#67e8f9'
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.ellipse(px, py + 28, 36 + ratio * 16, 12 + ratio * 4, 0, 0, Math.PI * 2)
+    ctx.stroke()
+    // 环绕光带
+    for (let i = 0; i < 3; i++) {
+      const a = t * (1.6 + i * 0.35) + i * 2.1
+      const rr = 22 + i * 10 + Math.sin(t * 3 + i) * 3
+      ctx.globalAlpha = 0.25 + ratio * 0.35
+      ctx.strokeStyle = i % 2 ? '#a5f3fc' : '#22d3ee'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.ellipse(px, py + 4, rr, rr * 0.45, a * 0.2, a, a + Math.PI * 1.2)
+      ctx.stroke()
+    }
+    // 丹田漩涡
+    const g = ctx.createRadialGradient(px, py + 8, 2, px, py + 8, 18 + ratio * 10)
+    g.addColorStop(0, 'rgba(224,242,254,0.95)')
+    g.addColorStop(0.45, 'rgba(34,211,238,0.55)')
+    g.addColorStop(1, 'rgba(34,211,238,0)')
+    ctx.globalAlpha = 0.7 + ratio * 0.3
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.arc(px, py + 8, 18 + ratio * 10, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  },
+
   /** 右上角色血条：随境界变色加厚 */
   _drawPlayerHpBar(ctx, realm) {
+    if (this._isMortalCultivate()) return
     const w = this._w
     const barW = Math.min(140, w * 0.38)
     const thick = 8 + Math.min(10, realm.lv * 0.7)
@@ -2204,26 +3182,49 @@ Page({
     ctx.restore()
   },
 
-  /** 经验条 + 尸丹条 */
+  /** 经验条 + 尸丹条；凡人阶段显示灵气入体进度 */
   _drawExpAndDanBars(ctx, realm) {
     const w = this._w
     const barW = Math.min(148, w * 0.4)
     const x = 12
     const y = 86
-    const exp = realmExpProgress(this._kills || 0)
+    ctx.save()
+    if (this._isMortalCultivate()) {
+      const qi = this._qiAbsorb || 0
+      const ratio = Math.min(1, qi / MORTAL_QI_NEED)
+      ctx.fillStyle = 'rgba(15,23,42,0.55)'
+      ctx.fillRect(x - 2, y - 12, barW + 8, 36)
+      ctx.fillStyle = '#a5f3fc'
+      ctx.font = '10px sans-serif'
+      ctx.textAlign = 'left'
+      ctx.fillText('天地灵气入体 →炼气', x, y)
+      ctx.fillStyle = '#0f172a'
+      ctx.fillRect(x, y + 4, barW, 9)
+      ctx.fillStyle = '#22d3ee'
+      ctx.fillRect(x, y + 4, barW * ratio, 9)
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)'
+      ctx.strokeRect(x, y + 4, barW, 9)
+      ctx.fillStyle = '#f8fafc'
+      ctx.font = '9px sans-serif'
+      ctx.fillText(Math.floor(qi) + '/' + MORTAL_QI_NEED, x + 2, y + 12)
+      ctx.restore()
+      return
+    }
+    const exp = realmExpProgress(this._kills || 0, this._realmLv || 1)
     const dan = this._corpseDan || 0
     const danNeed = CORPSE_DAN_NEED
-    ctx.save()
     ctx.fillStyle = 'rgba(15,23,42,0.55)'
     ctx.fillRect(x - 2, y - 12, barW + 8, 48)
 
     ctx.fillStyle = '#e2e8f0'
     ctx.font = '10px sans-serif'
     ctx.textAlign = 'left'
-    ctx.fillText(exp.maxed ? '经验 大圆满' : ('经验 →' + exp.nextName), x, y)
+    let expLabel = exp.maxed ? '经验 大圆满' : ('经验 →' + exp.nextName)
+    if (exp.awaitBoss || this._bossActive) expLabel = this._bossActive ? '击败劫尸突破' : ('劫尸将至 →' + exp.nextName)
+    ctx.fillText(expLabel, x, y)
     ctx.fillStyle = '#0f172a'
     ctx.fillRect(x, y + 4, barW, 7)
-    ctx.fillStyle = '#38bdf8'
+    ctx.fillStyle = (exp.awaitBoss || this._bossActive) ? '#fbbf24' : '#38bdf8'
     ctx.fillRect(x, y + 4, barW * exp.ratio, 7)
     ctx.strokeStyle = 'rgba(255,255,255,0.3)'
     ctx.strokeRect(x, y + 4, barW, 7)
@@ -2450,29 +3451,45 @@ Page({
     ctx.stroke()
   },
 
-  /** 人物周围环绕小剑：剑柄朝人、剑尖朝外，随时间旋转 */
+  /** 人物周围环绕飞剑：数目=当前御剑数；出击中的剑从环上扣除；多剑分 2～3 层 */
   _drawOrbitSwords(ctx, realm) {
-    const n = Math.max(1, this._swordCount || 1)
+    const owned = Math.max(1, Math.min(MAX_SWORD_COUNT, this._swordCount || 1))
+    const inFlight = (this._swords || []).length
+    const n = Math.max(0, owned - Math.min(owned, inFlight))
+    if (n <= 0) return
+
     const cx = this._playerX
     const cy = this._playerY
-    const radius = 28 + Math.min(8, n * 0.4)
-    const spin = (this._animT || 0) * 1.25
     const enc = this._swordEnchant
     const color = (enc && enc.t > 0 && enc.color) || realm.sword || realm.color || '#334155'
-    for (let i = 0; i < n; i++) {
-      const a = spin + (Math.PI * 2 * i) / n
-      const x = cx + Math.cos(a) * radius
-      const y = cy + Math.sin(a) * radius
-      ctx.save()
-      ctx.translate(x, y)
-      ctx.rotate(a)
-      ctx.globalAlpha = 0.92
-      this._paintInkSword(ctx, color, 0.34)
-      if (enc && enc.t > 0) {
-        ctx.scale(0.55, 0.55)
-        this._paintSwordEnchantFx(ctx, enc.type)
+    // 数量少单层；中等多层；接近上限三层，避免 64 把挤成一圈
+    const layers = n <= 16 ? 1 : (n <= 36 ? 2 : 3)
+    const baseSpin = (this._animT || 0) * 1.2
+    let drawn = 0
+    for (let layer = 0; layer < layers; layer++) {
+      const remain = n - drawn
+      const layersLeft = layers - layer
+      const count = Math.ceil(remain / layersLeft)
+      const radius = 26 + layer * 15
+      const spin = baseSpin * (layer % 2 === 0 ? 1 : -0.85) + layer * 0.55
+      const scale = Math.max(0.26, 0.36 - layer * 0.03)
+      const alpha = 0.95 - layer * 0.12
+      for (let i = 0; i < count; i++) {
+        const a = spin + (Math.PI * 2 * i) / count
+        const x = cx + Math.cos(a) * radius
+        const y = cy + Math.sin(a) * radius * 0.92
+        ctx.save()
+        ctx.translate(x, y)
+        ctx.rotate(a)
+        ctx.globalAlpha = alpha
+        this._paintInkSword(ctx, color, scale)
+        if (enc && enc.t > 0) {
+          ctx.scale(0.5, 0.5)
+          this._paintSwordEnchantFx(ctx, enc.type)
+        }
+        ctx.restore()
       }
-      ctx.restore()
+      drawn += count
     }
   },
 
@@ -2526,8 +3543,152 @@ Page({
   },
 
   /**
-   * 升阶特效：按下/中/上境界区分气浪风格
-   * 下=灵气涟漪；中=虚影漩涡；上=法则金光爆发
+   * 突破前精神领域：目标境界配图显现 → 强化 → 化光入眉心
+   * 人物隐藏，按境界使用对应突破立绘
+   */
+  _drawSpiritDomain(ctx, fx) {
+    const w = this._w
+    const h = this._h
+    const px = this._playerX
+    const py = this._playerY
+    const browX = px
+    const browY = py - 30
+    const t = fx.t
+    const p1 = fx.sjDur
+    const p2 = p1 + fx.sj02Dur
+    const realm = fx.realm || realmByLv(this._realmLv)
+    const imgRealm = this._realmFxImage(realm)
+    const img1 = imgRealm || this._spiritSjImg
+    const img2 = imgRealm || this._spiritSj02Img || this._spiritSjImg
+
+    ctx.globalAlpha = 1
+
+    // 全屏压暗（不用 globalAlpha，避免部分机型异常）
+    const dimA = t < 0.25 ? (0.35 + t * 1.4) : (t < p2 ? 0.72 : Math.max(0.25, 0.72 - (t - p2) / fx.absorbDur * 0.45))
+    ctx.fillStyle = 'rgba(12, 8, 4, ' + Math.min(0.78, dimA) + ')'
+    ctx.fillRect(0, 0, w, h)
+
+    /** 图片铺满画布（cover），保证一定看得见 */
+    const drawCover = (img, alpha) => {
+      if (!img || alpha <= 0.02) return false
+      const iw = img.width || 480
+      const ih = img.height || 720
+      if (iw < 2 || ih < 2) return false
+      const scale = Math.max(w / iw, h / ih)
+      const dw = iw * scale
+      const dh = ih * scale
+      ctx.save()
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha))
+      ctx.drawImage(img, (w - dw) * 0.5, (h - dh) * 0.5, dw, dh)
+      ctx.restore()
+      return true
+    }
+
+    /** 无图时的金色人形领域兜底，避免只剩 Toast */
+    const drawFallbackDomain = (alpha, scale) => {
+      if (alpha <= 0.02) return
+      ctx.save()
+      ctx.globalAlpha = alpha
+      ctx.translate(px, py - 20)
+      ctx.scale(scale, scale)
+      // 外圈灵光
+      const g = ctx.createRadialGradient(0, -40, 10, 0, -40, 120)
+      g.addColorStop(0, 'rgba(253,230,138,0.85)')
+      g.addColorStop(0.45, 'rgba(251,191,36,0.35)')
+      g.addColorStop(1, 'rgba(251,191,36,0)')
+      ctx.fillStyle = g
+      ctx.beginPath()
+      ctx.arc(0, -40, 120, 0, Math.PI * 2)
+      ctx.fill()
+      // 巨大人形剪影
+      ctx.fillStyle = 'rgba(253, 224, 71, 0.55)'
+      ctx.beginPath()
+      ctx.ellipse(0, -95, 28, 36, 0, 0, Math.PI * 2) // 头
+      ctx.fill()
+      ctx.beginPath()
+      ctx.ellipse(0, -35, 48, 55, 0, 0, Math.PI * 2) // 身
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(255,247,237,0.8)'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      ctx.moveTo(-55, -50)
+      ctx.lineTo(-90, -10)
+      ctx.moveTo(55, -50)
+      ctx.lineTo(90, -10)
+      ctx.stroke()
+      ctx.restore()
+    }
+
+    if (t < p1) {
+      const u = Math.min(1, t / p1)
+      const ease = 1 - Math.pow(1 - u, 2)
+      const ok = drawCover(img1, 0.2 + ease * 0.8)
+      if (!ok) drawFallbackDomain(0.35 + ease * 0.55, 0.7 + ease * 0.55)
+    } else if (t < p2) {
+      const u = (t - p1) / fx.sj02Dur
+      drawCover(img1, Math.max(0, 0.85 - u * 0.35))
+      const ok2 = drawCover(img2, Math.min(1, 0.55 + u * 0.45))
+      if (!ok2) drawFallbackDomain(0.75, 1.15)
+      // 法阵环
+      ctx.save()
+      ctx.globalAlpha = 0.55
+      ctx.strokeStyle = realm.color || '#fbbf24'
+      ctx.lineWidth = 2
+      for (let i = 0; i < 3; i++) {
+        const rr = 56 + i * 32 + Math.sin((this._animT || 0) * 3 + i) * 5
+        ctx.beginPath()
+        ctx.arc(px, py - 12, rr, 0, Math.PI * 2)
+        ctx.stroke()
+      }
+      ctx.restore()
+    } else {
+      const u = Math.min(1, (t - p2) / fx.absorbDur)
+      const alpha = u < 0.5 ? 1 - u * 0.35 : Math.max(0, 1 - (u - 0.5) / 0.5)
+      const ok = drawCover(img2, alpha * 0.9)
+      if (!ok) drawFallbackDomain(alpha * 0.7, 1.1 * (1 - u * 0.7))
+
+      if (u < 0.4) {
+        ctx.fillStyle = 'rgba(255,247,237,' + ((1 - u / 0.4) * 0.7) + ')'
+        ctx.beginPath()
+        ctx.arc(px, py - 24, 36 + u * 140, 0, Math.PI * 2)
+        ctx.fill()
+      }
+
+      const beamU = Math.max(0, (u - 0.15) / 0.85)
+      if (beamU > 0) {
+        const fromY = Math.min(h * 0.12, py - 120)
+        ctx.save()
+        ctx.globalAlpha = Math.min(1, beamU * 1.5) * (u > 0.88 ? Math.max(0, (1 - u) / 0.12) : 1)
+        ctx.strokeStyle = '#fffbeb'
+        ctx.lineWidth = 4 + (1 - beamU) * 14
+        ctx.beginPath()
+        ctx.moveTo(browX, fromY)
+        ctx.lineTo(browX, browY)
+        ctx.stroke()
+        ctx.fillStyle = '#fffbeb'
+        ctx.beginPath()
+        ctx.arc(browX, browY, 4 + beamU * 9, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
+    }
+
+    // 升级中隐藏本体，领域图单独演出
+    ctx.globalAlpha = 1
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = 'rgba(15,23,42,0.55)'
+    ctx.fillRect(w * 0.5 - 90, h * 0.08 - 18, 180, 44)
+    ctx.fillStyle = '#fde68a'
+    ctx.font = 'bold 18px sans-serif'
+    ctx.fillText('精神领域', w * 0.5, h * 0.08)
+    ctx.font = '12px sans-serif'
+    ctx.fillStyle = '#fef3c7'
+    ctx.fillText(realm.name ? ('即将突破 · ' + realm.name) : '', w * 0.5, h * 0.08 + 18)
+  },
+
+  /**
+   * 升阶特效：展示目标境界突破立绘 + 气浪文字
    */
   _drawBreakthrough(ctx, fx) {
     const w = this._w
@@ -2537,9 +3698,24 @@ Page({
     const p = Math.min(1, fx.t / fx.duration)
     const fade = p < 0.2 ? p / 0.2 : (p > 0.75 ? (1 - p) / 0.25 : 1)
     ctx.save()
-    ctx.globalAlpha = Math.max(0, fade) * 0.55
-    ctx.fillStyle = fx.tier === '上' ? 'rgba(255,247,237,0.35)' : (fx.tier === '中' ? 'rgba(99,102,241,0.22)' : 'rgba(56,189,248,0.18)')
-    ctx.fillRect(0, 0, w, h)
+
+    const realmImg = (fx.fxKey && this._realmFxImgs && this._realmFxImgs[fx.fxKey]) || null
+    if (realmImg) {
+      const iw = realmImg.width || 480
+      const ih = realmImg.height || 720
+      const scale = Math.max(w / iw, h / ih)
+      const dw = iw * scale
+      const dh = ih * scale
+      ctx.globalAlpha = Math.max(0, fade) * 0.92
+      ctx.drawImage(realmImg, (w - dw) * 0.5, (h - dh) * 0.5, dw, dh)
+      ctx.globalAlpha = Math.max(0, fade) * 0.28
+      ctx.fillStyle = 'rgba(8,6,12,0.55)'
+      ctx.fillRect(0, 0, w, h)
+    } else {
+      ctx.globalAlpha = Math.max(0, fade) * 0.55
+      ctx.fillStyle = fx.tier === '上' ? 'rgba(255,247,237,0.35)' : (fx.tier === '中' ? 'rgba(99,102,241,0.22)' : 'rgba(56,189,248,0.18)')
+      ctx.fillRect(0, 0, w, h)
+    }
 
     const rings = fx.tier === '上' ? 4 : (fx.tier === '中' ? 3 : 2)
     for (let i = 0; i < rings; i++) {
@@ -2571,7 +3747,7 @@ Page({
     ctx.textBaseline = 'middle'
     ctx.fillStyle = fx.color
     ctx.font = 'bold 28px "KaiTi", "STKaiti", serif'
-    ctx.fillText('突破 · ' + fx.name + '期', w * 0.5, h * 0.28)
+    ctx.fillText('突破 · ' + fx.name + (fx.name === '凡人' ? '' : '期'), w * 0.5, h * 0.28)
     ctx.font = '13px sans-serif'
     ctx.fillStyle = '#f8fafc'
     ctx.fillText(fx.tierName, w * 0.5, h * 0.28 + 28)
@@ -2643,8 +3819,45 @@ Page({
     ctx.textBaseline = 'middle'
     ctx.font = '16px sans-serif'
     ctx.fillStyle = '#3f3f46'
-    const realm = realmByKills(this._kills)
+    const realm = realmByLv(this._realmLv)
     ctx.fillText('击杀 ' + this._kills + ' · 境界 ' + realm.name, cx, cy + 48)
     ctx.restore()
+  },
+
+  _drawGooPools(ctx) {
+    const pools = this._gooPools || []
+    for (let i = 0; i < pools.length; i++) {
+      const p = pools[i]
+      const a = Math.max(0.15, Math.min(0.75, p.life / 3.2))
+      ctx.save()
+      ctx.globalAlpha = a
+      ctx.fillStyle = '#0a0a0a'
+      ctx.beginPath()
+      ctx.ellipse(p.x, p.y, p.r, p.r * 0.45, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#1e293b'
+      ctx.beginPath()
+      ctx.ellipse(p.x - 2, p.y - 1, p.r * 0.55, p.r * 0.22, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    }
+  },
+
+  _drawGooShots(ctx) {
+    const shots = this._gooShots || []
+    for (let i = 0; i < shots.length; i++) {
+      const g = shots[i]
+      ctx.save()
+      ctx.globalAlpha = Math.max(0.25, Math.min(1, g.life * 1.2))
+      ctx.fillStyle = '#020617'
+      ctx.beginPath()
+      ctx.arc(g.x, g.y, g.r, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#334155'
+      ctx.beginPath()
+      ctx.arc(g.x - g.r * 0.25, g.y - g.r * 0.25, g.r * 0.35, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    }
   }
 })

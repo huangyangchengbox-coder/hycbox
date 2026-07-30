@@ -15,9 +15,9 @@
   z-index: 2;
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8rpx 16rpx;
-  padding: 16rpx 28rpx;
+  padding: 16rpx 28rpx 16rpx 140rpx;
   font-size: 22rpx;
   color: #d7e0ea;
   background: linear-gradient(180deg, rgba(15, 20, 25, 0.85), transparent);
@@ -28,30 +28,23 @@
   white-space: nowrap;
 }
 
-/* cover-view：固定尺寸 + 纯色背景，避免被同层 canvas 吃掉 */
-.ctrl-bar {
+/* 左上角境界详情 */
+.realm-btn {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(72rpx + env(safe-area-inset-bottom));
+  left: 20rpx;
+  top: calc(16rpx + env(safe-area-inset-top));
   z-index: 20;
-  height: 48rpx;
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-}
-
-.ctrl-btn {
-  width: 140rpx;
+  width: 100rpx;
   height: 44rpx;
   line-height: 44rpx;
-  margin: 0 8rpx;
   text-align: center;
   font-size: 22rpx;
   color: #f8fafc;
   background-color: rgba(15, 23, 42, 0.82);
   border-radius: 6rpx;
 }
+
+/* 左下角太极：canvas 绘制，自动旋转 / 手动静止 */
 
 .tip {
   position: absolute;

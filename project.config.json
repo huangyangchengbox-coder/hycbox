@@ -1,7 +1,6 @@
 {
   "description": "项目配置文件。",
   "miniprogramRoot": "miniprogram/",
-  "cloudfunctionRoot": "cloudfunctions/",
   "packOptions": {
     "ignore": [
       { "type": "folder", "value": "packageComponent" },
@@ -12,6 +11,8 @@
       { "type": "folder", "value": "workers" },
       { "type": "folder", "value": "miniprogram_npm" },
       { "type": "folder", "value": "node_modules" },
+      { "type": "folder", "value": "game-assets" },
+      { "type": "folder", "value": "cloudfunctions" },
       { "type": "suffix", "value": ".md" },
       { "type": "suffix", "value": ".map" }
     ],

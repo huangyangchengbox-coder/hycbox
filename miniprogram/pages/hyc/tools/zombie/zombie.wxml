@@ -17,13 +17,11 @@
     bindtouchcancel="onTouchEnd"
   ></canvas>
 
-  <!-- 必须放在 canvas 后面；cover-view 用固定宽高才能稳定显示 -->
-  <cover-view class="ctrl-bar" wx:if="{{!over && !perfect && !showRealmInfo}}">
-    <cover-view class="ctrl-btn" bindtap="toggleAutoPilot">{{autoPilot ? '自动中' : '自动'}}</cover-view>
-    <cover-view class="ctrl-btn" bindtap="toggleRealmInfo">境界</cover-view>
-  </cover-view>
+  <!-- 左上角：境界详情 -->
+  <cover-view class="realm-btn" wx:if="{{!over && !perfect && !showRealmInfo}}" bindtap="toggleRealmInfo">境界</cover-view>
 
-  <view class="tip" wx:if="{{!over && !perfect && !showRealmInfo}}">尸丹满50触发大庚剑阵 · 看经验条知升级进度</view>
+  <view class="tip" wx:if="{{!over && !perfect && !showRealmInfo && realmName === '凡人'}}">盘膝吸纳天地灵气 · 僵尸之手伤不得你</view>
+  <view class="tip" wx:elif="{{!over && !perfect && !showRealmInfo}}">尸丹满50触发大庚剑阵 · 左下太极切换自动</view>
 
   <cover-view class="info-mask" wx:if="{{showRealmInfo && !over && !perfect}}">
     <cover-view class="info-title">修仙境界</cover-view>
