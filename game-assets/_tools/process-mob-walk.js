@@ -1,5 +1,5 @@
 /**
- * 处理怪物走路帧：近黑变透明，输出到 game-assets/xian/mobs/
+ * 处理怪物走路帧：近黑变透明；若源图为横条多帧则先切左起一格，再输出到 game-assets/xian/mobs/
  */
 const sharp = require('sharp')
 const fs = require('fs')
@@ -17,8 +17,27 @@ const JOBS = [
   { key: 'screamer', w0: 'screamer_walk_sheet.png', w1: 'screamer_w1.png' }
 ]
 
+/** 横条多帧只取左起一格，避免 contain 成「四个小怪」 */
+async function maybeSliceFirstFrame(inputBuf, meta) {
+  if (!meta.width || !meta.height || meta.width / meta.height < 1.6) {
+    return { buf: inputBuf, width: meta.width, height: meta.height }
+  }
+  const frames = 4
+  const fw = Math.floor(meta.width / frames)
+  const sliced = await sharp(inputBuf)
+    .extract({ left: 0, top: 0, width: fw, height: meta.height })
+    .png()
+    .toBuffer({ resolveWithObject: true })
+  return { buf: sliced.data, width: sliced.info.width, height: sliced.info.height }
+}
+
 async function toTransparentPng(input, output, size) {
-  const img = sharp(input).ensureAlpha()
+  const rawIn = await sharp(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  const sliced = await maybeSliceFirstFrame(
+    await sharp(input).ensureAlpha().png().toBuffer(),
+    rawIn.info
+  )
+  const img = sharp(sliced.buf).ensureAlpha()
   const { data, info } = await img.raw().toBuffer({ resolveWithObject: true })
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i]

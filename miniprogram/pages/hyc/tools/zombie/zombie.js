@@ -3,14 +3,21 @@
  * 击杀达门槛后出现劫尸（大僵尸），击败后才突破境界。
  */
 
+const config = require('../../../../services/config')
+const api = require('../../../../services/api')
+const wxSession = require('../../../../services/wxSession')
+
+/** 本地进度备份，避免读服失败时看不到再续入口 */
+const XIAN_PROGRESS_LOCAL_KEY = 'hyc_xian_progress'
+
 /** 远程资源根路径（后台 uploads），避免主包图片超 200K 质量门禁 */
 const ASSET_BASE = 'https://hychyr.top/uploads/game/xian'
 /** 资源版本号：换图后递增，避免微信缓存旧图 */
-const ASSET_VER = '20260730k'
+const ASSET_VER = '20260731i'
 
-/** 劫尸血条段数（随境界增加） */
+/** 劫尸血条段数（随等级缓增） */
 function bossHpBars(realmLv) {
-  return 3 + Math.min(4, Math.floor(Math.max(1, realmLv || 1) / 2))
+  return 3 + Math.min(4, Math.floor(Math.max(1, realmLv || 1) / 8))
 }
 
 /** 劫尸血条配色（从内层到外层循环） */
@@ -21,93 +28,313 @@ function assetUrl(relPath) {
   return ASSET_BASE + '/' + String(relPath || '').replace(/^\//, '') + '?v=' + ASSET_VER
 }
 
-/** 修仙境界表：kills=突破所需击杀；fx=突破配图；tier 决定升阶特效风格 */
-const REALMS = [
+/** 小境界升层所需击杀（同大境界内） */
+const MINOR_STAGE_KILLS = 5
+
+/**
+ * 大境界定义（人界/灵界/仙界）
+ * stages 展开为小境界；isPeak（末层）打境主破大境；其余小境界击杀满后灵气旋涡入丹田
+ */
+const REALM_MAJOR_DEFS = [
   {
-    kills: 0, name: '凡人', tier: '下', tierName: '下境界', fx: '',
+    key: 'mortal', name: '凡人', world: '人界', tier: '下', tierName: '人界·下境界', fx: '',
     color: '#64748b', glow: 'rgba(100,116,139,0.4)', sword: '#1e293b',
-    short: '盘膝吸纳天地灵气，僵尸之手环伺却伤不得身',
-    desc: '刚入仙途的凡人，盘膝打坐吸纳天地灵气。灵气入体足够后可突破炼气；修炼时僵尸之手会从地底伸出，但无法伤人。'
+    stages: [{ key: '', label: '' }],
+    short: '身如枯木，心若止水，待惊雷破晓',
+    skills: '打坐吸纳天地灵气（无战斗技能）',
+    desc: '凡人修仙起步：盘膝打坐吸纳天地灵气。风雨雷电随心境变幻，灵气入体圆满后可破入炼气。'
   },
   {
-    kills: 0, name: '炼气', tier: '下', tierName: '下境界', fx: 'lianqi',
+    key: 'lianqi', name: '炼气', world: '人界', tier: '下', tierName: '人界·下境界', fx: 'lianqi',
     color: '#86efac', glow: 'rgba(134,239,172,0.5)', sword: '#166534',
-    short: '灵气如萤火汇聚入体，丹田初现灵气漩涡',
-    desc: '灵气如萤火汇聚入体，丹田初现灵气漩涡，修仙之路的起点。自此持剑斩尸。'
+    stages: ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三'].map((lab, i) => ({
+      key: String(i + 1), label: lab + '层'
+    })),
+    short: '眨眼剑法 · 火弹术 · 符箓诡战',
+    skills: '眨眼剑法（突刺）· 火弹术 · 金刚符/天雷子等符箓 · 勇气满放大招',
+    desc: '共十三层。吸纳天地灵气温养经脉；十三层巅峰需筑基丹等辅助，击败腐尸王可尝试筑基。',
+    combat: {
+      guardianName: '腐尸王', typeKey: 'walker', tint: '#4ade80',
+      hpBars: 3, hpPerBar: 88, rMul: 1.25, warRate: 6.8,
+      ultimate: 'blink_jian', ultName: '眨眼剑法', aux: 'huodan',
+      tip: '眨眼突刺 · 火弹 · 符箓 · 勇气满放大招 · 十三层巅峰击败腐尸王筑基'
+    }
   },
   {
-    kills: 12, name: '筑基', tier: '下', tierName: '下境界', fx: 'zhuji',
+    key: 'zhuji', name: '筑基', world: '人界', tier: '下', tierName: '人界·下境界', fx: 'zhuji',
     color: '#38bdf8', glow: 'rgba(56,189,248,0.5)', sword: '#0369a1',
-    short: '灵气液化成灵池，金光环绕，飞剑待发',
-    desc: '灵气液化成灵池，金光环绕，飞剑待发，正式踏入修仙之途。'
+    stages: [
+      { key: 'early', label: '初期' }, { key: 'mid', label: '中期' },
+      { key: 'late', label: '后期' }, { key: 'jiadan', label: '假丹' }
+    ],
+    short: '青元剑诀 · 颠倒五行阵',
+    skills: '青元剑芒 · 护体剑盾 · 颠倒五行阵（勇气满）',
+    desc: '灵气液化，可御剑飞行、辟谷。假丹境为筑基巅峰向结丹过渡；击败傀儡主尸可结丹。',
+    combat: {
+      guardianName: '傀儡主尸', typeKey: 'brute', tint: '#38bdf8',
+      hpBars: 4, hpPerBar: 96, rMul: 1.15, warRate: 6.0,
+      ultimate: 'wuxing_array', ultName: '颠倒五行阵', aux: 'qingyuan',
+      tip: '青元剑芒 · 护体剑盾 · 勇气满布阵困敌 · 假丹巅峰击败傀儡主尸结丹'
+    }
   },
   {
-    kills: 35, name: '结丹', tier: '下', tierName: '下境界', fx: 'jiedan',
+    key: 'jiedan', name: '结丹', world: '人界', tier: '下', tierName: '人界·下境界', fx: 'jiedan',
     color: '#fbbf24', glow: 'rgba(251,191,36,0.55)', sword: '#b45309',
-    short: '金丹凝聚，金光四射，本命法宝虚影浮现',
-    desc: '金丹凝聚，金光四射，本命法宝虚影浮现，实力质变。'
+    stages: [
+      { key: 'early', label: '初期' }, { key: 'mid', label: '中期' },
+      { key: 'late', label: '后期' }, { key: 'jiaying', label: '假婴' }
+    ],
+    short: '剑影分光 · 噬金虫',
+    skills: '剑影分光 · 噬金虫 · 勇气满分光术',
+    desc: '体内灵气凝结金丹。假婴境为结丹巅峰；击败金丹尸煞可孕婴。',
+    combat: {
+      guardianName: '金丹尸煞', typeKey: 'wraith', tint: '#fbbf24',
+      hpBars: 4, hpPerBar: 108, rMul: 1.2, warRate: 5.6,
+      ultimate: 'jianying', ultName: '剑影分光', aux: 'shijin',
+      tip: '剑影群斩 · 噬金虫 · 勇气满分光术 · 假婴巅峰击败金丹尸煞'
+    }
   },
   {
-    kills: 70, name: '元婴', tier: '下', tierName: '下境界', fx: 'yuanying',
+    key: 'yuanying', name: '元婴', world: '人界', tier: '下', tierName: '人界·下境界', fx: 'yuanying',
     color: '#f472b6', glow: 'rgba(244,114,182,0.55)', sword: '#be185d',
-    short: '金丹破裂，元婴诞生，可空间顺移穿梭',
-    desc: '金丹破裂，元婴诞生，金光与灵气交织。自此可穿梭空间顺移；灵狐相助。'
+    stages: [
+      { key: 'early', label: '初期' }, { key: 'mid', label: '中期' }, { key: 'late', label: '后期' }
+    ],
+    short: '大庚剑阵 · 辟邪神雷 · 遁光穿梭',
+    skills: '大庚剑阵 · 辟邪神雷 · 遁光飞行 · 破碎虚空瞬移（躲伤）',
+    desc: '金丹孕育元婴，可离体；人界高端战力。元婴起可破碎虚空瞬移躲避伤害。击败魔族长老可化神。',
+    combat: {
+      guardianName: '魔族长老', typeKey: 'demon', tint: '#a78bfa',
+      hpBars: 6, hpPerBar: 260, rMul: 1.35, warRate: 3.2,
+      ultimate: 'geng_classic', ultName: '大庚剑阵', aux: 'pixie_lei',
+      tip: '遁光飞行 · 破碎虚空躲伤 · 辟邪神雷 · 勇气满放大庚 · 击败魔族长老'
+    }
   },
   {
-    kills: 120, name: '化神', tier: '下', tierName: '下境界', fx: 'huashen',
+    key: 'huashen', name: '化神', world: '人界', tier: '下', tierName: '人界·下境界', fx: 'huashen',
     color: '#22d3ee', glow: 'rgba(34,211,238,0.55)', sword: '#0e7490',
-    short: '天地灵气龙卷汇聚，云海雷电磅礴气势',
-    desc: '天地灵气龙卷汇聚，元婴成长为幼年形态，云海雷电磅礴气势。'
+    stages: [
+      { key: 'early', label: '初期' }, { key: 'mid', label: '中期' }, { key: 'late', label: '后期' }
+    ],
+    short: '元磁神光 · 梵圣真魔功',
+    skills: '元磁神光 · 梵圣真魔功 · 心魔黑影试炼（概率）',
+    desc: '人界顶点，元婴向元神过渡。人界灵气稀薄，出手耗寿；击败煞魔化身可飞升炼虚。',
+    combat: {
+      guardianName: '煞魔化身', typeKey: 'brute', tint: '#22d3ee',
+      hpBars: 5, hpPerBar: 140, rMul: 1.3, warRate: 5.2,
+      ultimate: 'yuanci', ultName: '元磁神光', aux: 'fansheng',
+      tip: '元磁神光 · 梵圣 · 击败境主后或现心魔黑影'
+    }
   },
   {
-    kills: 180, name: '炼虚', tier: '中', tierName: '中境界', fx: 'lianxu',
+    key: 'lianxu', name: '炼虚', world: '灵界', tier: '中', tierName: '灵界·中境界', fx: 'lianxu',
     color: '#2dd4bf', glow: 'rgba(45,212,191,0.55)', sword: '#0f766e',
-    short: '少年元婴虚影若隐若现，元气化形为灵禽瑞兽',
-    desc: '少年元婴虚影若隐若现，元气化形为灵禽瑞兽，炼虚合道。'
+    stages: [
+      { key: 'early', label: '初期' }, { key: 'mid', label: '中期' }, { key: 'late', label: '后期' }
+    ],
+    short: '玄天斩灵剑 · 噬灵天火',
+    skills: '玄天斩灵剑 · 噬灵天火 · 心魔黑影互挡',
+    desc: '元婴化虚影，炼化天地元气。寿元可达万年，每三千年一大天劫。击败虚空裂兽可合体。',
+    combat: {
+      guardianName: '虚空裂兽', typeKey: 'wraith', tint: '#2dd4bf',
+      hpBars: 5, hpPerBar: 155, rMul: 1.28, warRate: 4.8,
+      ultimate: 'xuantian', ultName: '玄天斩灵剑', aux: 'shiling',
+      tip: '玄天斩灵 · 噬灵天火 · 心魔黑影 · 黑剑互挡'
+    }
   },
   {
-    kills: 260, name: '合体', tier: '中', tierName: '中境界', fx: 'heti',
+    key: 'heti', name: '合体', world: '灵界', tier: '中', tierName: '灵界·中境界', fx: 'heti',
     color: '#a78bfa', glow: 'rgba(167,139,250,0.55)', sword: '#6d28d9',
-    short: '青年元婴与本体融合，五色光芒环绕',
-    desc: '青年元婴与本体融合，五色光芒环绕，法则符文浮现，天人合一。'
+    stages: [
+      { key: 'early', label: '初期' }, { key: 'mid', label: '中期' }, { key: 'late', label: '后期' }
+    ],
+    short: '惊蛰十二变 · 百脉炼宝',
+    skills: '惊蛰十二变 · 百脉炼宝 · 心魔试炼',
+    desc: '元婴虚影与本体融合，掌握一种五行或变异属性抗衡天劫。击败真灵畸变体可大乘。',
+    combat: {
+      guardianName: '真灵畸变体', typeKey: 'screamer', tint: '#a78bfa',
+      hpBars: 5, hpPerBar: 168, rMul: 1.35, warRate: 4.6,
+      ultimate: 'avatar', ultName: '惊蛰十二变', aux: 'baimai',
+      tip: '真灵变身 · 百脉炼宝 · 心魔黑影 · 遁光对拼'
+    }
   },
   {
-    kills: 360, name: '大乘', tier: '中', tierName: '中境界', fx: 'dacheng',
+    key: 'dacheng', name: '大乘', world: '灵界', tier: '中', tierName: '灵界·中境界', fx: 'dacheng',
     color: '#fb7185', glow: 'rgba(251,113,133,0.55)', sword: '#be123c',
-    short: '元婴神游太虚，法则光环如行星环绕',
-    desc: '元婴神游太虚，法则光环如行星环绕，端坐莲台，威压四方。'
+    stages: [
+      { key: 'early', label: '初期' }, { key: 'mid', label: '中期' },
+      { key: 'late', label: '后期' }, { key: 'dujie', label: '渡劫' }
+    ],
+    short: '涅槃圣体 · 噬灵天火',
+    skills: '涅槃圣体 · 噬灵天火 · 渡劫飞升仙劫',
+    desc: '元婴化为成人态，掌握两种及以上法则。渡劫期需渡飞升仙劫方可入仙界；击败灵界霸主。',
+    combat: {
+      guardianName: '灵界霸主', typeKey: 'demon', tint: '#fb7185',
+      hpBars: 6, hpPerBar: 175, rMul: 1.4, warRate: 4.2,
+      ultimate: 'niepan', ultName: '涅槃圣体', aux: 'shiling',
+      tip: '涅槃圣体 · 噬灵天火 · 渡劫巅峰击败灵界霸主'
+    }
   },
   {
-    kills: 480, name: '真仙', tier: '上', tierName: '上境界', fx: 'zhenxian',
+    key: 'zhenxian', name: '真仙', world: '仙界', tier: '上', tierName: '仙界·上境界', fx: 'zhenxian',
     color: '#fde68a', glow: 'rgba(253,230,138,0.6)', sword: '#ca8a04',
-    short: '仙光冲天，劫云雷电交织，飞升成仙',
-    desc: '仙光冲天，仙窍如星辰点亮，劫云雷电交织，飞升成仙。'
+    stages: [
+      { key: 'early', label: '初期' }, { key: 'mid', label: '中期' }, { key: 'late', label: '后期' }
+    ],
+    short: '时间法则 · 青竹雷海',
+    skills: '时间法则 · 青竹雷海 · 修炼仙窍（每小境 12 窍，共 36）',
+    desc: '每小境界修炼 12 个仙窍。未领悟法则者仅为散仙/地仙。击败仙劫雷兽可金仙。',
+    combat: {
+      guardianName: '仙劫雷兽', typeKey: 'spitter', tint: '#fde68a',
+      hpBars: 5, hpPerBar: 185, rMul: 1.3, warRate: 4.0,
+      ultimate: 'time_law', ultName: '时间法则', aux: 'leihai',
+      tip: '时间法则 · 青竹雷海 · 心魔黑影 · 黑剑互挡'
+    }
   },
   {
-    kills: 620, name: '金仙', tier: '上', tierName: '上境界', fx: 'jinxian',
+    key: 'jinxian', name: '金仙', world: '仙界', tier: '上', tierName: '仙界·上境界', fx: 'jinxian',
     color: '#fdba74', glow: 'rgba(253,186,116,0.6)', sword: '#c2410c',
-    short: '金身璀璨，法则之丝缠绕，灵域展开',
-    desc: '金身璀璨，法则之丝缠绕，灵域展开，仙窍如周天星斗。'
+    stages: [
+      { key: 'early', label: '初期' }, { key: 'mid', label: '中期' }, { key: 'late', label: '后期' }
+    ],
+    short: '时间灵域 · 真灵变身',
+    skills: '时间灵域 · 真灵变身 · 凝聚法则之丝',
+    desc: '渡过天人五衰末两衰（魂衰、煞衰），可施展基础灵域。击败时间囚徒可太乙。',
+    combat: {
+      guardianName: '时间囚徒', typeKey: 'wraith', tint: '#fdba74',
+      hpBars: 6, hpPerBar: 190, rMul: 1.32, warRate: 3.8,
+      ultimate: 'time_law', ultName: '时间灵域', aux: 'avatar_tick',
+      tip: '时间灵域 · 真灵近战 · 心魔黑影 · 黑剑互挡'
+    }
   },
   {
-    kills: 780, name: '太乙', tier: '上', tierName: '上境界', fx: 'taiyi',
+    key: 'taiyi', name: '太乙', world: '仙界', tier: '上', tierName: '仙界·上境界', fx: 'taiyi',
     color: '#e7e5e4', glow: 'rgba(231,229,228,0.65)', sword: '#78716c',
-    short: '玉体晶莹如琉璃，灵域演化小世界',
-    desc: '玉体晶莹如琉璃，灵域演化小世界，山川日月尽在其中。'
+    stages: [
+      { key: 'early', label: '初期' }, { key: 'mid', label: '中期' }, { key: 'late', label: '后期' }
+    ],
+    short: '神念囚笼 · 玄煞暝灵',
+    skills: '神念囚笼 · 玄煞暝灵 · 灵域演化小世界',
+    desc: '肉身化玉体，领悟一法则即可掌一方天地。击败煞气天魔可大罗。',
+    combat: {
+      guardianName: '煞气天魔', typeKey: 'brute', tint: '#e7e5e4',
+      hpBars: 6, hpPerBar: 200, rMul: 1.35, warRate: 3.6,
+      ultimate: 'shennian', ultName: '神念囚笼', aux: 'xuansha',
+      tip: '神念囚笼 · 玄煞暝灵 · 心魔黑影 · 黑剑互挡'
+    }
   },
   {
-    kills: 960, name: '大罗', tier: '上', tierName: '上境界', fx: 'daluo',
+    key: 'daluo', name: '大罗', world: '仙界', tier: '上', tierName: '仙界·上境界', fx: 'daluo',
     color: '#c4b5fd', glow: 'rgba(196,181,253,0.65)', sword: '#6d28d9',
-    short: '三尸魂影环绕，法体神魂三位一体',
-    desc: '三尸魂影环绕，玄天法则本源悬浮，法体神魂三位一体，大罗道果。'
+    stages: [
+      { key: 'early', label: '初期' }, { key: 'mid', label: '中期' }, { key: 'late', label: '后期' }
+    ],
+    short: '时间本源 · 斩三尸',
+    skills: '时间本源斩 · 灵域压制 · 斩恶尸/善尸/自我尸',
+    desc: '进阶道祖需斩三尸、禁断尘缘。击败三尸合影可问道。',
+    combat: {
+      guardianName: '三尸合影', typeKey: 'demon', tint: '#c4b5fd',
+      hpBars: 6, hpPerBar: 210, rMul: 1.38, warRate: 3.4,
+      ultimate: 'xuantian', ultName: '时间本源斩', aux: 'time_press',
+      tip: '时间本源 · 斩三尸 · 心魔黑影 · 黑剑互挡'
+    }
   },
   {
-    kills: 1200, name: '道祖', tier: '上', tierName: '上境界', fx: 'daozu',
+    key: 'daozu', name: '道祖', world: '仙界', tier: '上', tierName: '仙界·上境界', fx: 'daozu',
     color: '#fff7ed', glow: 'rgba(255,247,237,0.75)', sword: '#9a3412',
-    short: '三千大道如星系环绕，法则光柱冲天',
-    desc: '三千大道如星系环绕，法则光柱冲天，天地万象尽在掌控，至尊无敌。'
+    stages: [{ key: '', label: '' }],
+    short: '时间大道 · 掌天瓶',
+    skills: '时间大道 · 掌天瓶（终极底牌）',
+    desc: '融合三千大道之一，法则领域近乎全知全能。无小境界划分，同阶仍有战力差。击败混沌道影臻至大圆满。',
+    combat: {
+      guardianName: '混沌道影', typeKey: 'demon', tint: '#fff7ed',
+      hpBars: 7, hpPerBar: 220, rMul: 1.45, warRate: 3.0,
+      ultimate: 'dao_crush', ultName: '时间大道', aux: 'bottle',
+      tip: '时间大道 · 掌天瓶 · 心魔黑影 · 击败混沌道影'
+    }
   }
 ]
+
+/** 由大境界展开小境界表 */
+function buildRealmsFromMajors() {
+  const list = []
+  let kills = 0
+  for (let mi = 0; mi < REALM_MAJOR_DEFS.length; mi++) {
+    const maj = REALM_MAJOR_DEFS[mi]
+    const stages = maj.stages || [{ key: '', label: '' }]
+    const stagesText = stages.map((s) => s.label || '本境').join(' / ')
+    const hasNextMajor = mi < REALM_MAJOR_DEFS.length - 1
+    for (let si = 0; si < stages.length; si++) {
+      const st = stages[si]
+      const isPeak = !!(hasNextMajor && maj.key !== 'mortal' && si === stages.length - 1)
+      const name = st.label ? (maj.name + '·' + st.label) : maj.name
+      list.push({
+        kills: kills,
+        name: name,
+        majorName: maj.name,
+        majorKey: maj.key,
+        majorIndex: mi,
+        stageKey: st.key || '',
+        stageLabel: st.label || '',
+        stageIndex: si,
+        stageCount: stages.length,
+        stagesText: stagesText,
+        isPeak: isPeak,
+        isMajorFirst: si === 0,
+        world: maj.world || '',
+        tier: maj.tier,
+        tierName: maj.tierName,
+        fx: maj.fx || '',
+        color: maj.color,
+        glow: maj.glow,
+        sword: maj.sword,
+        short: maj.short || '',
+        skills: maj.skills || '',
+        desc: maj.desc || '',
+        tip: (maj.combat && maj.combat.tip) || maj.short || ''
+      })
+      // 累计击杀门槛：仅作说明/兼容；小境界实际进度用 stageKills
+      if (!(maj.key === 'mortal' && si === 0)) {
+        kills += isPeak ? 10 : MINOR_STAGE_KILLS
+      }
+    }
+  }
+  return list
+}
+
+const REALMS = buildRealmsFromMajors()
+
+/** 大境界 key → 战斗配置 */
+const REALM_COMBAT_BY_MAJOR = {}
+for (let i = 0; i < REALM_MAJOR_DEFS.length; i++) {
+  const maj = REALM_MAJOR_DEFS[i]
+  if (maj.combat) {
+    REALM_COMBAT_BY_MAJOR[maj.key] = Object.assign({ key: maj.key }, maj.combat)
+  }
+}
+
+/** 旧档 14 境 → 各大境界「第一小境」lv（1-based） */
+const OLD_REALM_MAJOR_KEYS = [
+  'mortal', 'lianqi', 'zhuji', 'jiedan', 'yuanying', 'huashen',
+  'lianxu', 'heti', 'dacheng', 'zhenxian', 'jinxian', 'taiyi', 'daluo', 'daozu'
+]
+
+function firstRealmLvOfMajor(majorKey) {
+  for (let i = 0; i < REALMS.length; i++) {
+    if (REALMS[i].majorKey === majorKey) return i + 1
+  }
+  return 1
+}
+
+/** 兼容旧存档 realmLv（≤14 且远小于新表长度时，按大境界映射到首层） */
+function migrateRealmLv(savedLv) {
+  const lv = Math.max(1, savedLv | 0)
+  if (lv <= OLD_REALM_MAJOR_KEYS.length && REALMS.length > OLD_REALM_MAJOR_KEYS.length + 5) {
+    const key = OLD_REALM_MAJOR_KEYS[lv - 1]
+    return firstRealmLvOfMajor(key)
+  }
+  return Math.max(1, Math.min(REALMS.length, lv))
+}
 
 /** ZombieOGA 分镜：Idle/Walk/Attack/Hurt/Dead（远程图） */
 function buildAnimPaths(folder, prefix, count) {
@@ -143,6 +370,25 @@ const LOOT_DEFS = {
   fu_bind: { kind: 'fu', label: '缚尸符', color: '#f9a8d4', mark: '缚' }
 }
 
+/** 暂时关闭：灵石 / 符咒 / 出土剑（含 pickup 剑） */
+const LOOT_TEMP_DISABLED = {
+  lingshi: true,
+  sword: true,
+  fu_lei: true,
+  fu_fire: true,
+  fu_ice: true,
+  fu_earth: true,
+  fu_hide: true,
+  fu_bind: true
+}
+
+function isLootTempDisabled(key) {
+  if (!key) return true
+  if (LOOT_TEMP_DISABLED[key]) return true
+  if (String(key).indexOf('fu_') === 0) return true
+  return false
+}
+
 /** 灵气：御剑消耗；静止打坐 / 灵石 / 回灵丹补充 */
 const LING_QI_BASE = 80
 const LING_QI_PER_LV = 10
@@ -150,12 +396,14 @@ const LING_QI_MEDITATE = 14
 const FU_KEYS = ['fu_lei', 'fu_fire', 'fu_ice', 'fu_earth', 'fu_hide', 'fu_bind']
 
 function playerMaxHpByRealm(realm) {
+  const mi = (realm && realm.majorIndex != null) ? realm.majorIndex : Math.max(0, ((realm && realm.lv) || 1) - 1)
   const tierBonus = realm.tier === '上' ? 50 : (realm.tier === '中' ? 24 : 0)
-  return 48 + realm.lv * 16 + tierBonus
+  return 48 + (mi + 1) * 16 + tierBonus
 }
 
 function playerMaxLingQi(realm) {
-  return LING_QI_BASE + Math.max(0, (realm && realm.lv) || 1) * LING_QI_PER_LV
+  const mi = (realm && realm.majorIndex != null) ? realm.majorIndex : Math.max(0, ((realm && realm.lv) || 1) - 1)
+  return LING_QI_BASE + Math.max(0, mi + 1) * LING_QI_PER_LV
 }
 
 /** 御剑一次消耗的灵气：剑越多越费 */
@@ -184,11 +432,32 @@ const SPIRIT_SJ_PATH = assetUrl('fx/sj.jpg')
 const SPIRIT_SJ02_PATH = assetUrl('fx/sj02.jpg')
 /** 左下角太极：自动 / 手动切换 */
 const TAIJI_PATH = assetUrl('fx/taiji.png')
-/** 元婴境界解锁灵狐帮手；凡人起算：元婴=lv5 */
-const HELPER_UNLOCK_LV = 5 // 元婴
-/** 元婴起可空间顺移 */
-const BLINK_UNLOCK_LV = 5
-const BLINK_CD = 0.38
+/** 灵狐已移除（保留常量避免旧引用报错） */
+const HELPER_WALK_PATHS = []
+const HELPER_SKILL_PATHS = []
+const HELPER_SKILL_DUR = 0.86
+const HELPER_SKILL_CD = 2.45
+const HELPER_FOLLOW_OX = -46
+const HELPER_FOLLOW_OY = 8
+const HELPER_UNLOCK_LV = 999
+/** 元婴起可空间顺移（撕裂虚空）——按大境界判定 */
+const YUANYING_MAJOR_KEY = 'yuanying'
+/** @deprecated 旧数值阈值，仅兼容注释；请用 canSpaceBlink / isYuanying* */
+const BLINK_UNLOCK_LV = firstRealmLvOfMajor(YUANYING_MAJOR_KEY)
+/** 空间之力蓄满后才可撕裂虚空 */
+const SPACE_FORCE_MAX = 100
+const SPACE_FORCE_PASSIVE = 7.5
+const SPACE_FORCE_PER_KILL = 14
+/** 自动撕裂虚空最少间隔 */
+const VOID_AUTO_GAP = 2.6
+/** 撕裂虚空整段时长 */
+const VOID_BLINK_DUR = 1.9
+const VOID_TEAR_PATH = assetUrl('fx/void_tear.png')
+/** 凡人打坐天气背景（风雨 → 破晓） */
+const WEATHER_STORM_PATH = assetUrl('fx/weather/sky_storm.jpg')
+const WEATHER_DAWN_PATH = assetUrl('fx/weather/sky_dawn.jpg')
+/** 凡人打坐旁白 */
+const MORTAL_MEDITATE_QUOTE = '身如枯木，心若止水，待惊雷破晓！'
 
 /**
  * 怪物图鉴：共用僵尸分镜，靠色调/体型/攻击与特效区分
@@ -254,9 +523,35 @@ const MONSTER_TYPES = {
     hpMul: 1.1, speedMul: 0.95, rMul: 1.08, dmgMul: 1.2,
     atk: 'scream', atkRange: 72, useBossArt: false,
     emerge: 'howl', hurt: 'pulse', death: 'explode'
+  },
+  /** 元婴：魔族长老，人形黑气，月牙魔气挡剑/主动攻击 */
+  demon: {
+    key: 'demon', name: '魔族长老',
+    art: assetUrl('mobs/screamer.png'),
+    artAtk: assetUrl('mobs/screamer_atk.png'),
+    artWalk: [assetUrl('mobs/screamer_w0.png'), assetUrl('mobs/screamer_w1.png')],
+    tint: '#1e1b4b', glow: 'rgba(76,29,149,0.72)',
+    hpMul: 2.6, speedMul: 0.82, rMul: 1.22, dmgMul: 1.45,
+    atk: 'crescent', atkRange: 240, useBossArt: false,
+    emerge: 'fade', hurt: 'ripple', death: 'vanish',
+    isDemon: true, resistSkills: true, alpha: 0.98
+  },
+  /** 元婴后：主角黑色心魔分身（绘制时用黑影+血盆大口，不依赖贴图） */
+  shadow_self: {
+    key: 'shadow_self', name: '心魔黑影',
+    art: assetUrl('mobs/screamer.png'),
+    artAtk: assetUrl('mobs/screamer_atk.png'),
+    artWalk: [assetUrl('mobs/screamer_w0.png'), assetUrl('mobs/screamer_w1.png')],
+    tint: '#0a0a0a', glow: 'rgba(220,38,38,0.55)',
+    hpMul: 2.8, speedMul: 0.9, rMul: 1.15, dmgMul: 1.5,
+    atk: 'crescent', atkRange: 260, useBossArt: false,
+    emerge: 'fade', hurt: 'ripple', death: 'vanish',
+    isDemon: true, resistSkills: true, isShadowSelf: true, alpha: 0.92
   }
 }
 const MONSTER_KEYS = ['walker', 'sprinter', 'spitter', 'brute', 'wraith', 'screamer']
+/** 含魔族/心魔，仅用于贴图预加载 */
+const MOB_LOAD_KEYS = MONSTER_KEYS.concat(['demon', 'shadow_self'])
 
 function monsterDef(key) {
   return MONSTER_TYPES[key] || MONSTER_TYPES.walker
@@ -272,12 +567,216 @@ function unlockedMonsterKeys(wave, realmLv) {
 }
 
 function pickMonsterKey(wave, realmLv) {
+  if (isYuanyingPlus(realmLv)) return 'demon'
   const keys = unlockedMonsterKeys(wave, realmLv)
   return keys[Math.floor(Math.random() * keys.length)]
 }
 
 function canSpaceBlink(realmLv) {
-  return (realmLv || 1) >= BLINK_UNLOCK_LV
+  return isYuanyingPlus(realmLv)
+}
+
+/**
+ * 境主战斗套件：抵抗飞剑 + 主动攻击；境界越高挡招越勤、僵持越久、减伤越高
+ * 心魔黑影不在此生成，而在元婴后击杀境主后随机出现
+ */
+/** 境主形象/行为档案：按大境界说明区分移动·攻击·抵挡·死亡 */
+const GUARDIAN_PROFILES = {
+  "lianqi": {
+    "gMove": "shamble",
+    "gAtk": "claw",
+    "gBlock": "bone",
+    "gDeath": "scatter",
+    "gEmerge": "dirt",
+    "gHurt": "spark",
+    "gDraw": "rotking",
+    "crescentColor": "#4ade80",
+    "crescentGlow": "#86efac"
+  },
+  "zhuji": {
+    "gMove": "puppet",
+    "gAtk": "slam",
+    "gBlock": "puppet",
+    "gDeath": "rubble",
+    "gEmerge": "quake",
+    "gHurt": "crack",
+    "gDraw": "puppet",
+    "crescentColor": "#38bdf8",
+    "crescentGlow": "#7dd3fc"
+  },
+  "jiedan": {
+    "gMove": "float",
+    "gAtk": "spit",
+    "gBlock": "jindan",
+    "gDeath": "vanish",
+    "gEmerge": "fade",
+    "gHurt": "ink",
+    "gDraw": "jindan",
+    "crescentColor": "#fbbf24",
+    "crescentGlow": "#fde68a"
+  },
+  "yuanying": {
+    "gMove": "demon",
+    "gAtk": "crescent",
+    "gBlock": "moon",
+    "gDeath": "vanish",
+    "gEmerge": "fade",
+    "gHurt": "ripple",
+    "gDraw": "demon",
+    "crescentColor": "#7c3aed",
+    "crescentGlow": "#a78bfa"
+  },
+  "huashen": {
+    "gMove": "heavy",
+    "gAtk": "slam",
+    "gBlock": "sha",
+    "gDeath": "explode",
+    "gEmerge": "burst",
+    "gHurt": "pulse",
+    "gDraw": "sha",
+    "crescentColor": "#22d3ee",
+    "crescentGlow": "#67e8f9"
+  },
+  "lianxu": {
+    "gMove": "void",
+    "gAtk": "phase",
+    "gBlock": "void",
+    "gDeath": "rift",
+    "gEmerge": "fade",
+    "gHurt": "ripple",
+    "gDraw": "voidbeast",
+    "crescentColor": "#2dd4bf",
+    "crescentGlow": "#99f6e4"
+  },
+  "heti": {
+    "gMove": "warp",
+    "gAtk": "scream",
+    "gBlock": "spirit",
+    "gDeath": "explode",
+    "gEmerge": "howl",
+    "gHurt": "pulse",
+    "gDraw": "mutate",
+    "crescentColor": "#a78bfa",
+    "crescentGlow": "#ddd6fe"
+  },
+  "dacheng": {
+    "gMove": "heavy",
+    "gAtk": "crescent",
+    "gBlock": "law",
+    "gDeath": "explode",
+    "gEmerge": "burst",
+    "gHurt": "slash",
+    "gDraw": "overlord",
+    "crescentColor": "#fb7185",
+    "crescentGlow": "#fecdd3"
+  },
+  "zhenxian": {
+    "gMove": "storm",
+    "gAtk": "spit",
+    "gBlock": "lei",
+    "gDeath": "scatter",
+    "gEmerge": "burst",
+    "gHurt": "spark",
+    "gDraw": "leibeast",
+    "crescentColor": "#fde68a",
+    "crescentGlow": "#fef08a"
+  },
+  "jinxian": {
+    "gMove": "time",
+    "gAtk": "phase",
+    "gBlock": "time",
+    "gDeath": "vanish",
+    "gEmerge": "fade",
+    "gHurt": "ripple",
+    "gDraw": "timeprison",
+    "crescentColor": "#fdba74",
+    "crescentGlow": "#fed7aa"
+  },
+  "taiyi": {
+    "gMove": "heavy",
+    "gAtk": "slam",
+    "gBlock": "sha",
+    "gDeath": "rubble",
+    "gEmerge": "quake",
+    "gHurt": "crack",
+    "gDraw": "tianmo",
+    "crescentColor": "#e7e5e4",
+    "crescentGlow": "#fafaf9"
+  },
+  "daluo": {
+    "gMove": "demon",
+    "gAtk": "crescent",
+    "gBlock": "tri",
+    "gDeath": "vanish",
+    "gEmerge": "fade",
+    "gHurt": "ink",
+    "gDraw": "sanshi",
+    "crescentColor": "#c4b5fd",
+    "crescentGlow": "#ddd6fe"
+  },
+  "daozu": {
+    "gMove": "chaos",
+    "gAtk": "phase",
+    "gBlock": "dao",
+    "gDeath": "rift",
+    "gEmerge": "fade",
+    "gHurt": "ripple",
+    "gDraw": "chaos",
+    "crescentColor": "#fff7ed",
+    "crescentGlow": "#ffedd5"
+  }
+}
+
+function getGuardianProfile(majorKey) {
+  return GUARDIAN_PROFILES[majorKey] || GUARDIAN_PROFILES.lianqi
+}
+
+/**
+ * 境主战斗套件：随大境界增强；招式/移动取自 GUARDIAN_PROFILES
+ */
+function getGuardianKit(realmLv) {
+  const realm = realmByLv(realmLv)
+  const mi = realm.majorIndex || 0
+  const t = Math.max(0, mi - 1)
+  const combat = REALM_COMBAT_BY_MAJOR[realm.majorKey] || null
+  const prof = getGuardianProfile(realm.majorKey)
+  return {
+    resistSkills: mi >= 1,
+    blockCdMax: Math.max(0.14, 0.52 - t * 0.035),
+    blockDuration: Math.min(1.45, 0.52 + t * 0.08),
+    dmgResist: Math.min(0.52, 0.1 + t * 0.038),
+    atk: prof.gAtk || 'crescent',
+    atkRange: 160 + Math.min(100, t * 10) + (prof.gAtk === 'spit' || prof.gAtk === 'phase' ? 40 : 0),
+    skillCd: Math.max(1.0, 2.4 - t * 0.1),
+    isDemon: mi >= 4,
+    isShadowSelf: false,
+    crescentColor: prof.crescentColor || '#7c3aed',
+    crescentGlow: prof.crescentGlow || '#a78bfa',
+    gMove: prof.gMove || 'shamble',
+    gBlock: prof.gBlock || 'bone',
+    gDeath: prof.gDeath || 'scatter',
+    gEmerge: prof.gEmerge || 'dirt',
+    gHurt: prof.gHurt || 'spark',
+    gDraw: prof.gDraw || 'rotking',
+    guardianName: combat && combat.guardianName
+  }
+}
+
+/** 心魔黑影套件：镜像主角御剑，可与主角飞剑互相抵挡 */
+function getHeartDemonKit(realmLv) {
+  const lv = realmLv || 6
+  const t = Math.max(0, lv - 5)
+  return {
+    resistSkills: true,
+    blockCdMax: Math.max(0.12, 0.42 - t * 0.03),
+    blockDuration: Math.min(1.5, 0.7 + t * 0.08),
+    dmgResist: Math.min(0.55, 0.18 + t * 0.04),
+    swordEvery: Math.max(0.32, 0.55 - t * 0.03),
+    swordCount: Math.min(8, 2 + Math.floor(t * 0.8)),
+    mirrorBlink: lv >= 8,
+    hpBars: 4 + Math.min(3, Math.floor(t / 2)),
+    hpPerBar: Math.floor(130 + lv * 20)
+  }
 }
 /** 构建各境界突破配图路径表 */
 function buildRealmFxPaths(folder) {
@@ -291,71 +790,173 @@ function buildRealmFxPaths(folder) {
 /** 突破立绘（仅 V1） */
 const REALM_FX_PATHS = buildRealmFxPaths('fx/realms')
 const REALM_FX_KEYS = Object.keys(REALM_FX_PATHS)
-/** 灵狐：跟随 / 流光突袭分镜（元婴三尾灵狐） */
-const HELPER_WALK_PATHS = [
-  assetUrl('helper/fox/fox_00.png'),
-  assetUrl('helper/fox/fox_01.png')
-]
-const HELPER_SKILL_PATHS = [
-  assetUrl('helper/fox/fox_02.png'),
-  assetUrl('helper/fox/fox_03.png')
-]
-/** 突袭总时长：冲入 + 命中绽放 + 折返 */
-const HELPER_SKILL_DUR = 0.86
-const HELPER_SKILL_CD = 2.45
-/** 跟随侧后方偏移 */
-const HELPER_FOLLOW_OX = -46
-const HELPER_FOLLOW_OY = 8
 
-/** 按已解锁境界等级取配置（与击杀数解耦，需先击败劫尸才升境） */
+/** 按已解锁境界等级取配置（大境巅峰击败境主才升大境） */
 function realmByLv(lv) {
   const idx = Math.max(0, Math.min(REALMS.length - 1, (lv || 1) - 1))
   const r = REALMS[idx]
-  const bodyScale = 1 + idx * 0.09
+  const bodyScale = 1 + (r.majorIndex || 0) * 0.09
   return Object.assign({}, r, { lv: idx + 1, bodyScale })
 }
 
-/** 经验进度：当前境界 → 下一境界（满条后等劫尸） */
-function realmExpProgress(kills, realmLv) {
+/** 经验进度：小境界用 stageKills；巅峰境主战经验条满条 */
+function realmExpProgress(kills, realmLv, stageKills) {
   const idx = Math.max(0, Math.min(REALMS.length - 1, (realmLv || 1) - 1))
-  const cur = REALMS[idx].kills
+  const cur = REALMS[idx]
   const hasNext = idx + 1 < REALMS.length
-  const next = hasNext ? REALMS[idx + 1].kills : cur
-  const nextName = hasNext ? REALMS[idx + 1].name : '大圆满'
-  const span = Math.max(1, next - cur)
-  const ratio = hasNext ? Math.min(1, Math.max(0, (kills - cur) / span)) : 1
+  const next = hasNext ? REALMS[idx + 1] : cur
+  const nextName = hasNext ? next.name : '大圆满'
+  if (cur.isPeak) {
+    return {
+      ratio: 1,
+      cur: MINOR_STAGE_KILLS,
+      need: MINOR_STAGE_KILLS,
+      nextName: nextName,
+      maxed: !hasNext,
+      awaitBoss: hasNext,
+      awaitMinor: false
+    }
+  }
+  const sk = Math.max(0, stageKills || 0)
+  const need = MINOR_STAGE_KILLS
+  const ratio = hasNext ? Math.min(1, sk / need) : 1
   return {
     ratio: ratio,
-    cur: Math.min(span, Math.max(0, kills - cur)),
-    need: span,
+    cur: Math.min(need, sk),
+    need: need,
     nextName: nextName,
     maxed: !hasNext,
-    awaitBoss: hasNext && kills >= next
+    awaitBoss: false,
+    awaitMinor: hasNext && sk >= need && next.majorKey === cur.majorKey
   }
 }
 
-const CORPSE_DAN_NEED = 50
+/** 战意/勇气满值（存档字段仍用 corpseDan，兼容旧进度） */
+const WAR_INTENT_NEED = 50
+const CORPSE_DAN_NEED = WAR_INTENT_NEED
+/** 战斗中每秒积蓄（元婴境主战更慢，便于打很久） */
+const WAR_INTENT_RATE = 6.2
+const WAR_INTENT_RATE_YUAN = 3.2
 const GENG_SWORD_COUNT = 64
 /** 御剑上限：周身环绕与出击杀敌共用此数目 */
 const MAX_SWORD_COUNT = 64
 
-/** 境界说明分组，供面板展示 */
+function realmMajorKey(realmLv) {
+  return realmByLv(realmLv).majorKey || 'mortal'
+}
+
+function yuanyingMajorIndex() {
+  return realmByLv(firstRealmLvOfMajor(YUANYING_MAJOR_KEY)).majorIndex || 0
+}
+
+function isYuanyingPlus(realmLv) {
+  return (realmByLv(realmLv).majorIndex || 0) >= yuanyingMajorIndex()
+}
+
+/** 元婴之后（化神起）：怪形象不再用僵尸贴图，改为程序化异兽 */
+function isAfterYuanying(realmLv) {
+  return (realmByLv(realmLv).majorIndex || 0) > yuanyingMajorIndex()
+}
+
+function isYuanyingRealm(realmLv) {
+  return realmMajorKey(realmLv) === YUANYING_MAJOR_KEY
+}
+
+/** 各大境界主攻方式（按技能说明；非剑修不出环剑） */
+function getRealmAtkKit(majorKey) {
+  const map = {
+    // 剑修线
+    lianqi: { primary: 'sword', orbit: true, ride: true, interval: 0.48, label: '飞剑' },
+    zhuji: { primary: 'sword', orbit: true, ride: true, interval: 0.44, label: '青元剑芒' },
+    jiedan: { primary: 'sword', orbit: true, ride: true, interval: 0.4, label: '剑影' },
+    yuanying: { primary: 'sword', orbit: true, ride: true, interval: 0.38, label: '庚金飞剑' },
+    // 非剑：主攻跟境界说明
+    huashen: { primary: 'yuanci', orbit: false, ride: false, interval: 0.82, label: '元磁神光' },
+    lianxu: { primary: 'void_slash', orbit: false, ride: false, interval: 0.72, label: '玄天斩气' },
+    heti: { primary: 'spirit_claw', orbit: false, ride: false, interval: 0.7, label: '真灵爪' },
+    dacheng: { primary: 'shiling', orbit: false, ride: false, interval: 0.88, label: '噬灵天火' },
+    zhenxian: { primary: 'leihai', orbit: false, ride: false, interval: 0.62, label: '青竹雷海' },
+    jinxian: { primary: 'time_silk', orbit: false, ride: false, interval: 0.78, label: '法则之丝' },
+    taiyi: { primary: 'shennian', orbit: false, ride: false, interval: 0.84, label: '神念波' },
+    daluo: { primary: 'origin_slash', orbit: false, ride: false, interval: 0.74, label: '本源斩' },
+    daozu: { primary: 'dao_ray', orbit: false, ride: false, interval: 0.9, label: '大道法线' }
+  }
+  return map[majorKey] || map.lianqi
+}
+
+function realmUsesSwords(realmLv) {
+  const kit = getRealmAtkKit(realmMajorKey(realmLv))
+  return !!(kit && kit.primary === 'sword')
+}
+
+/** 各大境界御剑气质（仅剑修境界） */
+function getRealmSwordStyle(majorKey) {
+  const map = {
+    lianqi: { style: 'leaf', enchant: 'fire', enchantChance: 0.35, color: '#86efac', speed: 40, dmg: 0 },
+    zhuji: { style: 'wave', enchant: 'ice', enchantChance: 0.2, color: '#38bdf8', speed: 10, dmg: 1 },
+    jiedan: { style: 'flame', enchant: 'fire', enchantChance: 0.4, color: '#fbbf24', speed: 20, dmg: 1 },
+    yuanying: { style: 'infant', enchant: 'elec', enchantChance: 0.25, color: '#f472b6', speed: 30, dmg: 2 }
+  }
+  return map[majorKey] || map.lianqi
+}
+
+function getRealmCombat(realmLv) {
+  const key = realmMajorKey(realmLv)
+  return REALM_COMBAT_BY_MAJOR[key] || null
+}
+
+/** 大境界巅峰（及道祖）：刷唯一境主，击败后破境 */
+function isGuardianCombatRealm(realmLv) {
+  const r = realmByLv(realmLv)
+  if (r.majorKey === 'daozu') return !!getRealmCombat(realmLv)
+  return !!(r.isPeak && getRealmCombat(realmLv))
+}
+
+/** 境界说明：按人界/灵界/仙界分组，含小境界与技能 */
 function buildRealmInfoList() {
-  const groups = { 下: [], 中: [], 上: [] }
+  const worlds = [
+    { title: '人界篇（下境界）', world: '人界' },
+    { title: '灵界篇（中境界）', world: '灵界' },
+    { title: '仙界篇（上境界）', world: '仙界' }
+  ]
+  return worlds.map((w) => {
+    const items = []
+    for (let i = 0; i < REALM_MAJOR_DEFS.length; i++) {
+      const maj = REALM_MAJOR_DEFS[i]
+      if (maj.world !== w.world) continue
+      const stages = (maj.stages || []).map((s) => s.label || '本境').join('、')
+      const combat = maj.combat
+      items.push({
+        name: maj.name,
+        stages: stages,
+        skills: maj.skills || '',
+        short: maj.short || '',
+        desc: maj.desc || '',
+        tip: (combat && combat.tip) || maj.short || '',
+        guardian: (combat && combat.guardianName) || ''
+      })
+    }
+    return { title: w.title, items: items }
+  })
+}
+
+/** 开发/体验版：跳境列表（各大境界首层 + 巅峰层） */
+function buildRealmPickList() {
+  const list = []
+  let lastMajor = ''
   for (let i = 0; i < REALMS.length; i++) {
     const r = REALMS[i]
-    groups[r.tier].push({
+    const isFirstOfMajor = r.majorKey !== lastMajor
+    if (!isFirstOfMajor && !r.isPeak) continue
+    list.push({
+      lv: i + 1,
       name: r.name,
-      short: r.short,
-      desc: r.desc,
+      tierName: r.tierName,
       kills: r.kills
     })
+    lastMajor = r.majorKey
   }
-  return [
-    { title: '下境界', items: groups['下'] },
-    { title: '中境界', items: groups['中'] },
-    { title: '上境界', items: groups['上'] }
-  ]
+  return list
 }
 
 Page({
@@ -363,28 +964,42 @@ Page({
     kills: 0,
     realmLv: 1,
     realmName: '凡人',
-    realmTierName: '下境界',
+    realmMajorName: '凡人',
+    realmTierName: '人界·下境界',
+    realmTip: '',
+    spaceUnlocked: false,
     swordCount: 1,
     wave: 1,
     hp: 48,
     maxHp: 48,
     lingQi: 80,
     maxLingQi: 80,
+    spaceForce: 0,
+    maxSpaceForce: SPACE_FORCE_MAX,
     heldFu: '',
     over: false,
     perfect: false,
     autoPilot: true,
     showRealmInfo: false,
+    showRealmPick: false,
+    showContinueGate: false,
+    progressLoading: true,
+    gameUiReady: false,
+    canPickRealm: false,
+    continueRealmName: '',
+    continueKills: 0,
     corpseDan: 0,
     corpseDanNeed: 50,
-    realmInfoList: buildRealmInfoList()
+    realmInfoList: buildRealmInfoList(),
+    realmPickList: []
   },
 
   onReady() {
-    this._initCanvas(0)
+    this._bootXian()
   },
 
   onUnload() {
+    this._persistProgress(true)
     if (this._bootTimer) {
       clearTimeout(this._bootTimer)
       this._bootTimer = null
@@ -394,17 +1009,19 @@ Page({
 
   onHide() {
     this._paused = true
+    this._persistProgress(true)
   },
 
   onShow() {
     this._paused = false
-    // 偶发 onReady 时 canvas 节点未就绪：回到前台再补一次初始化
-    if (!this._canvas) this._initCanvas(0)
+    if (this.data.gameUiReady && !this._canvas) this._initCanvas(0)
   },
 
   onTouchStart(e) {
     const t = e.touches && e.touches[0]
     if (!t || this._over || this._perfect) return
+    if (this.data.showRealmPick || this.data.showContinueGate || this.data.progressLoading) return
+    if (this._voidBlink) return
     // 凡人打坐阶段不可移动
     if (this._isMortalCultivate()) {
       this._dragging = false
@@ -421,10 +1038,8 @@ Page({
     this._moved = false
     this._touchX = t.x
     this._touchY = t.y
-    // 元婴前：连续跟手；元婴后：按下不瞬移，松手/拖到目标再顺移
-    if (!canSpaceBlink(this._realmLv)) {
-      this._movePlayerTo(t.x, t.y)
-    }
+    // 元婴前：连续跟手遁光；元婴后：拖动仍可遁光飞行，点按蓄满才撕裂虚空
+    this._movePlayerTo(t.x, t.y)
   },
 
   onTouchMove(e) {
@@ -437,9 +1052,7 @@ Page({
     }
     this._touchX = t.x
     this._touchY = t.y
-    if (!canSpaceBlink(this._realmLv)) {
-      this._movePlayerTo(t.x, t.y)
-    }
+    this._movePlayerTo(t.x, t.y)
   },
 
   onTouchEnd(e) {
@@ -455,9 +1068,10 @@ Page({
       // 持符时点按优先扔符（未大幅拖动）
       if (this._heldFu && !this._moved && !this._isMortalCultivate()) {
         this._throwHeldFu(x, y)
-      } else if (canSpaceBlink(this._realmLv)) {
+      } else if (canSpaceBlink(this._realmLv) && !this._moved) {
+        // 点按：优先撕裂虚空；未蓄满则仅锁定目标
         this._trySpaceBlink(x, y)
-        if (!this._moved) this._tryFocusZombie(x, y)
+        this._tryFocusZombie(x, y)
       } else if (!this._moved) {
         if (this._heldFu && !this._isMortalCultivate()) this._throwHeldFu(x, y)
         else this._tryFocusZombie(x, y)
@@ -467,41 +1081,88 @@ Page({
   },
 
   restart() {
-    this._resetGame()
-    const r = realmByLv(1)
-    const maxQi = playerMaxLingQi(r)
+    this._persistProgress(true)
+    this._stop()
+    this._canvas = null
+    this._ctx = null
+    this._loopRunning = false
+    this._pendingApplyProgress = null
+    this._gameStarted = false
     this.setData({
-      kills: 0,
-      realmLv: 1,
-      realmName: r.name,
-      realmTierName: r.tierName,
-      swordCount: 1,
-      wave: 1,
-      hp: r.maxHp || playerMaxHpByRealm(r),
-      maxHp: playerMaxHpByRealm(r),
-      lingQi: maxQi,
-      maxLingQi: maxQi,
-      heldFu: '',
       over: false,
       perfect: false,
       showRealmInfo: false,
-      autoPilot: true,
-      corpseDan: 0,
-      corpseDanNeed: CORPSE_DAN_NEED
+      showRealmPick: false,
+      showContinueGate: false,
+      progressLoading: true,
+      gameUiReady: false,
+      autoPilot: true
     })
+    this._bootXian()
   },
 
   toggleRealmInfo() {
-    this.setData({ showRealmInfo: !this.data.showRealmInfo })
+    if (this.data.showRealmPick || this.data.showContinueGate || this.data.progressLoading) return
+    if (this.data.showRealmInfo) {
+      this.closeRealmInfo()
+      return
+    }
+    this._teardownCanvas()
+    this.setData({ showRealmInfo: true })
   },
 
   closeRealmInfo() {
-    this.setData({ showRealmInfo: false })
+    this.setData({ showRealmInfo: false }, () => this._resumeCanvasAfterUi())
+  },
+
+  /** 开发/体验版：右上角打开跳境（不自动弹出） */
+  openRealmPick() {
+    if (!this.data.canPickRealm || this._over || this._perfect || this.data.showContinueGate) return
+    this._teardownCanvas()
+    this.setData({
+      showRealmPick: true,
+      showRealmInfo: false,
+      realmPickList: buildRealmPickList()
+    })
+  },
+
+  closeRealmPick() {
+    this.setData({ showRealmPick: false }, () => this._resumeCanvasAfterUi())
+  },
+
+  /** 开发/体验版：选定境界，播突破动画后进入 */
+  onPickRealm(e) {
+    if (!config.isDevOrTrialEnv()) return
+    const lv = Number(e.currentTarget.dataset.lv) || 1
+    // 先卸画布再应用境界，避免旧帧闪一下
+    this._teardownCanvas()
+    this.setData({ showRealmPick: false }, () => {
+      this._applyDevRealm(lv, true)
+      this._resumeCanvasAfterUi()
+    })
+  },
+
+  /** 再续仙途：加载上次存档 */
+  onContinueXian() {
+    const p = this._pendingProgress
+    this.setData({ showContinueGate: false, progressLoading: false })
+    this._enterGame(p || null)
+    console.log('仙途再续', p && p.realmLv, p && p.kills)
+  },
+
+  /** 重生凡人：清档并从凡人开始 */
+  onRebirthMortal() {
+    this._pendingProgress = null
+    this._clearRemoteProgress()
+    this._clearLocalProgress()
+    this.setData({ showContinueGate: false, progressLoading: false })
+    this._enterGame(null)
+    console.log('仙途重生凡人')
   },
 
   /** 太极：点一下自动，再点一下手动 */
   _toggleAutoByTaiji() {
-    if (this._over || this._perfect) return
+    if (this._over || this._perfect || this.data.showContinueGate || this.data.progressLoading) return
     this.setData({ autoPilot: !this.data.autoPilot })
   },
 
@@ -530,7 +1191,7 @@ Page({
 
   /** 左下角太极：无文字；自动旋转，手动静止 */
   _drawCtrlButtons(ctx) {
-    if (this._over || this._perfect || this.data.showRealmInfo || this._isMortalCultivate()) return
+    if (this._over || this._perfect || this.data.showRealmInfo || this.data.showRealmPick || this.data.showContinueGate || this.data.progressLoading || this._isMortalCultivate()) return
     const b = this._getTaijiRect()
     const img = this._taijiImg
     const auto = !!this.data.autoPilot
@@ -565,25 +1226,27 @@ Page({
 
   _initCanvas(retry) {
     const tryN = retry || 0
+    const soft = !!this._canvasSoftResume
     const query = wx.createSelectorQuery()
     query
       .select('#gameCanvas')
       .fields({ node: true, size: true })
       .exec((res) => {
         if (!res || !res[0] || !res[0].node) {
-          if (tryN < 10) {
+          if (tryN < 12) {
             setTimeout(() => this._initCanvas(tryN + 1), 60 + tryN * 40)
             return
           }
-          wx.showToast({ title: '画布初始化失败', icon: 'none' })
+          if (!soft) wx.showToast({ title: '画布初始化失败', icon: 'none' })
           return
         }
-        if (this._canvas) return
+        // 软恢复允许重新绑定；首次初始化若已有则跳过
+        if (this._canvas && !soft) return
         const canvas = res[0].node
         const width = res[0].width
         const height = res[0].height
         if (!width || !height) {
-          if (tryN < 10) {
+          if (tryN < 12) {
             setTimeout(() => this._initCanvas(tryN + 1), 60 + tryN * 40)
             return
           }
@@ -592,12 +1255,27 @@ Page({
         canvas.width = width * dpr
         canvas.height = height * dpr
         const ctx = canvas.getContext('2d')
-        ctx.scale(dpr, dpr)
+        // 软恢复时重新 scale 会叠加，需重置变换
+        if (typeof ctx.setTransform === 'function') {
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        } else {
+          ctx.scale(dpr, dpr)
+        }
 
         this._canvas = canvas
         this._ctx = ctx
         this._w = width
         this._h = height
+        this._canvasSoftResume = false
+
+        if (soft) {
+          // 弹层关闭后接回画布；createImage 绑在旧 node 上，需重新拉图
+          this._loadImages(() => {
+            if (this._gameStarted && !this._loopRunning) this._loop()
+          })
+          return
+        }
+
         this._animImgs = { idle: [], walk: [], attack: [], hurt: [], dead: [] }
         this._playerImg = null
         this._mortalMeditateImgs = []
@@ -608,6 +1286,9 @@ Page({
         this._spiritSj02Img = null
         this._realmFxImgs = {}
         this._taijiImg = null
+        this._voidTearImg = null
+        this._weatherStormImg = null
+        this._weatherDawnImg = null
         this._helperWalkImgs = []
         this._helperSkillImgs = []
         this._mobImgs = {}
@@ -622,8 +1303,323 @@ Page({
         ctx.textAlign = 'center'
         ctx.fillText('灵气汇聚中…', width * 0.5, height * 0.48)
         this._resetGame()
+        if (this._pendingApplyProgress) {
+          this._applySavedProgress(this._pendingApplyProgress)
+          this._pendingApplyProgress = null
+        } else {
+          this._syncHudFromState()
+        }
+        this._gameStarted = true
+        this._enableDevRealmBtn()
         this._loadImages(() => this._loop())
       })
+  },
+
+  /** 打开境界/跳境弹层前卸掉原生 canvas，否则弹层按钮仍会被盖住 */
+  _teardownCanvas() {
+    this._loopRunning = false
+    if (this._raf && this._canvas) {
+      try {
+        this._canvas.cancelAnimationFrame(this._raf)
+      } catch (e) { /* ignore */ }
+    }
+    this._raf = null
+    this._canvas = null
+    this._ctx = null
+  },
+
+  /** 关闭弹层后重新挂上 canvas，保留对局状态 */
+  _resumeCanvasAfterUi() {
+    if (!this.data.gameUiReady) return
+    if (this.data.showRealmPick || this.data.showRealmInfo || this.data.over || this.data.perfect) return
+    if (this.data.showContinueGate || this.data.progressLoading) return
+    this._canvasSoftResume = !!this._gameStarted
+    this._initCanvas(0)
+  },
+
+  /** 仅开发/体验版显示右上角「跳境」，不自动弹窗 */
+  _enableDevRealmBtn() {
+    const ok = !!(config.isDevOrTrialEnv && config.isDevOrTrialEnv())
+    this.setData({ canPickRealm: ok, showRealmPick: ok ? this.data.showRealmPick : false })
+    console.log('仙途跳境按钮', ok ? '显示' : '隐藏(正式版)')
+  },
+
+  /**
+   * 调试跳境：同步境界状态；withFx=true 时播突破动画。
+   */
+  _applyDevRealm(targetLv, withFx) {
+    if (!config.isDevOrTrialEnv()) return
+    const lv = Math.max(1, Math.min(REALMS.length, targetLv | 0))
+    const r = realmByLv(lv)
+    this._realmLv = lv
+    this._kills = REALMS[lv - 1].kills
+    this._wave = Math.max(1, 1 + Math.floor(this._kills / 12))
+    this._swordCount = Math.min(MAX_SWORD_COUNT, Math.max(1, lv <= 1 ? 1 : 2 + (lv - 2) * 2))
+    this._zombies = []
+    this._swords = []
+    this._pickups = []
+    this._particles = []
+    this._trails = []
+    this._bolts = []
+    this._gooShots = []
+    this._gooPools = []
+    this._groundSwords = []
+    this._focusZombie = null
+    this._bossActive = false
+    this._bossDeferred = false
+    this._bossDefeatedDeferred = false
+    this._gengFx = null
+    this._spiritFx = null
+    this._qiVortexFx = null
+    this._stageKills = 0
+    this._perfect = false
+    this._perfectFx = null
+    this._over = false
+    this._heldFu = null
+    this._fuThrow = null
+    this._corpseDan = 0
+    this._demonCrescents = []
+    this._qiAbsorb = lv <= 1 ? 0 : MORTAL_QI_NEED
+    this._helper = null
+    this._helperAnnounced = false
+    this._maxHp = playerMaxHpByRealm(r)
+    this._hp = this._maxHp
+    this._maxLingQi = playerMaxLingQi(r)
+    this._lingQi = this._maxLingQi
+    this._spawnAcc = 0
+    this._gameStarted = true
+    this._ensureHelper()
+    this.setData({
+      showRealmPick: false,
+      showRealmInfo: false,
+      showContinueGate: false,
+      kills: this._kills,
+      realmLv: r.lv,
+      realmName: r.name,
+      realmMajorName: r.majorName || r.name,
+      realmTierName: r.tierName,
+      realmTip: (getRealmCombat(r.lv) && getRealmCombat(r.lv).tip) || r.tip || r.short || '',
+      spaceUnlocked: isYuanyingPlus(r.lv),
+      swordCount: this._swordCount,
+      wave: this._wave,
+      hp: this._hp,
+      maxHp: this._maxHp,
+      lingQi: this._lingQi,
+      maxLingQi: this._maxLingQi,
+      heldFu: '',
+      over: false,
+      perfect: false,
+      corpseDan: 0,
+      corpseDanNeed: CORPSE_DAN_NEED
+    })
+    if (withFx && lv > 1) {
+      this._onRealmBreakthrough(r)
+    } else {
+      this._breakFx = null
+      this._breakMute = 0
+    }
+    this._persistProgress(true)
+    console.log('仙途调试跳境', r.name, 'lv=' + lv, 'kills=' + this._kills)
+  },
+
+  _resolveXianUserId() {
+    return (wxSession.getUserId && wxSession.getUserId()) || wx.getStorageSync('hyc_user_id') || wxSession.getOpenid() || ''
+  },
+
+  _isMeaningfulProgress(p) {
+    if (!p) return false
+    if ((p.realmLv || 1) > 1) return true
+    if ((p.kills || 0) > 0) return true
+    if ((p.qiAbsorb || 0) > 0) return true
+    if ((p.swordCount || 1) > 1) return true
+    return false
+  },
+
+  _readLocalProgress() {
+    try {
+      const p = wx.getStorageSync(XIAN_PROGRESS_LOCAL_KEY)
+      if (p && typeof p === 'object' && this._isMeaningfulProgress(p)) return p
+    } catch (e) {}
+    return null
+  },
+
+  _writeLocalProgress(payload) {
+    try {
+      wx.setStorageSync(XIAN_PROGRESS_LOCAL_KEY, payload)
+    } catch (e) {}
+  },
+
+  _clearLocalProgress() {
+    try {
+      wx.removeStorageSync(XIAN_PROGRESS_LOCAL_KEY)
+    } catch (e) {}
+  },
+
+  /** 进页先读档：有进度则选档，无则直接开游戏 */
+  _bootXian() {
+    this._pendingProgress = null
+    this._pendingApplyProgress = null
+    this._gameStarted = false
+    this.setData({
+      progressLoading: true,
+      showContinueGate: false,
+      gameUiReady: false
+    })
+    const afterSession = () => {
+      const userId = this._resolveXianUserId()
+      const local = this._readLocalProgress()
+      const finishWith = (p) => {
+        if (this._isMeaningfulProgress(p)) {
+          this._pendingProgress = p
+          const r = realmByLv(p.realmLv || 1)
+          this.setData({
+            progressLoading: false,
+            showContinueGate: true,
+            gameUiReady: false,
+            continueRealmName: r.name,
+            continueKills: p.kills || 0
+          })
+          console.log('仙途发现存档', r.name, p.kills)
+          return
+        }
+        this._enterGame(null)
+      }
+      if (!userId) {
+        console.warn('仙途无用户 id，尝试本地档')
+        finishWith(local)
+        return
+      }
+      api.getXianProgress(userId).then((res) => {
+        const remote = (res && res.code === 0 && res.data && res.data.hasProgress) ? res.data : null
+        finishWith(remote || local)
+      }).catch((err) => {
+        console.warn('仙途读档失败，回退本地', err && err.message)
+        finishWith(local)
+      })
+    }
+    const ensure = wxSession.ensureWxSession
+    if (typeof ensure === 'function' && !this._resolveXianUserId()) {
+      ensure().then(afterSession).catch(() => afterSession())
+    } else {
+      afterSession()
+    }
+  },
+
+  /** 选档结束：挂载画布并开局 */
+  _enterGame(progress) {
+    this._pendingApplyProgress = progress || null
+    this._canvasSoftResume = false
+    const canPick = !!(config.isDevOrTrialEnv && config.isDevOrTrialEnv())
+    this.setData({
+      showContinueGate: false,
+      progressLoading: false,
+      gameUiReady: true,
+      canPickRealm: canPick,
+      showRealmPick: false,
+      showRealmInfo: false
+    }, () => {
+      this._canvas = null
+      this._ctx = null
+      this._loopRunning = false
+      this._initCanvas(0)
+    })
+  },
+
+  _applySavedProgress(p) {
+    if (!p) return
+    const lv = migrateRealmLv(p.realmLv || 1)
+    const r = realmByLv(lv)
+    this._realmLv = lv
+    this._kills = Math.max(0, p.kills || 0)
+    this._stageKills = Math.max(0, Math.min(MINOR_STAGE_KILLS - 1, p.stageKills || 0))
+    this._wave = Math.max(1, p.wave || (1 + Math.floor(this._kills / 12)))
+    this._swordCount = Math.min(MAX_SWORD_COUNT, Math.max(1, p.swordCount || 1))
+    this._corpseDan = Math.min(WAR_INTENT_NEED - 0.01, Math.max(0, p.corpseDan || 0))
+    this._qiAbsorb = Math.max(0, Math.min(MORTAL_QI_NEED, p.qiAbsorb || 0))
+    this._zombies = []
+    this._swords = []
+    this._pickups = []
+    this._bossActive = false
+    this._bossDeferred = false
+    this._gengFx = null
+    this._breakFx = null
+    this._breakMute = 0
+    this._spiritFx = null
+    this._qiVortexFx = null
+    this._perfect = false
+    this._perfectFx = null
+    this._over = false
+    this._helper = null
+    this._helperAnnounced = false
+    this._maxHp = playerMaxHpByRealm(r)
+    this._hp = this._maxHp
+    this._maxLingQi = playerMaxLingQi(r)
+    this._lingQi = this._maxLingQi
+    this._ensureHelper()
+    this._syncHudFromState()
+  },
+
+  _syncHudFromState() {
+    const r = realmByLv(this._realmLv || 1)
+    const combat = getRealmCombat(r.lv)
+    this.setData({
+      kills: this._kills || 0,
+      realmLv: r.lv,
+      realmName: r.name,
+      realmMajorName: r.majorName || r.name,
+      realmTierName: r.tierName,
+      realmTip: (combat && combat.tip) || r.tip || r.short || '',
+      spaceUnlocked: isYuanyingPlus(r.lv),
+      swordCount: this._swordCount || 1,
+      wave: this._wave || 1,
+      hp: this._hp,
+      maxHp: this._maxHp,
+      lingQi: this._lingQi,
+      maxLingQi: this._maxLingQi,
+      spaceForce: Math.floor(this._spaceForce || 0),
+      maxSpaceForce: SPACE_FORCE_MAX,
+      heldFu: (this._heldFu && this._heldFu.label) || '',
+      over: !!this._over,
+      perfect: !!this._perfect,
+      corpseDan: this._corpseDan || 0,
+      corpseDanNeed: CORPSE_DAN_NEED
+    })
+  },
+
+  /** 节流写档；force 时立刻提交（本地+服务端） */
+  _persistProgress(force) {
+    if (!this._gameStarted || this.data.showContinueGate || this.data.progressLoading || !this.data.gameUiReady) return
+    if (this._over || this._perfect) return
+    const now = Date.now()
+    if (!force && this._lastSaveAt && now - this._lastSaveAt < 4000) return
+    const userId = this._resolveXianUserId()
+    const payload = {
+      userId: userId || 'local',
+      realmLv: this._realmLv || 1,
+      kills: this._kills || 0,
+      stageKills: this._stageKills || 0,
+      swordCount: this._swordCount || 1,
+      wave: this._wave || 1,
+      corpseDan: this._corpseDan || 0,
+      qiAbsorb: Math.floor(this._qiAbsorb || 0)
+    }
+    this._lastSaveAt = now
+    this._writeLocalProgress(payload)
+    if (!userId) return
+    payload.userId = userId
+    api.saveXianProgress(payload).then(() => {
+      console.log('仙途已存档', payload.realmLv, payload.kills)
+    }).catch((err) => {
+      console.warn('仙途存档失败', err && err.message)
+    })
+  },
+
+  _clearRemoteProgress() {
+    const userId = this._resolveXianUserId()
+    if (!userId) return
+    api.clearXianProgress(userId).catch((err) => {
+      console.warn('仙途清档失败', err && err.message)
+    })
   },
 
   _loadImages(done) {
@@ -631,9 +1627,9 @@ Page({
     if (!canvas) return
     const animKeys = Object.keys(ANIM_DEFS)
     const realmFxKeys = REALM_FX_KEYS
-    const mobKeys = MONSTER_KEYS
-    // 玩家+凡人打坐4+草地1+劫尸2+精神2+太极+帮手+境界突破图+怪物立绘(走姿2+攻+闲)
-    let left = 1 + MORTAL_MEDITATE_PATHS.length + 1 + 2 + 2 + 1 + HELPER_WALK_PATHS.length + HELPER_SKILL_PATHS.length + realmFxKeys.length + mobKeys.length * 4
+    const mobKeys = MOB_LOAD_KEYS
+    // 玩家+凡人打坐4+草地1+劫尸2+精神2+太极+虚空裂隙+天气2+帮手+境界突破图+怪物立绘(走姿2+攻+闲)
+    let left = 1 + MORTAL_MEDITATE_PATHS.length + 1 + 2 + 2 + 1 + 1 + 2 + HELPER_WALK_PATHS.length + HELPER_SKILL_PATHS.length + realmFxKeys.length + mobKeys.length * 4
     for (let k = 0; k < animKeys.length; k++) left += ANIM_DEFS[animKeys[k]].paths.length
 
     const animImgs = { idle: [], walk: [], attack: [], hurt: [], dead: [] }
@@ -645,6 +1641,9 @@ Page({
     let spiritSjImg = null
     let spiritSj02Img = null
     let taijiImg = null
+    let voidTearImg = null
+    let weatherStormImg = null
+    let weatherDawnImg = null
     const realmFxImgs = {}
     const helperWalkImgs = new Array(HELPER_WALK_PATHS.length)
     const helperSkillImgs = new Array(HELPER_SKILL_PATHS.length)
@@ -670,6 +1669,9 @@ Page({
       this._spiritSj02Img = spiritSj02Img
       this._realmFxImgs = realmFxImgs
       this._taijiImg = taijiImg
+      this._voidTearImg = voidTearImg
+      this._weatherStormImg = weatherStormImg
+      this._weatherDawnImg = weatherDawnImg
       this._helperWalkImgs = helperWalkImgs
       this._helperSkillImgs = helperSkillImgs
       this._mobImgs = mobImgs
@@ -746,6 +1748,9 @@ Page({
     }
     loadOne(PLAYER_PATH, (img) => { playerImg = img })
     loadOne(TAIJI_PATH, (img) => { taijiImg = img })
+    loadOne(VOID_TEAR_PATH, (img) => { voidTearImg = img })
+    loadOne(WEATHER_STORM_PATH, (img) => { weatherStormImg = img })
+    loadOne(WEATHER_DAWN_PATH, (img) => { weatherDawnImg = img })
     loadOne(BOSS_WALK_PATH, (img) => { bossWalkImg = img })
     loadOne(BOSS_SKILL_PATH, (img) => { bossSkillImg = img })
     loadOne(SPIRIT_SJ_PATH, (img) => { spiritSjImg = img })
@@ -804,6 +1809,7 @@ Page({
     this._prevPlayerY = this._playerY
     this._zombies = []
     this._swords = []
+    this._realmShots = []
     this._pickups = []
     this._particles = []
     this._trails = []
@@ -845,8 +1851,15 @@ Page({
     this._gengFx = null
     this._bossActive = false
     this._bossDeferred = false
+    this._bossDefeatedDeferred = false
     this._gooShots = []
     this._gooPools = []
+    this._demonCrescents = []
+    this._enemySwords = []
+    this._fireballs = []
+    this._insectFx = []
+    this._realmAuxAcc = 0
+    this._qingyuanShield = 0
     this._spiritFx = null
     this._taijiPressed = false
     this._taijiRestAngle = 0
@@ -854,6 +1867,9 @@ Page({
     this._helperAnnounced = false
     this._blinkCd = 0
     this._blinkFx = null
+    this._voidBlink = null
+    this._spaceForce = 0
+    this._spaceForceWarnT = 0
     this._autoBlinkAcc = 0
     const r0 = realmByLv(1)
     this._maxHp = playerMaxHpByRealm(r0)
@@ -956,32 +1972,132 @@ Page({
     }
   },
 
-  /** 元婴后空间顺移 */
+  /** 元婴后：空间之力蓄满 → 撕裂虚空顺移 */
   _trySpaceBlink(x, y) {
     if (!canSpaceBlink(this._realmLv)) return false
-    if (this._blinkCd > 0 || this._gengFx || this._spiritFx || this._breakFx) return false
+    if (this._voidBlink || this._gengFx || this._spiritFx || this._breakFx || this._qiVortexFx) return false
+    if ((this._spaceForce || 0) < SPACE_FORCE_MAX - 0.5) {
+      if ((this._spaceForceWarnT || 0) <= 0) {
+        this._spaceForceWarnT = 1.4
+        wx.showToast({ title: '空间之力未满', icon: 'none', duration: 1200 })
+      }
+      return false
+    }
     const g = this._grassRect()
     const tx = Math.max(g.minX, Math.min(g.maxX, x))
     const ty = Math.max(g.minY, Math.min(g.maxY, y == null ? this._playerY : y))
     const dx = tx - this._playerX
     const dy = ty - this._playerY
-    if (dx * dx + dy * dy < 18 * 18) return false
+    if (dx * dx + dy * dy < 36 * 36) return false
     const fromX = this._playerX
     const fromY = this._playerY
     const realm = realmByLv(this._realmLv)
-    this._spawnBlinkFx(fromX, fromY, tx, ty, realm)
-    this._playerX = tx
-    this._playerY = ty
-    this._prevPlayerX = tx
-    this._prevPlayerY = ty
-    this._blinkCd = BLINK_CD
+    this._spaceForce = 0
+    this.setData({ spaceForce: 0, maxSpaceForce: SPACE_FORCE_MAX })
+    this._startVoidBlink(fromX, fromY, tx, ty, realm)
     return true
   },
 
+  /** 撕裂虚空：原地裂开飞入 → 远处裂开飞出 */
+  _startVoidBlink(fx, fy, tx, ty, realm) {
+    this._voidBlink = {
+      t: 0,
+      dur: VOID_BLINK_DUR,
+      fx: fx,
+      fy: fy,
+      tx: tx,
+      ty: ty,
+      color: (realm && realm.color) || '#67e8f9',
+      arrived: false,
+      hidden: false
+    }
+    this._blinkFx = null
+    // 起裂粒子
+    for (let i = 0; i < 14; i++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.2
+      const s = 30 + Math.random() * 80
+      this._particles.push({
+        x: fx, y: fy - 8,
+        vx: Math.cos(a) * s * 0.35,
+        vy: Math.sin(a) * s,
+        life: 0.35 + Math.random() * 0.25,
+        color: i % 2 ? '#67e8f9' : '#e0f2fe'
+      })
+    }
+    console.log('仙途撕裂虚空', Math.round(fx), Math.round(fy), '→', Math.round(tx), Math.round(ty))
+  },
+
+  _updateVoidBlink(dt) {
+    const vb = this._voidBlink
+    if (!vb) return
+    vb.t += dt
+    const t = vb.t
+    // 飞入缝中后瞬移到目标点并隐身
+    if (t >= 0.58 && !vb.arrived) {
+      vb.arrived = true
+      vb.hidden = true
+      this._playerX = vb.tx
+      this._playerY = vb.ty
+      this._prevPlayerX = vb.tx
+      this._prevPlayerY = vb.ty
+      for (let i = 0; i < 12; i++) {
+        const a = Math.random() * Math.PI * 2
+        const s = 35 + Math.random() * 70
+        this._particles.push({
+          x: vb.tx, y: vb.ty - 10,
+          vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+          life: 0.3 + Math.random() * 0.25,
+          color: '#a5f3fc'
+        })
+      }
+    }
+    // 出口飞出时现身
+    if (t >= 1.12) vb.hidden = false
+    if (t >= vb.dur) this._voidBlink = null
+  },
+
+  /** 演出中人物绘制偏移（飞入/飞出缝隙） */
+  _voidBlinkDrawPose() {
+    const vb = this._voidBlink
+    if (!vb) return { x: this._playerX, y: this._playerY, alpha: 1, hide: false }
+    const t = vb.t
+    if (t < 0.28) {
+      return { x: this._playerX, y: this._playerY, alpha: 1, hide: false }
+    }
+    if (t < 0.58) {
+      const u = (t - 0.28) / 0.3
+      const e = u * u
+      return {
+        x: vb.fx + (0 - 0) * e,
+        y: vb.fy - 8 - e * 18,
+        alpha: 1 - e * 0.95,
+        hide: false,
+        suckX: vb.fx,
+        suckY: vb.fy - 10,
+        suckU: e
+      }
+    }
+    if (t < 1.12) {
+      return { x: vb.tx, y: vb.ty, alpha: 0, hide: true }
+    }
+    if (t < 1.45) {
+      const u = (t - 1.12) / 0.33
+      const e = 1 - Math.pow(1 - u, 2)
+      return {
+        x: vb.tx,
+        y: vb.ty - 16 + e * 16,
+        alpha: Math.min(1, e * 1.2),
+        hide: false,
+        emergeU: e
+      }
+    }
+    return { x: this._playerX, y: this._playerY, alpha: 1, hide: false }
+  },
+
+  /** 兼容遁地符等旧裂空粒子 */
   _spawnBlinkFx(fx, fy, tx, ty, realm) {
-    const color = realm.color || '#f472b6'
+    const color = (realm && realm.color) || '#f472b6'
     this._blinkFx = { t: 0, dur: 0.32, fx: fx, fy: fy, tx: tx, ty: ty, color: color }
-    // 起终点裂空粒子
     for (let i = 0; i < 10; i++) {
       const a = Math.random() * Math.PI * 2
       const s = 40 + Math.random() * 90
@@ -996,8 +2112,85 @@ Page({
     }
   },
 
+  _voidTearOpenAmount(t) {
+    if (t < 0.28) return Math.min(1, t / 0.28)
+    if (t < 0.55) return 1
+    if (t < 0.85) return Math.max(0, 1 - (t - 0.55) / 0.3)
+    if (t < 1.15) return Math.min(1, (t - 0.85) / 0.3)
+    if (t < 1.45) return 1
+    if (t < VOID_BLINK_DUR) return Math.max(0, 1 - (t - 1.45) / Math.max(0.01, VOID_BLINK_DUR - 1.45))
+    return 0
+  },
+
+  _voidTearActivePos(vb) {
+    if (vb.t < 0.85) return { x: vb.fx, y: vb.fy - 12 }
+    return { x: vb.tx, y: vb.ty - 12 }
+  },
+
+  _drawVoidTear(ctx, vb) {
+    const open = this._voidTearOpenAmount(vb.t)
+    if (open <= 0.02) return
+    const pos = this._voidTearActivePos(vb)
+    const img = this._voidTearImg
+    const h = 130 + open * 36
+    const w = 8 + open * 48
+    ctx.save()
+    ctx.translate(pos.x, pos.y)
+    // 青白辉光
+    ctx.globalAlpha = 0.4 * open
+    const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, h * 0.6)
+    glow.addColorStop(0, 'rgba(165,243,252,0.65)')
+    glow.addColorStop(1, 'rgba(103,232,249,0)')
+    ctx.fillStyle = glow
+    ctx.beginPath()
+    ctx.ellipse(0, 0, w * 1.1, h * 0.58, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.globalAlpha = 0.97 * Math.min(1, open * 1.3)
+    if (img) {
+      ctx.drawImage(img, -w / 2, -h / 2, w, h)
+    } else {
+      // 无立绘时程序化锯齿裂隙（贴合参考图观感）
+      ctx.beginPath()
+      const segs = 9
+      ctx.moveTo(0, -h / 2)
+      for (let i = 1; i <= segs; i++) {
+        const yy = -h / 2 + (h * i) / segs
+        const jagged = (i % 2 === 0 ? 1 : -1) * w * (0.35 + (i % 3) * 0.08)
+        ctx.lineTo(jagged, yy)
+      }
+      for (let i = segs - 1; i >= 0; i--) {
+        const yy = -h / 2 + (h * i) / segs
+        const jagged = (i % 2 === 0 ? -1 : 1) * w * (0.32 + (i % 3) * 0.07)
+        ctx.lineTo(jagged, yy)
+      }
+      ctx.closePath()
+      ctx.fillStyle = '#030303'
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(186,230,253,0.95)'
+      ctx.lineWidth = 1.8
+      ctx.stroke()
+      // 内缘淡青描边
+      ctx.strokeStyle = 'rgba(103,232,249,0.55)'
+      ctx.lineWidth = 3
+      ctx.stroke()
+    }
+    // 外延细裂
+    ctx.globalAlpha = 0.5 * open
+    ctx.strokeStyle = 'rgba(148,163,184,0.85)'
+    ctx.lineWidth = 1
+    for (let i = 0; i < 6; i++) {
+      const side = i % 2 === 0 ? 1 : -1
+      const yy = -h * 0.32 + i * h * 0.12
+      ctx.beginPath()
+      ctx.moveTo(side * w * 0.28, yy)
+      ctx.quadraticCurveTo(side * (w * 0.7 + 6), yy + 2, side * (w * 0.9 + 14 + open * 8), yy + (i - 2) * 5)
+      ctx.stroke()
+    }
+    ctx.restore()
+  },
+
   /**
-   * 凡人打坐：吸纳天地灵气；僵尸手从地底伸出但不伤人
+   * 凡人打坐：吸纳天地灵气；风雨雷电随修炼进度变化（无僵尸出土）
    */
   _updateMortalCultivate(dt, realm) {
     if (this._breakMute > 0) {
@@ -1010,33 +2203,14 @@ Page({
     this._prevPlayerX = seat.x
     this._prevPlayerY = seat.y
 
+    // 确保场上无僵尸手/怪
+    if (this._zombies && this._zombies.length) this._zombies = []
+
     // 灵气入体
     const before = this._qiAbsorb || 0
     this._qiAbsorb = Math.min(MORTAL_QI_NEED, before + MORTAL_QI_RATE * dt)
     this._spawnQiParticles(dt)
-
-    // 僵尸手：只出土到手部高度，不追人
-    this._mortalHandAcc = (this._mortalHandAcc || 0) + dt
-    const hands = (this._zombies || []).filter((z) => z.handOnly)
-    if (hands.length < 5 && this._mortalHandAcc >= 1.15) {
-      this._mortalHandAcc = 0
-      this._spawnMortalHand()
-    }
-    for (let i = this._zombies.length - 1; i >= 0; i--) {
-      const z = this._zombies[i]
-      if (!z.handOnly) {
-        this._zombies.splice(i, 1)
-        continue
-      }
-      z.life = (z.life == null ? 4.5 : z.life) - dt
-      z.state = 'emerge'
-      // 保持「手」帧上下蠕动
-      z.emerge = 0.22 + 0.2 * (0.5 + 0.5 * Math.sin(this._animT * 2.4 + z.id))
-      z.frameT = (z.frameT || 0) + dt
-      if (z.life <= 0) {
-        this._zombies.splice(i, 1)
-      }
-    }
+    this._updateMortalWeather(dt)
 
     for (let i = this._particles.length - 1; i >= 0; i--) {
       const p = this._particles[i]
@@ -1049,6 +2223,100 @@ Page({
     if (this._qiAbsorb >= MORTAL_QI_NEED) {
       this._startMortalBreakthrough()
     }
+  },
+
+  /** 凡人打坐天气：静 → 风 → 雨 → 雷暴 → 破晓 */
+  _updateMortalWeather(dt) {
+    const ratio = Math.min(1, (this._qiAbsorb || 0) / MORTAL_QI_NEED)
+    if (!this._mortalWeather) {
+      this._mortalWeather = {
+        rain: [],
+        wind: [],
+        flash: 0,
+        bolt: null,
+        boltCd: 2.5
+      }
+    }
+    const w = this._mortalWeather
+    w.flash = Math.max(0, (w.flash || 0) - dt)
+
+    // 风粒子
+    const windNeed = ratio < 0.2 ? 4 : (ratio < 0.45 ? 10 : 16)
+    while (w.wind.length < windNeed) {
+      w.wind.push({
+        x: Math.random() * (this._w || 300),
+        y: 20 + Math.random() * (this._h || 500) * 0.55,
+        len: 18 + Math.random() * 36,
+        spd: 80 + Math.random() * 120 + ratio * 80,
+        life: 0.4 + Math.random() * 0.6
+      })
+    }
+    for (let i = w.wind.length - 1; i >= 0; i--) {
+      const p = w.wind[i]
+      p.x += p.spd * dt
+      p.y += (Math.sin((this._animT || 0) * 3 + i) * 12) * dt
+      p.life -= dt
+      if (p.life <= 0 || p.x > (this._w || 300) + 40) w.wind.splice(i, 1)
+    }
+
+    // 雨滴（进度过半起）
+    if (ratio >= 0.35) {
+      const rainNeed = Math.floor(18 + ratio * 55)
+      while (w.rain.length < rainNeed) {
+        w.rain.push({
+          x: Math.random() * ((this._w || 300) + 40) - 20,
+          y: Math.random() * (this._h || 500) * 0.7,
+          len: 8 + Math.random() * 14,
+          spd: 280 + Math.random() * 220 + ratio * 160
+        })
+      }
+    }
+    for (let i = w.rain.length - 1; i >= 0; i--) {
+      const r = w.rain[i]
+      r.y += r.spd * dt
+      r.x += (40 + ratio * 50) * dt
+      if (r.y > (this._h || 500) * 0.85) {
+        if (ratio >= 0.35) {
+          r.y = -10 - Math.random() * 40
+          r.x = Math.random() * ((this._w || 300) + 40) - 20
+        } else {
+          w.rain.splice(i, 1)
+        }
+      }
+    }
+
+    // 雷电（进度过 0.62）
+    if (ratio >= 0.62) {
+      w.boltCd = (w.boltCd || 0) - dt
+      if (w.boltCd <= 0) {
+        w.boltCd = 1.6 + Math.random() * 2.4 - ratio * 0.8
+        w.flash = 0.12 + Math.random() * 0.1
+        const bx = (this._w || 300) * (0.2 + Math.random() * 0.6)
+        w.bolt = {
+          x: bx,
+          life: 0.28,
+          segs: this._makeLightningPath(bx, 8, (this._h || 500) * 0.42)
+        }
+      }
+    }
+    if (w.bolt) {
+      w.bolt.life -= dt
+      if (w.bolt.life <= 0) w.bolt = null
+    }
+  },
+
+  _makeLightningPath(x0, y0, y1) {
+    const segs = [{ x: x0, y: y0 }]
+    let x = x0
+    let y = y0
+    const steps = 7 + Math.floor(Math.random() * 4)
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps
+      x += (Math.random() - 0.5) * 36
+      y = y0 + (y1 - y0) * t
+      segs.push({ x: x, y: y })
+    }
+    return segs
   },
 
   /** 天地灵气粒子汇聚入丹田 */
@@ -1084,37 +2352,6 @@ Page({
     }
   },
 
-  /** 凡人修炼时从草地伸出的僵尸手（无伤害） */
-  _spawnMortalHand() {
-    const realm = realmByLv(1)
-    let pos = this._spawnPointOnGrass()
-    const pdx = pos.x - this._playerX
-    const pdy = pos.y - this._playerY
-    // 不要紧贴打坐点
-    if (pdx * pdx + pdy * pdy < 70 * 70) {
-      pos = this._spawnPointOnGrass()
-    }
-    pos = this._clampToGrass(pos.x, pos.y)
-    this._zombies.push({
-      id: this._nextZid++,
-      x: pos.x,
-      y: pos.y,
-      r: 18 * realm.bodyScale,
-      hp: 1,
-      maxHp: 1,
-      speedBonus: 0,
-      frameT: 0,
-      emerge: 0.2,
-      state: 'emerge',
-      handOnly: true,
-      life: 3.8 + Math.random() * 2.2,
-      kx: 0,
-      ky: 0,
-      flash: 0,
-      facing: 0
-    })
-  },
-
   /** 灵气足够：进入精神领域，突破至炼气，开始斩尸 */
   _startMortalBreakthrough() {
     if (this._spiritFx || this._breakFx) return
@@ -1122,9 +2359,10 @@ Page({
     this._zombies = []
     this._swords = []
     this._focusZombie = null
+    this._mortalWeather = null
     this._breakMute = 12
     this._ensureSpiritImages()
-    const nextLv = 2
+    const nextLv = firstRealmLvOfMajor('lianqi')
     const nr = realmByLv(nextLv)
     this._spiritFx = {
       t: 0,
@@ -1136,7 +2374,8 @@ Page({
       absorbDur: 2.1
     }
     console.log('凡人灵气圆满，突破炼气', {
-      sj: !!this._spiritSjImg
+      sj: !!this._spiritSjImg,
+      next: nr.name
     })
   },
 
@@ -1145,12 +2384,14 @@ Page({
    */
   _updateAutoPilot(dt) {
     if (!this.data.autoPilot || this._dragging || this._over || this._perfect || this._perfectFx) return
-    const px = this._playerX
-    const py = this._playerY
-    let vx = 0
-    let vy = 0
+    if (this._gengFx || this._spiritFx || this._breakFx || this._qiVortexFx) return
 
-    // 持符时自动朝最近尸扔出
+    const px = this._playerX || 0
+    const py = this._playerY || 0
+    // 挂实例上，避免大文件压缩后局部变量丢失导致 ReferenceError
+    this._apMoveX = 0
+    this._apMoveY = 0
+
     if (this._heldFu && !this._fuThrow) {
       this._autoFuAcc = (this._autoFuAcc || 0) + dt
       if (this._autoFuAcc >= 0.55) {
@@ -1164,50 +2405,80 @@ Page({
       this._autoFuAcc = 0
     }
 
-    // 1) 躲避僵尸
     const dangerR = 100
-    for (let i = 0; i < this._zombies.length; i++) {
-      const z = this._zombies[i]
-      if (z.state === 'dead' || z.emerge < 0.5) continue
-      const zx = z.x
-      const zy = z.y - (z.floatY || 0)
-      const dx = px - zx
-      const dy = py - zy
+    const zombies = this._zombies || []
+    for (let i = 0; i < zombies.length; i++) {
+      const z = zombies[i]
+      if (!z || z.state === 'dead' || (z.emerge || 0) < 0.5) continue
+      const dx = px - z.x
+      const dy = py - (z.y - (z.floatY || 0))
       const d = Math.sqrt(dx * dx + dy * dy) || 1
       if (d < dangerR) {
         const w = (dangerR - d) / dangerR
-        vx += (dx / d) * w * 2.4
-        vy += (dy / d) * w * 2.4
+        this._apMoveX += (dx / d) * w * 2.4
+        this._apMoveY += (dy / d) * w * 2.4
       }
     }
 
-    const fleeForce = vx * vx + vy * vy
-    // 2) 不紧急时去捡包 / 出土剑
+    let crescentThreat = false
+    const crescents = this._demonCrescents || []
+    for (let i = 0; i < crescents.length; i++) {
+      const c = crescents[i]
+      if (!c || c.mode !== 'attack') continue
+      const dx = px - c.x
+      const dy = py - c.y
+      const d = Math.sqrt(dx * dx + dy * dy) || 1
+      if (d < 140) {
+        const w = (140 - d) / 140
+        this._apMoveX += (dx / d) * w * 3.2
+        this._apMoveY += (dy / d) * w * 3.2
+        if (d < 70) crescentThreat = true
+      }
+    }
+
+    const fleeForce = this._apMoveX * this._apMoveX + this._apMoveY * this._apMoveY
     if (fleeForce < 0.55) {
       const loot = this._autoPilotLootTarget()
       if (loot) {
         const dx = loot.x - px
         const dy = loot.y - py
         const d = Math.sqrt(dx * dx + dy * dy) || 1
-        vx += (dx / d) * 1.15
-        vy += (dy / d) * 1.15
+        this._apMoveX += (dx / d) * 1.15
+        this._apMoveY += (dy / d) * 1.15
       }
     }
 
-    const len = Math.sqrt(vx * vx + vy * vy)
+    const len = Math.sqrt(this._apMoveX * this._apMoveX + this._apMoveY * this._apMoveY)
     if (len < 0.08) return
+    const nx = this._apMoveX / len
+    const ny = this._apMoveY / len
 
     if (canSpaceBlink(this._realmLv)) {
-      this._autoBlinkAcc = (this._autoBlinkAcc || 0) + dt
-      if (this._autoBlinkAcc < 0.45) return
-      this._autoBlinkAcc = 0
-      const hop = 78 + Math.min(50, (this._realmLv || 1) * 4)
-      this._trySpaceBlink(px + (vx / len) * hop, py + (vy / len) * hop)
+      if (this._voidBlink) return
+      const speed = 165 + Math.min(50, (this._realmLv || 1) * 4)
+      this._movePlayerTo(px + nx * speed * dt, py + ny * speed * dt)
+      const forceFull = (this._spaceForce || 0) >= SPACE_FORCE_MAX - 0.5
+      if (forceFull && (crescentThreat || fleeForce > 1.2)) {
+        this._autoBlinkAcc = (this._autoBlinkAcc || 0) + dt
+        const gap = crescentThreat ? 0.85 : VOID_AUTO_GAP
+        if (this._autoBlinkAcc >= gap) {
+          this._autoBlinkAcc = 0
+          const hop = 110 + Math.min(80, (this._realmLv || 1) * 5)
+          this._trySpaceBlink(px + nx * hop, py + ny * hop)
+        }
+      } else if (forceFull) {
+        this._autoBlinkAcc = (this._autoBlinkAcc || 0) + dt
+        if (this._autoBlinkAcc >= VOID_AUTO_GAP) {
+          this._autoBlinkAcc = 0
+          const hop = 100 + Math.min(70, (this._realmLv || 1) * 5)
+          this._trySpaceBlink(px + nx * hop, py + ny * hop)
+        }
+      }
       return
     }
 
     const speed = 155 + Math.min(40, (this._realmLv || 1) * 3)
-    this._movePlayerTo(px + (vx / len) * speed * dt, py + (vy / len) * speed * dt)
+    this._movePlayerTo(px + nx * speed * dt, py + ny * speed * dt)
   },
 
   /** 自动飞行要去捡的掉落：低血/低灵优先丹药灵石，其次符箓与出土剑 */
@@ -1241,20 +2512,13 @@ Page({
     const list = this._pickups || []
     for (let i = 0; i < list.length; i++) {
       const p = list[i]
+      if (isLootTempDisabled(p.key)) continue
       let bonus = 80
       if (needHp && p.key === 'hp') bonus = 420
-      else if (needQi && (p.key === 'ling' || p.key === 'lingshi')) bonus = 400
+      else if (needQi && p.key === 'ling') bonus = 400
       else if (p.key === 'hp') bonus = 140
-      else if (p.key === 'ling' || p.key === 'lingshi') bonus = 160
-      else if (LOOT_DEFS[p.key] && LOOT_DEFS[p.key].kind === 'fu') bonus = this._heldFu ? 40 : 200
-      else if (p.key === 'sword') bonus = 90
+      else if (p.key === 'ling') bonus = 160
       consider(p.x, p.y, bonus)
-    }
-    const gs = this._groundSwords || []
-    for (let i = 0; i < gs.length; i++) {
-      const s = gs[i]
-      if ((s.grow || 0) < 1) continue
-      consider(s.x, s.y, this._swordCount < MAX_SWORD_COUNT ? 220 : 20)
     }
     return best
   },
@@ -1287,7 +2551,7 @@ Page({
     this._loopRunning = true
     const tick = (ts) => {
       this._raf = this._canvas.requestAnimationFrame(tick)
-      if (this._paused || this._over || this._perfect || this.data.showRealmInfo) {
+      if (this._paused || this._over || this._perfect || this.data.showRealmInfo || this.data.showRealmPick || this.data.showContinueGate || this.data.progressLoading) {
         this._draw()
         return
       }
@@ -1300,6 +2564,11 @@ Page({
       }
       if (this._spiritFx) {
         this._updateSpiritDomain(dt)
+        this._draw()
+        return
+      }
+      if (this._qiVortexFx) {
+        this._updateQiVortex(dt)
         this._draw()
         return
       }
@@ -1321,20 +2590,59 @@ Page({
       return
     }
 
-    // 自动飞行：捡包、躲尸（拖动时暂停，手控优先）
-    this._updateAutoPilot(dt)
-    if (this._blinkCd > 0) this._blinkCd = Math.max(0, this._blinkCd - dt)
+    // 自动飞行：捡包、躲尸（拖动时暂停，手控优先；撕裂虚空中暂停）
+    if (!this._voidBlink) this._updateAutoPilot(dt)
+    if (this._spaceForceWarnT > 0) this._spaceForceWarnT = Math.max(0, this._spaceForceWarnT - dt)
     if (this._blinkFx) {
       this._blinkFx.t += dt
       if (this._blinkFx.t >= this._blinkFx.dur) this._blinkFx = null
     }
+    if (this._voidBlink) this._updateVoidBlink(dt)
+    // 元婴起缓慢积蓄空间之力（击杀另有加成）
+    if (canSpaceBlink(this._realmLv) && !this._voidBlink) {
+      const before = this._spaceForce || 0
+      // 受威胁时空间之力回得更快，便于破碎虚空躲伤
+      let threat = false
+      const crescents = this._demonCrescents || []
+      for (let i = 0; i < crescents.length; i++) {
+        if (crescents[i].mode === 'attack') {
+          const dx = this._playerX - crescents[i].x
+          const dy = this._playerY - crescents[i].y
+          if (dx * dx + dy * dy < 120 * 120) { threat = true; break }
+        }
+      }
+      if (!threat) {
+        const zs = this._zombies || []
+        for (let i = 0; i < zs.length; i++) {
+          const z = zs[i]
+          if (z.state === 'dead') continue
+          const dx = this._playerX - z.x
+          const dy = this._playerY - z.y
+          if (dx * dx + dy * dy < 90 * 90) { threat = true; break }
+        }
+      }
+      const rate = SPACE_FORCE_PASSIVE * (threat ? 1.85 : 1)
+      this._spaceForce = Math.min(SPACE_FORCE_MAX, before + rate * dt)
+      if (Math.floor(this._spaceForce) !== Math.floor(before) || (before < SPACE_FORCE_MAX && this._spaceForce >= SPACE_FORCE_MAX)) {
+        this.setData({ spaceForce: Math.floor(this._spaceForce), maxSpaceForce: SPACE_FORCE_MAX })
+      }
+    }
     if (this._playerHideT > 0) this._playerHideT = Math.max(0, this._playerHideT - dt)
     if (this._lingQiWarnT > 0) this._lingQiWarnT = Math.max(0, this._lingQiWarnT - dt)
+    // 符咒暂时关闭：清掉已持有符
+    if (this._heldFu && isLootTempDisabled(this._heldFu.key)) {
+      this._heldFu = null
+      this._fuThrow = null
+      if (this.data.heldFu) this.setData({ heldFu: '' })
+    }
     this._updateLingQi(dt, realm)
     this._updateFuThrow(dt, realm)
     this._updateGroundSwords(dt)
-    // 御剑遁光拖尾（元婴前彗星尾；元婴后仅顺移残影）
+    // 御剑遁光拖尾
     this._pushTrail(realm)
+
+    // 战意：与怪交锋时随时间积蓄（取代击杀尸丹）
+    this._tickWarIntent(dt)
 
     // 大庚剑阵进行中
     if (this._gengFx) {
@@ -1355,12 +2663,16 @@ Page({
       this._focusZombie = null
     }
 
-    // 僵尸更少：间隔更长，且限制场上数量
-    const spawnEvery = Math.max(1.35, 2.6 - this._wave * 0.06 - realm.lv * 0.04)
-    const maxZ = Math.min(5, 2 + Math.floor(realm.lv / 3))
+    // 每一级场上只保留一只怪；境主战期间 _bossActive 挡重复刷怪
+    const guardianMode = isGuardianCombatRealm(realm.lv)
+    const spawnEvery = guardianMode ? 0.8 : Math.max(1.55, 2.8 - this._wave * 0.05 - realm.lv * 0.03)
+    const maxZ = 1
     this._spawnAcc += dt
-    // 劫尸战期间不刷普通尸；突破静默期也不刷
-    if (!this._bossActive && !this._gengFx && this._breakMute <= 0 && this._zombies.length < maxZ && this._spawnAcc >= spawnEvery) {
+    // 境主战 / 突破静默期不刷；样板境由 _spawnRealmGuardian 负责
+    const canSpawn = guardianMode
+      ? (!this._gengFx && this._breakMute <= 0 && !this._spiritFx && this._zombies.length < maxZ && !this._bossActive)
+      : (!this._bossActive && !this._gengFx && this._breakMute <= 0 && this._zombies.length < maxZ)
+    if (canSpawn && this._spawnAcc >= spawnEvery) {
       this._spawnAcc = 0
       this._spawnZombie()
     }
@@ -1371,11 +2683,18 @@ Page({
 
     const shootEvery = Math.max(0.28, 0.55 - realm.lv * 0.04)
     this._swordAcc += dt
-    // 周身剑出去杀敌：场上还有出击剑时不叠发，归队后再发；灵气不足则不出剑
-    if (!this._gengFx && !this._spiritFx && !this._breakFx && this._swordAcc >= shootEvery && !(this._swords && this._swords.length)) {
-      this._swordAcc = 0
-      this._launchSwords(realm)
+    // 按大境界主攻：剑修出剑，其余境界按说明出神光/雷火等
+    if (!this._gengFx && !this._spiritFx && !this._breakFx) {
+      this._tickRealmPrimaryAttack(dt, realm, shootEvery)
     }
+    // 非剑修清掉残留飞剑/环剑感
+    if (!realmUsesSwords(realm.lv) && this._swords && this._swords.length) {
+      this._swords = []
+    }
+
+    // 辅招（与主攻不同的那一式）
+    this._tickRealmAuxSkill(dt, realm)
+    this._updateRealmShots(dt, realm)
 
     // 飞剑：穿透斩尸，击杀后追下一只或回身归队
     for (let i = this._swords.length - 1; i >= 0; i--) {
@@ -1384,6 +2703,17 @@ Page({
       if (!s.mode) s.mode = 'hunt'
 
       s.life -= dt
+      // 与魔气僵持：短暂对峙后剑气消散归队
+      if (s.mode === 'stalemate') {
+        s.stalemateT = (s.stalemateT || 0) - dt
+        s.x += Math.sin((this._animT || 0) * 42 + (s.id || 0)) * 0.55
+        s.y += Math.cos((this._animT || 0) * 38 + (s.id || 0)) * 0.4
+        if (s.stalemateT <= 0) {
+          s.mode = 'return'
+          s.life = 2.2
+        }
+        continue
+      }
       // 寿命到：改为回身，不直接消失
       if (s.life <= 0 && s.mode !== 'return') {
         s.mode = 'return'
@@ -1436,14 +2766,21 @@ Page({
         }
       }
 
-      // 穿透：穿过身体造成伤害，不销毁飞剑、不击退
+      // 穿透：穿过身体造成伤害；魔族可月牙抵挡
       for (let zi = 0; zi < this._zombies.length; zi++) {
         const z = this._zombies[zi]
         if (z.emerge < 0.85 || z.state === 'dead') continue
         if (s.hitIds[z.id]) continue
         const dx = s.x - z.x
         const dy = s.y - (z.y - (z.floatY || 0))
-        if (dx * dx + dy * dy <= (z.r + 10) * (z.r + 10)) {
+        const hitR = (z.r + 10) * (z.r + 10)
+        const blockPad = 28 + Math.min(22, (z.blockDuration || 0) * 16)
+        const blockR = (z.r + blockPad) * (z.r + blockPad)
+        const d2 = dx * dx + dy * dy
+        if (z.resistSkills && d2 <= blockR && this._tryDemonBlockSword(z, s)) {
+          break
+        }
+        if (d2 <= hitR) {
           s.hitIds[z.id] = 1
           this._hitZombie(z, s.dmg, s.x, s.y, realm, s.enchant, false)
           if (z.state === 'dead' || z.hp <= 0) {
@@ -1470,9 +2807,13 @@ Page({
       }
     }
 
-    // 掉落物浮动：靠近拾取（丹药即时、符箓入手）
+    // 掉落物浮动：靠近拾取（丹药即时）；禁用类掉落当场清掉
     for (let i = this._pickups.length - 1; i >= 0; i--) {
       const p = this._pickups[i]
+      if (isLootTempDisabled(p.key)) {
+        this._pickups.splice(i, 1)
+        continue
+      }
       p.bob = (p.bob || 0) + dt * 3
       p.spin += dt * 4
       p.life = (p.life == null ? 18 : p.life) - dt
@@ -1498,19 +2839,31 @@ Page({
       }
 
       if (z.state === 'dead') {
+        // 元婴大庚「插地→消散→剑归」由剑阵流程结算长老，避免中途 breakthrough
+        if (this._gengFx && this._gengFx.style === 'void64' && (z.isRealmGuardian || z.isDemon)) {
+          continue
+        }
         const deadLen = z.isBoss ? 0.55 : (ANIM_DEFS.dead.paths.length / ANIM_DEFS.dead.fps)
         if (z.frameT >= deadLen) {
           const wasBoss = !!z.isBoss
+          const wasGuardian = !!z.isRealmGuardian
+          const wasHeart = !!z.isHeartDemon
           if (this._focusZombie === z) this._focusZombie = null
           this._dropLootFromZombie(z)
           this._zombies.splice(i, 1)
-          this._registerKill(wasBoss ? { boss: true, skipDan: true } : null)
+          this._registerKill(wasBoss || wasGuardian ? {
+            boss: true,
+            realmGuardian: wasGuardian,
+            heartDemon: wasHeart,
+            skipDan: true
+          } : null)
         }
         continue
       }
 
       // 元素状态倒计时与持续伤害
       this._tickZombieElements(z, dt, realm)
+      if ((z.timeSlow || 0) > 0) z.timeSlow = Math.max(0, z.timeSlow - dt)
 
       if (z.state === 'hurt') {
         const hurtLen = ANIM_DEFS.hurt.paths.length / ANIM_DEFS.hurt.fps
@@ -1558,6 +2911,8 @@ Page({
     }
 
     this._updateGoo(dt, realm)
+    this._updateDemonCrescents(dt, realm)
+    this._updateEnemySwords(dt)
     this._updateHelper(dt, realm)
 
     if (this.data.wave !== this._wave || this.data.hp !== Math.ceil(this._hp) || this.data.lingQi !== Math.floor(this._lingQi || 0)) {
@@ -1574,7 +2929,11 @@ Page({
   _collectPickup(index) {
     const p = this._pickups[index]
     if (!p) return
-    const def = LOOT_DEFS[p.key] || LOOT_DEFS.lingshi
+    if (isLootTempDisabled(p.key)) {
+      this._pickups.splice(index, 1)
+      return
+    }
+    const def = LOOT_DEFS[p.key] || LOOT_DEFS.hp
     if (p.key === 'sword') {
       this._swordCount = Math.min(MAX_SWORD_COUNT, this._swordCount + 1)
       this.setData({ swordCount: this._swordCount })
@@ -1630,7 +2989,12 @@ Page({
     if (enchant === 'fire') bonus = 2
     if (enchant === 'wind') bonus = 1
     if (enchant === 'ice') bonus = 1
-    z.hp -= dmg + bonus
+    let real = dmg + bonus
+    // 境主抗性：境界越高减伤越高
+    if (z.resistSkills && (z.dmgResist || 0) > 0) {
+      real = Math.max(1, Math.floor(real * (1 - z.dmgResist)))
+    }
+    z.hp -= real
     this._burst(z.x, z.y, (LOOT_DEFS[enchant] && LOOT_DEFS[enchant].color) || '#fde68a', 5)
     // 飞剑穿透不击退，仅受伤闪白
     if (knockback !== false) {
@@ -1729,38 +3093,9 @@ Page({
     }
   },
 
-  /** 场景出土飞剑：从土里慢慢长出，拾取加剑数 */
-  _updateGroundSwords(dt) {
-    if (!this._groundSwords) this._groundSwords = []
-    if (this._isMortalCultivate() || this._gengFx || this._bossActive) return
-    this._groundSwordAcc = (this._groundSwordAcc || 0) - dt
-    const list = this._groundSwords
-    if (this._groundSwordAcc <= 0 && list.length < 3 && (this._swordCount || 1) < MAX_SWORD_COUNT) {
-      this._groundSwordAcc = 7 + Math.random() * 8
-      const g = this._grassRect()
-      const p = this._clampToGrass(
-        g.minX + Math.random() * (g.maxX - g.minX),
-        g.minY + Math.random() * (g.maxY - g.minY)
-      )
-      list.push({ x: p.x, y: p.y, grow: 0, life: 16 })
-    }
-    for (let i = list.length - 1; i >= 0; i--) {
-      const s = list[i]
-      if (s.grow < 1) s.grow = Math.min(1, s.grow + dt / 2.4)
-      else s.life -= dt
-      if (s.grow >= 1) {
-        const dx = s.x - this._playerX
-        const dy = s.y - this._playerY
-        if (dx * dx + dy * dy < 26 * 26) {
-          this._swordCount = Math.min(MAX_SWORD_COUNT, (this._swordCount || 1) + 1)
-          this.setData({ swordCount: this._swordCount })
-          this._burst(s.x, s.y, '#fde68a', 12)
-          list.splice(i, 1)
-          continue
-        }
-      }
-      if (s.life <= 0) list.splice(i, 1)
-    }
+  /** 场景出土飞剑：暂时关闭 */
+  _updateGroundSwords() {
+    this._groundSwords = []
   },
 
   /** 点按扔出持有符箓 */
@@ -1859,9 +3194,33 @@ Page({
 
   _hurtPlayer(dmg, fromX, fromY) {
     if (this._perfect || this._over) return
+    if (this._voidBlink) return
     if (this._isMortalCultivate() || (this._realmLv || 1) <= 1) return
     if ((this._playerHideT || 0) > 0) return
-    this._hp -= dmg
+    // 元婴后：破碎虚空瞬移躲伤（空间之力足够时自动裂空脱身）
+    if (canSpaceBlink(this._realmLv) && (this._spaceForce || 0) >= 42) {
+      const dx0 = this._playerX - (fromX == null ? this._playerX : fromX)
+      const dy0 = this._playerY - (fromY == null ? this._playerY : fromY)
+      const d0 = Math.sqrt(dx0 * dx0 + dy0 * dy0) || 1
+      const hop = 118 + Math.min(70, (realmByLv(this._realmLv).majorIndex || 0) * 8)
+      const tx = this._playerX + (dx0 / d0) * hop
+      const ty = this._playerY + (dy0 / d0) * hop
+      const cost = Math.min(this._spaceForce, 55)
+      this._spaceForce = Math.max(0, (this._spaceForce || 0) - cost)
+      this.setData({ spaceForce: Math.floor(this._spaceForce), maxSpaceForce: SPACE_FORCE_MAX })
+      const realm = realmByLv(this._realmLv)
+      this._startVoidBlink(this._playerX, this._playerY, tx, ty, realm)
+      this._burst(this._playerX, this._playerY, '#67e8f9', 10)
+      wx.showToast({ title: '破碎虚空 · 躲伤', icon: 'none', duration: 700 })
+      return
+    }
+    // 筑基青元护体剑盾
+    let real = dmg
+    if ((this._qingyuanShield || 0) > 0) {
+      real = Math.max(1, Math.floor(dmg * 0.55))
+      this._burst(this._playerX, this._playerY, '#67e8f9', 4)
+    }
+    this._hp -= real
     this._playerHurtT = 0.35
     this._burst(this._playerX, this._playerY, '#f87171', 8)
     // 轻击退
@@ -1877,7 +3236,8 @@ Page({
     const dx = this._playerX - this._prevPlayerX
     const dy = this._playerY - this._prevPlayerY
     const moved = dx * dx + dy * dy > 2.5
-    if (canSpaceBlink(this._realmLv)) {
+    // 撕裂虚空中不画遁光尾；其余境界（含元婴遁光飞行）均保留
+    if (this._voidBlink) {
       this._prevPlayerX = this._playerX
       this._prevPlayerY = this._playerY
       return
@@ -1917,6 +3277,8 @@ Page({
   _spawnBoltVisual(x, y, dur) {},
 
   _spawnLoot(key, atX, atY) {
+    // 硬拦截：灵石 / 符咒 / 剑类掉落一律不生成
+    if (isLootTempDisabled(key)) return
     const def = LOOT_DEFS[key]
     if (!def) return
     let p
@@ -1941,15 +3303,8 @@ Page({
   },
 
   _spawnRandomLoot(atX, atY) {
-    const roll = Math.random()
-    let key = 'lingshi'
-    if (roll < 0.28) key = 'lingshi'
-    else if (roll < 0.44) key = 'hp'
-    else if (roll < 0.58) key = 'ling'
-    else if (roll < 0.72) key = FU_KEYS[Math.floor(Math.random() * FU_KEYS.length)]
-    else if (roll < 0.86) key = FU_KEYS[Math.floor(Math.random() * FU_KEYS.length)]
-    else key = 'lingshi'
-    this._spawnLoot(key, atX, atY)
+    // 暂时只掉红色回血丹（回灵丹外形太像灵石，一并停掉以免误认）
+    this._spawnLoot('hp', atX, atY)
   },
 
   /** 僵尸死亡随机掉落（Boss 必掉 1～2 件） */
@@ -2015,12 +3370,16 @@ Page({
     return best
   },
 
-  /** 草地上出土普通怪物（随机种类） */
+  /** 草地上出土普通怪物；大境巅峰改为刷唯一境主 */
   _spawnZombie() {
+    if (isGuardianCombatRealm(this._realmLv)) {
+      this._spawnRealmGuardian(getRealmCombat(this._realmLv))
+      return
+    }
     const realm = realmByLv(this._realmLv)
     const typeKey = pickMonsterKey(this._wave, this._realmLv)
     const def = monsterDef(typeKey)
-    const hp = Math.floor((10 + Math.floor(this._wave * 3.5) + realm.lv * 5 + Math.floor(this._kills / 25)) * def.hpMul)
+    const hp = Math.floor((10 + Math.floor(this._wave * 3.5) + (realm.majorIndex || 1) * 5 + Math.floor(this._kills / 25)) * def.hpMul * 1.35)
     const r = (20 + Math.min(8, this._wave * 0.35)) * realm.bodyScale * def.rMul
     let pos = this._spawnPointOnGrass()
     const pdx = pos.x - this._playerX
@@ -2029,7 +3388,7 @@ Page({
       pos = this._spawnPointOnGrass()
     }
     pos = this._clampToGrass(pos.x, pos.y)
-    this._zombies.push(this._makeMonster({
+    const z = this._makeMonster({
       typeKey: typeKey,
       x: pos.x,
       y: pos.y,
@@ -2037,7 +3396,121 @@ Page({
       hp: hp,
       maxHp: hp,
       isBoss: false
-    }))
+    })
+    // 元婴之后：每大境界独立生成的敌修人形（不用主角贴图）
+    if (isAfterYuanying(this._realmLv)) {
+      const kit = getGuardianKit(this._realmLv)
+      z.proceduralBody = true
+      z.handOnly = true
+      z.gDraw = kit.gDraw
+      z.tint = realm.color || kit.crescentColor
+      z.glow = realm.glow || kit.crescentGlow
+      z.crescentColor = kit.crescentColor
+      z.crescentGlow = kit.crescentGlow
+      const lookName = ({
+        sha: '煞影修士', voidbeast: '虚空修士', mutate: '真灵修士', overlord: '霸体修士',
+        leibeast: '雷劫修士', timeprison: '时囚修士', tianmo: '天魔修士', sanshi: '三尸修士',
+        chaos: '混沌修士', demon: '魔影修士'
+      })[kit.gDraw] || ((realm.majorName || realm.name || '') + '修士')
+      z.typeName = lookName
+    }
+    this._zombies.push(z)
+  },
+
+  /** 炼气～道祖：唯一境主，击败后突破 */
+  _spawnRealmGuardian(combat) {
+    if (!combat || this._bossActive || this._gengFx || this._spiritFx || this._breakFx) return
+    for (let i = 0; i < (this._zombies || []).length; i++) {
+      if (this._zombies[i].state !== 'dead') return
+    }
+    const realm = realmByLv(this._realmLv)
+    const def = monsterDef(combat.typeKey)
+    const hpBars = Math.max(2, combat.hpBars || 3)
+    const hpPerBar = Math.floor(combat.hpPerBar || 90)
+    const hp = hpPerBar * hpBars
+    const r = 30 * realm.bodyScale * (def.rMul || 1) * (combat.rMul || 1)
+    let pos = this._spawnPointOnGrass()
+    const pdx = pos.x - this._playerX
+    const pdy = pos.y - this._playerY
+    if (pdx * pdx + pdy * pdy < 120 * 120) {
+      pos = this._spawnPointOnGrass()
+    }
+    pos = this._clampToGrass(pos.x, pos.y)
+    const boss = this._makeMonster({
+      typeKey: combat.typeKey,
+      x: pos.x,
+      y: pos.y,
+      r: r,
+      hp: hp,
+      maxHp: hp,
+      hpBars: hpBars,
+      hpPerBar: hpPerBar,
+      isBoss: true
+    })
+    boss.isRealmGuardian = true
+    boss.typeName = combat.guardianName || def.name
+    if (combat.tint) {
+      boss.tint = combat.tint
+      boss.glow = combat.tint
+    }
+    // 境主抵抗套件（按大境界档案：移动/攻击/抵挡/死亡）
+    const kit = getGuardianKit(realm.lv)
+    boss.resistSkills = !!kit.resistSkills
+    boss.isDemon = !!kit.isDemon
+    boss.isShadowSelf = !!kit.isShadowSelf
+    boss.blockCdMax = kit.blockCdMax
+    boss.blockDuration = kit.blockDuration
+    boss.dmgResist = kit.dmgResist
+    boss.atk = kit.atk
+    boss.atkRange = kit.atkRange
+    boss.mirrorSwords = !!kit.mirrorSwords
+    boss.mirrorBlink = !!kit.mirrorBlink
+    boss.mirrorUltPulse = !!kit.mirrorUltPulse
+    boss.crescentColor = kit.crescentColor
+    boss.crescentGlow = kit.crescentGlow
+    boss.gMove = kit.gMove
+    boss.gBlock = kit.gBlock
+    boss.gDraw = kit.gDraw
+    boss.emergeStyle = kit.gEmerge || boss.emergeStyle
+    boss.hurtStyle = kit.gHurt || boss.hurtStyle
+    boss.deathStyle = kit.gDeath || boss.deathStyle
+    boss.skillCd = kit.skillCd * (0.85 + Math.random() * 0.3)
+    // 元婴之后境主：与主角同人物立绘，按境界染色
+    if (isAfterYuanying(realm.lv)) {
+      boss.proceduralBody = true
+      boss.handOnly = true
+    }
+    if (kit.isShadowSelf) {
+      boss.alphaMul = 0.9
+      boss.tint = '#0a0a0a'
+      boss.glow = '#7f1d1d'
+    }
+    this._zombies.push(boss)
+    this._focusZombie = boss
+    this._bossActive = true
+    this._burst(pos.x, pos.y, kit.isShadowSelf ? '#7f1d1d' : (combat.tint || '#86efac'), 16)
+    this._emitMonsterFx(boss, 'emerge', 1)
+    wx.showToast({
+      title: (combat.guardianName || '境主') + '降临 · 击败可突破',
+      icon: 'none',
+      duration: 1800
+    })
+    console.log('仙途境主降临', {
+      realm: realm.name,
+      name: combat.guardianName,
+      ult: combat.ultName,
+      resist: kit.dmgResist,
+      blockCd: kit.blockCdMax,
+      shadow: !!kit.isShadowSelf,
+      hp: hp,
+      bars: hpBars
+    })
+  },
+
+  /** @deprecated 已并入 _spawnRealmGuardian / REALM_COMBAT[5] */
+  _spawnYuanyingGuardian() {
+    const combat = getRealmCombat(firstRealmLvOfMajor(YUANYING_MAJOR_KEY))
+    if (combat) this._spawnRealmGuardian(combat)
   },
 
   /** 组装怪物实例（普通 / Boss 共用） */
@@ -2048,6 +3521,7 @@ Page({
       typeKey: def.key,
       typeName: def.name,
       isBoss: !!opt.isBoss,
+      isRealmGuardian: !!opt.isRealmGuardian,
       x: opt.x,
       y: opt.y,
       r: opt.r,
@@ -2078,21 +3552,21 @@ Page({
       skillT: 0,
       skillFired: false,
       dashT: 0,
-      phaseCd: 0
+      phaseCd: 0,
+      isDemon: !!def.isDemon,
+      resistSkills: !!def.resistSkills
     }
   },
 
-  /** 击杀入账；尸丹累计；达门槛召唤劫尸，击败劫尸后才突破 */
+  /** 击杀入账；勇气由交锋时间积蓄；元婴境主击败后突破 */
   _registerKill(opt) {
     const isBoss = !!(opt && opt.boss)
+    const isGuardian = !!(opt && opt.realmGuardian)
     this._kills += 1
-
-    let triggerGeng = false
-    if (!(opt && opt.skipDan) && !this._gengFx) {
-      this._corpseDan = (this._corpseDan || 0) + 1
-      if (this._corpseDan >= CORPSE_DAN_NEED) {
-        triggerGeng = true
-      }
+    if (canSpaceBlink(this._realmLv)) {
+      const before = this._spaceForce || 0
+      this._spaceForce = Math.min(SPACE_FORCE_MAX, before + SPACE_FORCE_PER_KILL)
+      this.setData({ spaceForce: Math.floor(this._spaceForce), maxSpaceForce: SPACE_FORCE_MAX })
     }
 
     const cur = realmByLv(this._realmLv)
@@ -2102,25 +3576,169 @@ Page({
       realmLv: cur.lv,
       realmName: cur.name,
       realmTierName: cur.tierName,
-      corpseDan: this._corpseDan || 0,
-      corpseDanNeed: CORPSE_DAN_NEED
+      corpseDan: Math.floor(this._corpseDan || 0),
+      corpseDanNeed: WAR_INTENT_NEED
     })
+    this._persistProgress(false)
 
-    if (isBoss) {
-      this._onBossDefeated()
-    } else {
-      this._maybeStartBossChallenge()
+    if (isBoss || isGuardian) {
+      this._bossActive = false
+      const wasHeart = !!(opt && opt.heartDemon)
+      if (this._gengFx) {
+        this._bossDefeatedDeferred = true
+        this._bossDefeatedDeferredHeart = wasHeart
+      } else {
+        this._onBossDefeated({ skipHeartDemon: wasHeart })
+      }
+    } else if (!isGuardianCombatRealm(this._realmLv)) {
+      // 小境界：击杀积蓄，满则灵气旋涡入丹田升层
+      this._stageKills = (this._stageKills || 0) + 1
+      this._maybeMinorRealmUp()
     }
+  },
 
-    if (triggerGeng && !this._bossActive) {
+  /** 小境界升层：天地灵气漩涡灌入丹田 */
+  _maybeMinorRealmUp() {
+    if (this._qiVortexFx || this._spiritFx || this._breakFx || this._over || this._perfect) return
+    if (isGuardianCombatRealm(this._realmLv)) return
+    if ((this._realmLv || 1) >= REALMS.length) return
+    const cur = realmByLv(this._realmLv)
+    const nextLv = (this._realmLv || 1) + 1
+    const next = realmByLv(nextLv)
+    if (!next || next.majorKey !== cur.majorKey) return
+    if ((this._stageKills || 0) < MINOR_STAGE_KILLS) return
+    this._startQiVortexUp(nextLv)
+  },
+
+  _startQiVortexUp(nextLv) {
+    if (this._qiVortexFx || this._spiritFx || this._breakFx) return
+    const nr = realmByLv(nextLv)
+    this._stageKills = 0
+    this._breakMute = 2.4
+    this._zombies = []
+    this._swords = []
+    this._focusZombie = null
+    this._qiVortexFx = {
+      t: 0,
+      dur: 2.35,
+      nextLv: nextLv,
+      realm: nr
+    }
+    wx.showToast({ title: '灵气入丹 · ' + nr.name, icon: 'none', duration: 1600 })
+    console.log('仙途小境界升层', nr.name)
+  },
+
+  _updateQiVortex(dt) {
+    const fx = this._qiVortexFx
+    if (!fx) return
+    fx.t += dt
+    this._animT += dt
+    const px = this._playerX
+    const py = this._playerY + 10
+    // 天地灵气粒子卷入丹田
+    if (Math.random() < 0.85) {
+      const ang = Math.random() * Math.PI * 2
+      const dist = 70 + Math.random() * 110
+      this._particles.push({
+        x: px + Math.cos(ang) * dist,
+        y: py + Math.sin(ang) * dist * 0.55 - 30,
+        vx: (px - (px + Math.cos(ang) * dist)) * (1.2 + Math.random()),
+        vy: (py - (py + Math.sin(ang) * dist * 0.55 - 30)) * (1.2 + Math.random()),
+        life: 0.45 + Math.random() * 0.35,
+        color: Math.random() < 0.4 ? '#67e8f9' : (Math.random() < 0.5 ? '#a5f3fc' : '#e0f2fe'),
+        vortex: true
+      })
+    }
+    for (let i = this._particles.length - 1; i >= 0; i--) {
+      const p = this._particles[i]
+      p.life -= dt
+      if (p.vortex) {
+        const dx = px - p.x
+        const dy = py - p.y
+        const a = Math.atan2(dy, dx) + 1.15
+        p.vx = Math.cos(a) * 90 + dx * 2.2
+        p.vy = Math.sin(a) * 90 + dy * 2.2
+      }
+      p.x += p.vx * dt
+      p.y += p.vy * dt
+      if (p.life <= 0) this._particles.splice(i, 1)
+    }
+    if (fx.t >= fx.dur) this._finishQiVortex()
+  },
+
+  _finishQiVortex() {
+    const fx = this._qiVortexFx
+    if (!fx) return
+    const nr = fx.realm
+    const nextLv = fx.nextLv
+    this._qiVortexFx = null
+    this._realmLv = nextLv
+    this._stageKills = 0
+    this._burst(this._playerX, this._playerY + 8, '#67e8f9', 18)
+    this._burst(this._playerX, this._playerY + 8, '#22d3ee', 10)
+    this._syncRealmHud(nr)
+    this._syncPlayerHpCap(nr)
+    this._healPlayer(Math.floor(this._maxHp * 0.12))
+    this._breakMute = 0.6
+    this._persistProgress(true)
+    console.log('仙途灵气旋涡入丹田完成', nr.name)
+  },
+
+  /** 同步头顶 HUD 境界/提示 */
+  _syncRealmHud(realm) {
+    const r = realm || realmByLv(this._realmLv)
+    const combat = getRealmCombat(r.lv)
+    this.setData({
+      realmLv: r.lv,
+      realmName: r.name,
+      realmMajorName: r.majorName || r.name,
+      realmTierName: r.tierName,
+      realmTip: (combat && combat.tip) || r.tip || r.short || '',
+      spaceUnlocked: isYuanyingPlus(r.lv),
+      spaceForce: Math.floor(this._spaceForce || 0),
+      maxSpaceForce: SPACE_FORCE_MAX
+    })
+  },
+
+  /** 勇气：交锋积蓄，满则本境大招 / 大庚剑阵 */
+  _tickWarIntent(dt) {
+    if (this._isMortalCultivate() || this._over || this._perfect) return
+    if (this._gengFx || this._spiritFx || this._breakFx) return
+    if (this._breakMute > 0) return
+    // 境主战时仍可积蓄勇气（样板境 + 元婴）
+    if (this._bossActive && !isGuardianCombatRealm(this._realmLv)) return
+    let fighting = false
+    const list = this._zombies || []
+    for (let i = 0; i < list.length; i++) {
+      const z = list[i]
+      if (z.state !== 'dead' && (z.emerge == null || z.emerge > 0.45)) {
+        fighting = true
+        break
+      }
+    }
+    if (!fighting) return
+    const combat = getRealmCombat(this._realmLv)
+    const rate = combat && combat.warRate
+      ? combat.warRate
+      : (isYuanyingRealm(this._realmLv) ? WAR_INTENT_RATE_YUAN : WAR_INTENT_RATE)
+    const before = this._corpseDan || 0
+    this._corpseDan = Math.min(WAR_INTENT_NEED, before + rate * dt)
+    if (Math.floor(this._corpseDan) !== Math.floor(before) || (before < WAR_INTENT_NEED && this._corpseDan >= WAR_INTENT_NEED)) {
+      this.setData({
+        corpseDan: Math.floor(this._corpseDan),
+        corpseDanNeed: WAR_INTENT_NEED
+      })
+    }
+    if (this._corpseDan >= WAR_INTENT_NEED) {
       this._corpseDan = 0
       this.setData({ corpseDan: 0 })
       this._startGengFormation()
     }
   },
 
-  /** 经验满条：清小尸，召唤升级劫尸 */
+  /** 经验满条：清小尸，召唤升级劫尸（境主样板境跳过） */
   _maybeStartBossChallenge() {
+    if (isGuardianCombatRealm(this._realmLv)) return
     if (this._bossActive || this._perfect || this._over || this._breakFx || this._spiritFx) return
     if ((this._realmLv || 1) <= 1) return
     if ((this._realmLv || 1) >= REALMS.length) return
@@ -2145,6 +3763,7 @@ Page({
     this._zombies = []
     this._gooShots = []
     this._gooPools = []
+    this._demonCrescents = []
     this._focusZombie = null
     this._spawnAcc = 0
     this._bossActive = true
@@ -2180,13 +3799,13 @@ Page({
     console.log('仙途劫怪降临', { type: def.name, realm: realm.name, hp, bars: hpBars })
   },
 
-  /** 击败劫尸后：先播精神领域，再正式突破 */
-  _onBossDefeated() {
+  /** 击败劫尸/境主后：元婴后或随机心魔试炼；再播精神领域突破 */
+  _onBossDefeated(opt) {
     this._bossActive = false
     this._gooShots = []
     this._gooPools = []
-    const nextLv = Math.min(REALMS.length, (this._realmLv || 1) + 1)
-    const nr = realmByLv(nextLv)
+    this._demonCrescents = []
+    this._enemySwords = []
     const zombies = this._zombies || []
     for (let i = 0; i < zombies.length; i++) {
       this._burst(zombies[i].x, zombies[i].y, '#fde68a', 8)
@@ -2195,8 +3814,29 @@ Page({
     this._swords = []
     this._focusZombie = null
     this._spawnAcc = 0
+
+    // 已在道祖且心魔/境主已尽 → 大圆满
+    if ((this._realmLv || 1) >= REALMS.length) {
+      this._breakMute = 2
+      this._onRealmBreakthrough(realmByLv(REALMS.length))
+      this._persistProgress(true)
+      return
+    }
+
+    // 元婴之后：击杀境主后随机出现主角黑色心魔（可与主角飞剑互挡）
+    const skipHeart = !!(opt && opt.skipHeartDemon)
+    const curMajor = realmByLv(this._realmLv).majorIndex || 0
+    if (!skipHeart && curMajor > yuanyingMajorIndex()) {
+      const chance = Math.min(0.92, 0.62 + (curMajor - yuanyingMajorIndex()) * 0.05)
+      if (Math.random() < chance) {
+        this._spawnHeartDemonClone()
+        return
+      }
+    }
+
+    const nextLv = Math.min(REALMS.length, (this._realmLv || 1) + 1)
+    const nr = realmByLv(nextLv)
     this._breakMute = 12
-    // 若进图时 sj 未加载成功，开场再拉一次
     this._ensureSpiritImages()
     this._spiritFx = {
       t: 0,
@@ -2210,6 +3850,66 @@ Page({
       sj: !!this._spiritSjImg,
       sj02: !!this._spiritSj02Img
     })
+  },
+
+  /**
+   * 心魔·黑影：按主角体型生成全黑剪影（血红眼+尖牙），黑飞剑与主角互挡
+   */
+  _spawnHeartDemonClone() {
+    const realm = realmByLv(this._realmLv)
+    const kit = getHeartDemonKit(realm.lv)
+    const hpBars = kit.hpBars
+    const hpPerBar = kit.hpPerBar
+    const hp = hpBars * hpPerBar
+    const r = 26 * (realm.bodyScale || 1)
+    let pos = this._spawnPointOnGrass()
+    const pdx = pos.x - this._playerX
+    const pdy = pos.y - this._playerY
+    if (pdx * pdx + pdy * pdy < 100 * 100) {
+      pos = this._spawnPointOnGrass()
+    }
+    pos = this._clampToGrass(pos.x, pos.y)
+    const clone = this._makeMonster({
+      typeKey: 'shadow_self',
+      x: pos.x,
+      y: pos.y,
+      r: r,
+      hp: hp,
+      maxHp: hp,
+      hpBars: hpBars,
+      hpPerBar: hpPerBar,
+      isBoss: true
+    })
+    clone.isRealmGuardian = true
+    clone.isHeartDemon = true
+    clone.isShadowSelf = true
+    clone.isDemon = true
+    clone.typeName = '心魔·黑影'
+    clone.resistSkills = true
+    clone.blockCdMax = kit.blockCdMax
+    clone.blockDuration = kit.blockDuration
+    clone.dmgResist = kit.dmgResist
+    clone.atk = 'mirror_hero'
+    clone.atkRange = 300
+    clone.skillCd = 0.35
+    clone.swordAcc = 0
+    clone.swordEvery = kit.swordEvery
+    clone.swordCount = kit.swordCount
+    clone.mirrorBlink = !!kit.mirrorBlink
+    clone.crescentColor = '#7f1d1d'
+    clone.crescentGlow = '#fecaca'
+    clone.tint = '#0a0a0a'
+    clone.glow = '#7f1d1d'
+    clone.alphaMul = 1
+    clone.emerge = 0.35
+    this._zombies.push(clone)
+    this._focusZombie = clone
+    this._bossActive = true
+    this._breakMute = 0.6
+    this._burst(pos.x, pos.y, '#7f1d1d', 20)
+    this._burst(pos.x, pos.y, '#0a0a0a', 12)
+    wx.showToast({ title: '心魔现世 · 黑影持剑', icon: 'none', duration: 2000 })
+    console.log('仙途心魔黑影', { realm: realm.name, hp, swords: kit.swordCount })
   },
 
   /** 精神领域图缺失时补载（不阻塞演出） */
@@ -2296,391 +3996,28 @@ Page({
     const nextLv = fx.nextLv
     this._spiritFx = null
     this._realmLv = nextLv
-    this.setData({
-      realmLv: nr.lv,
-      realmName: nr.name,
-      realmTierName: nr.tierName
-    })
+    this._stageKills = 0
+    this._syncRealmHud(nr)
     this._burst(this._playerX, this._playerY - 30, '#fff7ed', 28)
     console.log('仙途劫尸击败，突破', nr.name)
     this._onRealmBreakthrough(nr)
     this._ensureHelper()
+    this._persistProgress(true)
   },
 
   /** 元婴起召唤灵狐帮手（跟随飘游 + 化作流光突袭） */
+  /** 灵狐已关闭 */
   _ensureHelper() {
-    if ((this._realmLv || 1) < HELPER_UNLOCK_LV) return
-    if (this._helper) return
-    const g = this._clampToGrass(this._playerX + HELPER_FOLLOW_OX, this._playerY + HELPER_FOLLOW_OY)
-    this._helper = {
-      x: g.x,
-      y: g.y,
-      state: 'follow',
-      frameT: 0,
-      skillCd: 0.8,
-      skillHit: false,
-      facing: 1,
-      bobT: 0,
-      dashFromX: 0,
-      dashFromY: 0,
-      dashToX: 0,
-      dashToY: 0,
-      trails: [],
-      ghosts: [],
-      impactT: 0,
-      impactX: 0,
-      impactY: 0
-    }
-    if (!this._helperAnnounced) {
-      this._helperAnnounced = true
-      wx.showToast({ title: '元婴灵狐相助', icon: 'none', duration: 1600 })
-      console.log('仙途帮手解锁：元婴灵狐')
-    }
+    this._helper = null
   },
 
   _updateHelper(dt, realm) {
-    this._ensureHelper()
-    const h = this._helper
-    if (!h || this._spiritFx || this._breakFx || this._perfect || this._perfectFx) return
-    h.frameT += dt
-    h.bobT = (h.bobT || 0) + dt
-    h.skillCd = (h.skillCd || 0) - dt
-    if ((h.impactT || 0) > 0) h.impactT -= dt
-
-    // 流光拖尾 / 残影衰减
-    if (h.trails && h.trails.length) {
-      for (let i = h.trails.length - 1; i >= 0; i--) {
-        const p = h.trails[i]
-        p.life -= dt
-        p.x += (p.vx || 0) * dt
-        p.y += (p.vy || 0) * dt
-        if (p.life <= 0) h.trails.splice(i, 1)
-      }
-    }
-    if (h.ghosts && h.ghosts.length) {
-      for (let i = h.ghosts.length - 1; i >= 0; i--) {
-        h.ghosts[i].life -= dt
-        if (h.ghosts[i].life <= 0) h.ghosts.splice(i, 1)
-      }
-    }
-
-    if (h.state === 'skill') {
-      const u = Math.min(1, h.frameT / HELPER_SKILL_DUR)
-      // 前段冲刺、中段命中滞空、后段折返
-      const mid = 0.42
-      const hold = 0.58
-      let px
-      let py
-      if (u <= mid) {
-        const t = u / mid
-        const e = 1 - Math.pow(1 - t, 3)
-        px = h.dashFromX + (h.dashToX - h.dashFromX) * e
-        py = h.dashFromY + (h.dashToY - h.dashFromY) * e
-      } else if (u <= hold) {
-        px = h.dashToX
-        py = h.dashToY - Math.sin(((u - mid) / (hold - mid)) * Math.PI) * 10
-      } else {
-        const t = (u - hold) / (1 - hold)
-        const e = t * t * (3 - 2 * t)
-        const backX = this._playerX + HELPER_FOLLOW_OX
-        const backY = this._playerY + HELPER_FOLLOW_OY
-        px = h.dashToX + (backX - h.dashToX) * e
-        py = h.dashToY + (backY - h.dashToY) * e
-      }
-      h.x = px
-      h.y = py
-      h.facing = (h.dashToX >= h.dashFromX) ? 1 : -1
-
-      // 流光粒子 + 偶尔残影
-      if (Math.random() < 0.95) {
-        if (!h.trails) h.trails = []
-        const ang = Math.atan2(h.dashToY - h.dashFromY, h.dashToX - h.dashFromX)
-        h.trails.push({
-          x: h.x + (Math.random() - 0.5) * 10,
-          y: h.y + (Math.random() - 0.5) * 8 - 4,
-          life: 0.28 + Math.random() * 0.22,
-          r: 2 + Math.random() * 4,
-          kind: Math.random() < 0.35 ? 'spark' : 'orb',
-          vx: -Math.cos(ang) * (20 + Math.random() * 40),
-          vy: -Math.sin(ang) * (20 + Math.random() * 40) - 10
-        })
-      }
-      if (u < 0.55 && Math.random() < 0.35) {
-        if (!h.ghosts) h.ghosts = []
-        h.ghosts.push({ x: h.x, y: h.y, facing: h.facing, life: 0.18, size: 58 })
-      }
-
-      // 冲刺中段命中路径上的僵尸
-      if (!h.skillHit && u >= 0.3) {
-        h.skillHit = true
-        h.impactT = 0.42
-        h.impactX = h.dashToX
-        h.impactY = h.dashToY
-        this._helperSkillHit(h, realm)
-      }
-      if (h.frameT >= HELPER_SKILL_DUR) {
-        h.state = 'follow'
-        h.frameT = 0
-        h.skillHit = false
-        h.skillCd = HELPER_SKILL_CD
-        h.trails = []
-        h.ghosts = []
-      }
-      return
-    }
-
-    // 跟随主角侧后方（弹性靠近 + 轻盈悬浮）
-    const tx = this._playerX + HELPER_FOLLOW_OX
-    const ty = this._playerY + HELPER_FOLLOW_OY
-    let dx = tx - h.x
-    let dy = ty - h.y
-    let dist = Math.sqrt(dx * dx + dy * dy) || 1
-    if (dist > 4) {
-      const spd = Math.min(220, 90 + dist * 2.4) * dt
-      h.x += (dx / dist) * spd
-      h.y += (dy / dist) * spd
-      const c = this._clampToGrass(h.x, h.y)
-      h.x = c.x
-      h.y = c.y
-      // 移动时洒落灵火碎屑
-      if (dist > 18 && Math.random() < 0.45) {
-        if (!h.trails) h.trails = []
-        h.trails.push({
-          x: h.x + (Math.random() - 0.5) * 12,
-          y: h.y + 6 + Math.random() * 4,
-          life: 0.2 + Math.random() * 0.15,
-          r: 1.5 + Math.random() * 2.2,
-          kind: 'dust',
-          vx: (Math.random() - 0.5) * 12,
-          vy: -8 - Math.random() * 16
-        })
-      }
-      if (dist > 55 && Math.random() < 0.2) {
-        if (!h.ghosts) h.ghosts = []
-        h.ghosts.push({ x: h.x, y: h.y, facing: h.facing, life: 0.14, size: 48 })
-      }
-    }
-    if (Math.abs(dx) > 2) h.facing = dx >= 0 ? 1 : -1
-
-    // 附近有尸则化作流光突袭
-    if ((h.skillCd || 0) > 0 || this._gengFx || this._bossActive) return
-    let best = null
-    let bestD = 185 * 185
-    const zs = this._zombies || []
-    for (let i = 0; i < zs.length; i++) {
-      const z = zs[i]
-      if (!z || z.state === 'dead' || (z.emerge || 0) < 0.85) continue
-      const zx = z.x - h.x
-      const zy = z.y - h.y
-      const d = zx * zx + zy * zy
-      if (d < bestD) {
-        bestD = d
-        best = z
-      }
-    }
-    if (!best) return
-    h.state = 'skill'
-    h.frameT = 0
-    h.skillHit = false
-    h.dashFromX = h.x
-    h.dashFromY = h.y
-    h.dashToX = best.x
-    h.dashToY = best.y - 4
-    h.facing = best.x >= h.x ? 1 : -1
-    h.trails = []
-    h.ghosts = []
+    this._helper = null
   },
 
-  /** 流光斩击：路径附近僵尸受伤，并绽放命中环 */
-  _helperSkillHit(h, realm) {
-    const r = 52 + Math.min(24, (realm.lv || 1) * 1.8)
-    const dmg = 8 + Math.floor((realm.lv || 1) * 2.2)
-    const zs = this._zombies || []
-    const x0 = h.dashFromX
-    const y0 = h.dashFromY
-    const x1 = h.dashToX
-    const y1 = h.dashToY
-    const segDx = x1 - x0
-    const segDy = y1 - y0
-    const segLen2 = segDx * segDx + segDy * segDy || 1
-    let hits = 0
-    for (let i = 0; i < zs.length; i++) {
-      const z = zs[i]
-      if (!z || z.state === 'dead') continue
-      const t = Math.max(0, Math.min(1, ((z.x - x0) * segDx + (z.y - y0) * segDy) / segLen2))
-      const cx = x0 + segDx * t
-      const cy = y0 + segDy * t
-      const dx = z.x - cx
-      const dy = z.y - cy
-      if (dx * dx + dy * dy <= r * r) {
-        this._hitZombie(z, dmg, h.x, h.y, realm, null, true)
-        hits++
-      }
-    }
-    this._burst(h.dashToX, h.dashToY - 6, '#fbbf24', 18 + hits * 2)
-    this._burst(h.dashToX, h.dashToY - 6, '#fdba74', 12)
-    this._burst(h.dashToX, h.dashToY - 8, '#fff7ed', 8)
-    // 命中点追加短寿灵火粒子
-    if (!h.trails) h.trails = []
-    for (let k = 0; k < 10; k++) {
-      const a = (Math.PI * 2 * k) / 10
-      h.trails.push({
-        x: h.dashToX + Math.cos(a) * 6,
-        y: h.dashToY + Math.sin(a) * 4 - 6,
-        life: 0.32 + Math.random() * 0.2,
-        r: 2 + Math.random() * 3,
-        kind: 'spark',
-        vx: Math.cos(a) * (40 + Math.random() * 50),
-        vy: Math.sin(a) * (30 + Math.random() * 40) - 20
-      })
-    }
-  },
+  _helperSkillHit(h, realm) {},
 
-  _drawHelper(ctx) {
-    const h = this._helper
-    if (!h || this._spiritFx || this._breakFx) return
-    const walk = this._helperWalkImgs || []
-    const skill = this._helperSkillImgs || []
-    const bob = Math.sin((h.bobT || 0) * 4.2) * (h.state === 'skill' ? 1.5 : 4)
-
-    // 残影
-    if (h.ghosts && h.ghosts.length) {
-      for (let i = 0; i < h.ghosts.length; i++) {
-        const g = h.ghosts[i]
-        const imgG = (walk[0] || skill[0])
-        if (!imgG) continue
-        ctx.save()
-        ctx.globalAlpha = Math.max(0, g.life * 2.2)
-        ctx.translate(g.x, g.y - 4 + bob * 0.2)
-        if (g.facing < 0) ctx.scale(-1, 1)
-        this._drawSprite(ctx, imgG, 0, 0, g.size || 48, 'rgba(251,191,36,0.25)', null)
-        ctx.restore()
-      }
-    }
-
-    // 流光拖尾
-    if (h.trails && h.trails.length) {
-      ctx.save()
-      for (let i = 0; i < h.trails.length; i++) {
-        const p = h.trails[i]
-        const a = Math.max(0, Math.min(1, p.life * 3.4))
-        ctx.globalAlpha = a
-        if (p.kind === 'spark') {
-          ctx.strokeStyle = '#fde68a'
-          ctx.lineWidth = 1.6
-          ctx.beginPath()
-          ctx.moveTo(p.x, p.y)
-          ctx.lineTo(p.x - (p.vx || 0) * 0.04, p.y - (p.vy || 0) * 0.04)
-          ctx.stroke()
-        } else if (p.kind === 'dust') {
-          ctx.fillStyle = 'rgba(253,230,138,0.85)'
-          ctx.beginPath()
-          ctx.arc(p.x, p.y, (p.r || 2) * 0.7, 0, Math.PI * 2)
-          ctx.fill()
-        } else {
-          ctx.fillStyle = i % 2 ? '#fde68a' : '#fb923c'
-          ctx.beginPath()
-          ctx.arc(p.x, p.y - 2, p.r || 3, 0, Math.PI * 2)
-          ctx.fill()
-        }
-      }
-      ctx.restore()
-    }
-
-    // 突袭：金色剑弧 + 流光带
-    if (h.state === 'skill') {
-      const u = Math.min(1, h.frameT / HELPER_SKILL_DUR)
-      ctx.save()
-      ctx.lineCap = 'round'
-      ctx.globalAlpha = 0.5
-      ctx.strokeStyle = '#f59e0b'
-      ctx.lineWidth = 7
-      ctx.beginPath()
-      ctx.moveTo(h.dashFromX, h.dashFromY - 4)
-      ctx.lineTo(h.x, h.y - 4)
-      ctx.stroke()
-      ctx.globalAlpha = 0.4
-      ctx.strokeStyle = '#fff7ed'
-      ctx.lineWidth = 2.5
-      ctx.beginPath()
-      ctx.moveTo(h.dashFromX, h.dashFromY - 4)
-      ctx.lineTo(h.x, h.y - 4)
-      ctx.stroke()
-                  // 前段月牙斩
-      if (u < 0.55) {
-        const ang = Math.atan2(h.dashToY - h.dashFromY, h.dashToX - h.dashFromX)
-        ctx.save()
-        ctx.translate(h.x, h.y - 6)
-        ctx.rotate(ang)
-        ctx.globalAlpha = 0.55 * (1 - u / 0.55)
-        ctx.strokeStyle = '#fde68a'
-        ctx.lineWidth = 3
-        ctx.beginPath()
-        ctx.arc(0, 0, 22 + u * 18, -1.1, 1.1)
-        ctx.stroke()
-        ctx.restore()
-      }
-      ctx.restore()
-    }
-
-    // 命中冲击环
-    if ((h.impactT || 0) > 0) {
-      const t = Math.max(0, h.impactT / 0.42)
-      const rr = 12 + (1 - t) * 48
-      ctx.save()
-      ctx.globalAlpha = t * 0.75
-      ctx.strokeStyle = '#fbbf24'
-      ctx.lineWidth = 2.5
-      ctx.beginPath()
-      ctx.arc(h.impactX, h.impactY - 6, rr, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.globalAlpha = t * 0.35
-      ctx.strokeStyle = '#fff7ed'
-      ctx.lineWidth = 1.5
-      ctx.beginPath()
-      ctx.arc(h.impactX, h.impactY - 6, rr * 0.62, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.restore()
-    }
-
-    let img = null
-    let size = 56
-    if (h.state === 'skill' && skill.length) {
-      const fi = Math.min(skill.length - 1, Math.floor((h.frameT / HELPER_SKILL_DUR) * skill.length))
-      img = skill[fi] || skill[0]
-      size = 70
-    } else if (walk.length) {
-      const fi = Math.floor((h.frameT || 0) * 7) % walk.length
-      img = walk[fi] || walk[0]
-    }
-    if (!img) return
-
-    // 跟随态脚下灵光
-    if (h.state === 'follow') {
-      ctx.save()
-      ctx.globalAlpha = 0.28 + Math.sin((h.bobT || 0) * 5) * 0.08
-      ctx.fillStyle = 'rgba(251,191,36,0.55)'
-      ctx.beginPath()
-      ctx.ellipse(h.x, h.y + 10, 16, 5, 0, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.restore()
-    }
-
-    ctx.save()
-    ctx.translate(h.x, h.y - 4 + bob)
-    if (h.facing < 0) ctx.scale(-1, 1)
-    if (h.state === 'skill') ctx.globalAlpha = 0.9
-    this._drawSprite(
-      ctx,
-      img,
-      0,
-      0,
-      size,
-      h.state === 'skill' ? 'rgba(251,191,36,0.4)' : 'rgba(253,186,116,0.22)',
-      null
-    )
-    ctx.restore()
-  },
+  _drawHelper(ctx) {},
 
   /** 各类怪物战斗 AI（含升级前随机 Boss） */
   _updateMonsterCombat(z, dt, realm, baseSpeed) {
@@ -2767,6 +4104,83 @@ Page({
         }
         return
       }
+      if (atk === 'crescent') {
+        if (z.skillT >= 0.22 && !z.skillFired) {
+          z.skillFired = true
+          this._emitMonsterFx(z, 'attack', 1)
+          this._fireDemonCrescent(z, realm, dmgBase)
+        }
+        if (z.skillT >= 0.7) {
+          z.state = 'walk'
+          z.skillCd = Math.max(1.05, (z.blockCdMax || 0.4) * 4.2)
+          z.skillFired = false
+          z.skillT = 0
+        }
+        return
+      }
+      if (atk === 'phase') {
+        // 虚空/时间：闪现贴近后撕裂斩
+        if (z.skillT >= 0.15 && !z.skillFired) {
+          z.skillFired = true
+          const ang = Math.atan2(dy, dx)
+          const g = this._clampToGrass(
+            this._playerX - Math.cos(ang) * 42,
+            this._playerY - Math.sin(ang) * 42
+          )
+          this._burst(z.x, z.y, z.tint || '#2dd4bf', 8)
+          z.x = g.x
+          z.y = g.y
+          this._burst(g.x, g.y, z.crescentGlow || '#99f6e4', 10)
+          this._emitMonsterFx(z, 'attack', 1)
+          this._hurtPlayer(dmgBase * 1.05, z.x, z.y)
+        }
+        if (z.skillT >= 0.65) {
+          z.state = 'walk'
+          z.skillCd = Math.max(1.2, 2.4 - (realm.majorIndex || 0) * 0.08)
+          z.skillFired = false
+          z.skillT = 0
+        }
+        return
+      }
+      if (atk === 'claw') {
+        if (z.skillT >= 0.2 && !z.skillFired) {
+          z.skillFired = true
+          this._emitMonsterFx(z, 'attack', 1)
+          if (dist <= range + 8) this._hurtPlayer(dmgBase * 1.1, z.x, z.y)
+        }
+        if (z.skillT >= 0.55) {
+          z.state = 'walk'
+          z.skillCd = 1.6
+          z.skillFired = false
+          z.skillT = 0
+        }
+        return
+      }
+      // 心魔黑影：镜像主角御剑
+      if (atk === 'mirror_hero') {
+        if (z.skillT >= 0.12 && !z.skillFired) {
+          z.skillFired = true
+          this._emitMonsterFx(z, 'attack', 1)
+          this._fireShadowSwords(z, realm)
+          if (z.mirrorBlink && Math.random() < 0.45) {
+            const ang = Math.atan2(this._playerY - z.y, this._playerX - z.x)
+            const nx = this._playerX - Math.cos(ang) * 48
+            const ny = this._playerY - Math.sin(ang) * 48
+            const g = this._clampToGrass(nx, ny)
+            this._spawnBlinkFx(z.x, z.y, g.x, g.y, realm)
+            z.x = g.x
+            z.y = g.y
+            this._burst(g.x, g.y, '#7f1d1d', 10)
+          }
+        }
+        if (z.skillT >= 0.55) {
+          z.state = 'walk'
+          z.skillCd = 0.2
+          z.skillFired = false
+          z.skillT = 0
+        }
+        return
+      }
       // dash / phase 收尾
       if (z.skillT >= 0.55) {
         z.state = 'walk'
@@ -2813,7 +4227,37 @@ Page({
 
     z.floatY = 0
     z.state = 'walk'
-    const moveMul = (z.speedMul || 1) * (z.isBoss ? 0.78 : 1)
+    const slow = (z.timeSlow || 0) > 0 ? 0.35 : 1
+    let moveMul = (z.speedMul || 1) * (z.isBoss ? 0.78 : 1) * slow
+    const gMove = z.gMove || ''
+    // 境主移动：按说明区分步态
+    if (z.isRealmGuardian && gMove) {
+      if (gMove === 'puppet') {
+        // 傀儡：顿挫迈步
+        moveMul *= (Math.floor((this._animT || 0) * 4) % 2 === 0) ? 1.15 : 0.35
+      } else if (gMove === 'float' || gMove === 'time' || gMove === 'void') {
+        z.floatY = 10 + Math.sin((this._animT || 0) * 3.2 + z.id) * 6
+        moveMul *= gMove === 'void' ? 0.92 : 0.85
+      } else if (gMove === 'heavy' || gMove === 'chaos') {
+        moveMul *= 0.62
+        if (Math.sin((this._animT || 0) * 2.2) > 0.7) moveMul *= 1.4
+      } else if (gMove === 'demon' || gMove === 'warp') {
+        moveMul *= 1.05
+        if (gMove === 'warp' && Math.random() < 0.012) {
+          const ang = Math.atan2(dy, dx) + (Math.random() - 0.5) * 1.2
+          const hop = 36 + Math.random() * 28
+          const g = this._clampToGrass(z.x + Math.cos(ang) * hop, z.y + Math.sin(ang) * hop)
+          this._burst(z.x, z.y, z.tint || '#a78bfa', 6)
+          z.x = g.x
+          z.y = g.y
+        }
+      } else if (gMove === 'storm') {
+        moveMul *= 1.12
+        z.floatY = 4 + Math.abs(Math.sin((this._animT || 0) * 8)) * 5
+      } else if (gMove === 'shamble') {
+        moveMul *= 0.9 + Math.sin((this._animT || 0) * 5) * 0.08
+      }
+    }
     const spd = (baseSpeed * moveMul + z.speedBonus) * dt
     z.x += (dx / dist) * spd
     z.y += (dy / dist) * spd
@@ -2843,6 +4287,42 @@ Page({
       z.skillFired = false
       z.frameT = 0
       z.atkFx = { style: 'slam', t: 0, dur: 0.95 }
+      return
+    }
+    if (atk === 'crescent' && (z.skillCd || 0) <= 0 && dist < range && dist > 36) {
+      z.state = 'skill'
+      z.skillT = 0
+      z.skillFired = false
+      z.frameT = 0
+      z.atkFx = { style: 'crescent', t: 0, dur: 0.75 }
+      return
+    }
+    if (atk === 'phase' && (z.skillCd || 0) <= 0 && dist < range + 40) {
+      z.state = 'skill'
+      z.skillT = 0
+      z.skillFired = false
+      z.frameT = 0
+      z.atkFx = { style: 'phase', t: 0, dur: 0.7 }
+      return
+    }
+    if (atk === 'claw' && (z.skillCd || 0) <= 0 && dist < range + 12) {
+      z.state = 'skill'
+      z.skillT = 0
+      z.skillFired = false
+      z.frameT = 0
+      z.atkFx = { style: 'claw', t: 0, dur: 0.6 }
+      return
+    }
+    if (atk === 'mirror_hero' && (z.skillCd || 0) <= 0) {
+      z.swordAcc = (z.swordAcc || 0) + dt
+      if (z.swordAcc >= (z.swordEvery || 0.45)) {
+        z.swordAcc = 0
+        z.state = 'skill'
+        z.skillT = 0
+        z.skillFired = false
+        z.frameT = 0
+        z.atkFx = { style: 'mirror', t: 0, dur: 0.6 }
+      }
       return
     }
     if (atk === 'dash' && (z.skillCd || 0) <= 0 && dist < 160 && dist > 40) {
@@ -2963,6 +4443,19 @@ Page({
             life: 0.5, color: '#cffafe'
           })
         }
+      } else if (style === 'rift') {
+        // 虚空裂隙死亡：黑缝撕开再收束
+        for (let i = 0; i < 18; i++) {
+          const a = (Math.PI * 2 * i) / 18
+          this._particles.push({
+            x: x, y: y,
+            vx: Math.cos(a) * (40 + Math.random() * 90),
+            vy: Math.sin(a) * (40 + Math.random() * 90),
+            life: 0.55 + Math.random() * 0.25,
+            color: i % 2 ? '#0f172a' : '#67e8f9'
+          })
+        }
+        this._burst(x, y, '#2dd4bf', 14)
       } else if (style === 'rubble') this._burst(x, y, '#a8a29e', 18)
       else if (style === 'splatter') this._burst(x, y, '#312e81', 16)
       else if (style === 'scatter') this._burst(x, y, '#4ade80', 16)
@@ -3085,16 +4578,303 @@ Page({
     })
   },
 
+  /** 魔族/境主主动月牙魔气弹（心魔用暗红） */
+  _fireDemonCrescent(z, realm, dmgBase) {
+    if (!this._demonCrescents) this._demonCrescents = []
+    const dx = this._playerX - z.x
+    const dy = this._playerY - (z.y - (z.floatY || 0))
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1
+    const speed = 145 + realm.lv * 4
+    const col = z.crescentColor || '#4c1d95'
+    this._demonCrescents.push({
+      id: (this._nextCrescentId = (this._nextCrescentId || 1) + 1),
+      mode: 'attack',
+      x: z.x + (dx / dist) * (z.r * 0.55),
+      y: z.y - (z.floatY || 0) - 6 + (dy / dist) * (z.r * 0.2),
+      vx: (dx / dist) * speed,
+      vy: (dy / dist) * speed,
+      ang: Math.atan2(dy, dx),
+      life: 2.4 + Math.min(1.2, (z.blockDuration || 0.7) * 0.5),
+      r: 16,
+      dmg: Math.max(5, Math.floor((dmgBase || 10) * 0.75)),
+      ownerId: z.id,
+      color: col,
+      glow: z.crescentGlow || '#a78bfa'
+    })
+    this._burst(z.x, z.y - 8, col, 8)
+  },
+
+  /** 心魔镜像飞剑：黑色剑气；可与主角飞剑对撞抵消 */
+  _fireShadowSwords(z, realm) {
+    if (!this._enemySwords) this._enemySwords = []
+    const n = Math.max(1, Math.min(8, z.swordCount || 3))
+    const dx = this._playerX - z.x
+    const dy = this._playerY - (z.y - 10)
+    const base = Math.atan2(dy, dx)
+    const spread = Math.min(1.1, 0.14 * n)
+    const orbitR = 18
+    for (let i = 0; i < n; i++) {
+      const a = (Math.PI * 2 * i) / n + (this._animT || 0)
+      const ang = n === 1 ? base : (base - spread / 2 + (i / Math.max(1, n - 1)) * spread)
+      this._enemySwords.push({
+        x: z.x + Math.cos(a) * orbitR * 0.3,
+        y: z.y - 12 + Math.sin(a) * orbitR * 0.2,
+        angle: ang,
+        speed: 255 + realm.lv * 14,
+        life: 3.2,
+        dmg: 5 + Math.floor(realm.lv * 0.95),
+        color: '#0a0a0a',
+        ownerId: z.id
+      })
+    }
+    this._burst(z.x, z.y - 8, '#1c1917', 6)
+    this._burst(z.x, z.y - 8, '#7f1d1d', 4)
+  },
+
+  _updateEnemySwords(dt) {
+    const list = this._enemySwords || []
+    const playerSwords = this._swords || []
+    for (let i = list.length - 1; i >= 0; i--) {
+      const s = list[i]
+      s.life -= dt
+      s.x += Math.cos(s.angle) * s.speed * dt
+      s.y += Math.sin(s.angle) * s.speed * dt
+
+      // 与主角飞剑互挡：对撞双方消失
+      let clashed = false
+      for (let pi = playerSwords.length - 1; pi >= 0; pi--) {
+        const ps = playerSwords[pi]
+        if (ps.mode === 'return' || ps.mode === 'stalemate') continue
+        const dx = ps.x - s.x
+        const dy = ps.y - s.y
+        if (dx * dx + dy * dy < 22 * 22) {
+          this._burst(s.x, s.y, '#f8fafc', 8)
+          this._burst(s.x, s.y, '#7f1d1d', 6)
+          ps.mode = 'return'
+          ps.life = Math.min(ps.life || 2, 1.2)
+          list.splice(i, 1)
+          clashed = true
+          break
+        }
+      }
+      if (clashed) continue
+
+      const pdx = s.x - this._playerX
+      const pdy = s.y - this._playerY
+      if (pdx * pdx + pdy * pdy < 20 * 20) {
+        this._hurtPlayer(s.dmg, s.x, s.y)
+        this._burst(s.x, s.y, '#7f1d1d', 8)
+        list.splice(i, 1)
+        continue
+      }
+      if (s.life <= 0 || s.x < -40 || s.y < -40 || s.x > this._w + 40 || s.y > this._h + 40) {
+        list.splice(i, 1)
+      }
+    }
+  },
+
+  _drawEnemySwords(ctx) {
+    const list = this._enemySwords || []
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i]
+      ctx.save()
+      ctx.translate(s.x, s.y)
+      ctx.rotate(s.angle)
+      // 黑剑 + 暗红刃光
+      this._paintInkSword(ctx, '#0a0a0a', 1)
+      ctx.globalAlpha = 0.55
+      ctx.strokeStyle = '#7f1d1d'
+      ctx.lineWidth = 1.2
+      ctx.beginPath()
+      ctx.moveTo(-6, 0)
+      ctx.lineTo(16, 0)
+      ctx.stroke()
+      ctx.restore()
+    }
+  },
+
   /**
-   * 大庚剑阵：尸丹满 50 触发，整段约 10 秒
-   * 身上汇聚 64 金黄雷剑 → 各自飞向屏幕中央围圆（尖朝内）→ 吸入缩小散开 → 雷丝穿尸尽斩
-   * 剑离身后，人物周围环剑/御剑暂时消失
+   * 魔族/境主抵挡飞剑：月牙魔气与剑在空中僵持后消散
+   * @returns {boolean} 是否成功抵挡
+   */
+  _tryDemonBlockSword(z, s) {
+    if (!z || !s || !z.resistSkills) return false
+    if (s.mode === 'stalemate' || s.mode === 'return') return false
+    // 冷却：同一剑短时不重复挡
+    if (s._blockCd && s._blockCd > (this._animT || 0)) return false
+    if ((z.blockCd || 0) > 0) return false
+    const blockDur = z.blockDuration || 0.72
+    z.blockCd = z.blockCdMax || 0.38
+    if (!this._demonCrescents) this._demonCrescents = []
+    // 月牙迎向剑尖，空中僵持（时长随境界增长）
+    const tipX = s.x + Math.cos(s.angle || 0) * 12
+    const tipY = s.y + Math.sin(s.angle || 0) * 12
+    const midX = tipX * 0.65 + z.x * 0.35
+    const midY = tipY * 0.65 + (z.y - (z.floatY || 0)) * 0.35
+    const ang = Math.atan2(tipY - (z.y - (z.floatY || 0)), tipX - z.x)
+    const col = z.crescentColor || '#7c3aed'
+    const glow = z.crescentGlow || '#a78bfa'
+    // 抵挡外形随境主档：骨盾/傀儡丝/金丹/月牙/虚空缝等
+    const block = z.gBlock || 'moon'
+    let r = 18 + Math.min(8, blockDur * 6)
+    let shape = 'crescent'
+    if (block === 'bone' || block === 'puppet') { r += 2; shape = 'arc' }
+    else if (block === 'jindan' || block === 'lei') { shape = 'ring' }
+    else if (block === 'void' || block === 'dao' || block === 'time') { shape = 'rift' }
+    else if (block === 'tri') { shape = 'triple' }
+    this._demonCrescents.push({
+      id: (this._nextCrescentId = (this._nextCrescentId || 1) + 1),
+      mode: 'block',
+      blockShape: shape,
+      x: midX,
+      y: midY,
+      vx: 0,
+      vy: 0,
+      ang: ang,
+      life: blockDur,
+      r: r,
+      dmg: 0,
+      ownerId: z.id,
+      swordRef: s,
+      color: col,
+      glow: glow
+    })
+    s.mode = 'stalemate'
+    s.stalemateT = blockDur
+    s.hitIds = s.hitIds || {}
+    s.hitIds[z.id] = 1
+    s._blockCd = (this._animT || 0) + blockDur + 0.05
+    this._burst(midX, midY, col, 8)
+    this._burst(midX, midY, glow, 5)
+    return true
+  },
+
+  _updateDemonCrescents(dt, realm) {
+    const list = this._demonCrescents || []
+    // 魔族挡招冷却
+    for (let zi = 0; zi < (this._zombies || []).length; zi++) {
+      const z = this._zombies[zi]
+      if ((z.blockCd || 0) > 0) z.blockCd = Math.max(0, z.blockCd - dt)
+    }
+    for (let i = list.length - 1; i >= 0; i--) {
+      const c = list[i]
+      c.life -= dt
+      if (c.mode === 'attack') {
+        c.x += c.vx * dt
+        c.y += c.vy * dt
+        // 飞剑可挡月牙
+        let blocked = false
+        const swords = this._swords || []
+        for (let si = 0; si < swords.length; si++) {
+          const s = swords[si]
+          if (s.mode === 'stalemate' || s.mode === 'return') continue
+          const dx = s.x - c.x
+          const dy = s.y - c.y
+          if (dx * dx + dy * dy < (c.r + 12) * (c.r + 12)) {
+            blocked = true
+            this._burst(c.x, c.y, '#a78bfa', 8)
+            s.hitIds = s.hitIds || {}
+            break
+          }
+        }
+        if (blocked) {
+          list.splice(i, 1)
+          continue
+        }
+        const pdx = c.x - this._playerX
+        const pdy = c.y - this._playerY
+        if (pdx * pdx + pdy * pdy < (18 + c.r) * (18 + c.r)) {
+          this._hurtPlayer(c.dmg, c.x, c.y)
+          this._burst(c.x, c.y, '#581c87', 10)
+          list.splice(i, 1)
+          continue
+        }
+      } else if (c.mode === 'block') {
+        // 与剑一起微颤
+        c.x += Math.sin((this._animT || 0) * 40) * 0.45
+        c.y += Math.cos((this._animT || 0) * 36) * 0.35
+        if (c.swordRef) {
+          c.swordRef.x = c.x + Math.cos(c.ang) * 10
+          c.swordRef.y = c.y + Math.sin(c.ang) * 10
+        }
+      }
+      if (c.life <= 0) list.splice(i, 1)
+    }
+  },
+
+  /**
+   * 大招：勇气满触发
+   * 元婴专属大庚剑阵（经典圆阵剑尖朝内）；其余境界用本境招式
    */
   _startGengFormation() {
-    if (this._perfect || this._over || this._bossActive) return
-    const n = 14 + Math.min(10, Math.floor((this._realmLv || 1) / 2))
-    for (let i = 0; i < n; i++) this._spawnZombie()
+    if (this._perfect || this._over) return
+    if (this._bossActive && !isGuardianCombatRealm(this._realmLv)) return
+    let alive = 0
+    for (let i = 0; i < (this._zombies || []).length; i++) {
+      if (this._zombies[i].state !== 'dead') alive++
+    }
+    if (!alive) this._spawnZombie()
 
+    const combat = getRealmCombat(this._realmLv)
+    this._swords = []
+    this._focusZombie = null
+    this._demonCrescents = []
+    this._enemySwords = []
+    this.setData({ corpseDan: 0 })
+
+    const ult = combat && combat.ultimate
+    const name = (combat && combat.ultName) || '大招'
+    if (ult === 'blink_jian') {
+      wx.showToast({ title: name, icon: 'none', duration: 1400 })
+      this._startBlinkJianUlt()
+      return
+    }
+    if (ult === 'wuxing_array') {
+      wx.showToast({ title: name, icon: 'none', duration: 1400 })
+      this._startWuxingArrayUlt()
+      return
+    }
+    if (ult === 'jianying') {
+      wx.showToast({ title: name, icon: 'none', duration: 1400 })
+      this._startJianyingUlt()
+      return
+    }
+    if (ult === 'yuanci') {
+      wx.showToast({ title: name, icon: 'none', duration: 1400 })
+      this._startYuanciUlt()
+      return
+    }
+    if (ult === 'xuantian') {
+      wx.showToast({ title: name, icon: 'none', duration: 1400 })
+      this._startXuantianUlt(name)
+      return
+    }
+    if (ult === 'avatar' || ult === 'niepan') {
+      wx.showToast({ title: name, icon: 'none', duration: 1400 })
+      this._startAvatarUlt(ult === 'niepan' ? 'niepan' : 'avatar', name)
+      return
+    }
+    if (ult === 'time_law' || ult === 'shennian') {
+      wx.showToast({ title: name, icon: 'none', duration: 1400 })
+      this._startTimeLawUlt(ult, name)
+      return
+    }
+    if (ult === 'dao_crush') {
+      wx.showToast({ title: name, icon: 'none', duration: 1400 })
+      this._startDaoCrushUlt()
+      return
+    }
+    // 仅元婴：经典大庚剑阵（圆阵、剑尖朝内）
+    if (ult === 'geng_classic' || isYuanyingRealm(this._realmLv)) {
+      wx.showToast({ title: '大庚剑阵', icon: 'none', duration: 1500 })
+      this._startClassicGengFormation()
+      return
+    }
+    // 未配置境界：不放旧版大庚
+    console.warn('仙途无本境大招配置', this._realmLv)
+  },
+
+  _startClassicGengFormation() {
     const w = this._w
     const h = this._h
     const cx = w * 0.5
@@ -3106,12 +4886,10 @@ Page({
     const swords = []
     for (let i = 0; i < GENG_SWORD_COUNT; i++) {
       const a = (Math.PI * 2 * i) / GENG_SWORD_COUNT
-      // 起点：环绕人物（与平时环剑同向，尖朝外）
       const sx = px + Math.cos(a) * orbitR
       const sy = py + Math.sin(a) * orbitR
       swords.push({
         a: a,
-        // 终点：阵心圆圈上，剑尖朝内
         tx: cx + Math.cos(a) * radius,
         ty: cy + Math.sin(a) * radius,
         tipIn: a + Math.PI,
@@ -3120,7 +4898,6 @@ Page({
         y: py,
         tipAngle: a,
         scale: 0,
-        // 错开汇聚，像从身上陆续抽出
         delay: (i / GENG_SWORD_COUNT) * 0.55
       })
     }
@@ -3129,6 +4906,7 @@ Page({
       links.push({ a: i, b: (i + 31) % GENG_SWORD_COUNT })
     }
     this._gengFx = {
+      style: 'classic',
       t: 0,
       phase: 'gather',
       cx: cx,
@@ -3146,11 +4924,1298 @@ Page({
       orbitR: orbitR
     }
     this._breakMute = 10.5
-    // 身上飞剑全部离体参阵，清空场上追击飞剑
-    this._swords = []
-    this._focusZombie = null
-    this.setData({ corpseDan: 0 })
-    wx.showToast({ title: '大庚剑阵', icon: 'none', duration: 1500 })
+  },
+
+  /** 对境主按最大生命比例造成伤害（样板大招共用） */
+  _dealGuardianRatioHit(target, ratio, fromX, fromY, realm, enchant) {
+    if (!target || target.state === 'dead') return
+    const dmg = Math.max(6, Math.floor((target.maxHp || 100) * ratio))
+    this._hitZombie(target, dmg, fromX, fromY, realm, enchant || null, true)
+  },
+
+  /** 炼气大招：眨眼剑法 — 残影突刺连斩 */
+  _startBlinkJianUlt() {
+    let target = null
+    for (let i = 0; i < (this._zombies || []).length; i++) {
+      if (this._zombies[i].state !== 'dead') {
+        target = this._zombies[i]
+        break
+      }
+    }
+    const tx = target ? target.x : this._w * 0.5
+    const ty = target ? target.y : this._h * 0.5
+    this._gengFx = {
+      style: 'blink_jian',
+      t: 0,
+      phase: 'wind',
+      windDur: 0.28,
+      dashDur: 0.35,
+      slashDur: 1.15,
+      endDur: 0.35,
+      targetId: target ? target.id : null,
+      targetX: tx,
+      targetY: ty,
+      fromX: this._playerX,
+      fromY: this._playerY,
+      ghosts: [],
+      slashHits: 0,
+      title: '眨眼剑法'
+    }
+    this._breakMute = 2.4
+    this._playerHideT = Math.max(this._playerHideT || 0, 0.9)
+  },
+
+  _updateBlinkJianUlt(dt, realm) {
+    const fx = this._gengFx
+    if (!fx) return
+    fx.t += dt
+    const target = this._findGengTarget(fx)
+    if (target) {
+      fx.targetX = target.x
+      fx.targetY = target.y
+    }
+    const tx = fx.targetX
+    const ty = fx.targetY
+
+    if (fx.phase === 'wind') {
+      // 蓄势：脚下尘土
+      if (Math.random() < 0.5) {
+        this._particles.push({
+          x: this._playerX + (Math.random() - 0.5) * 20,
+          y: this._playerY + 10,
+          vx: (Math.random() - 0.5) * 40,
+          vy: -20 - Math.random() * 30,
+          life: 0.25,
+          color: '#86efac'
+        })
+      }
+      if (fx.t >= fx.windDur) {
+        fx.phase = 'dash'
+        fx.t = 0
+        fx.fromX = this._playerX
+        fx.fromY = this._playerY
+      }
+      return
+    }
+
+    if (fx.phase === 'dash') {
+      const u = Math.min(1, fx.t / fx.dashDur)
+      const e = 1 - Math.pow(1 - u, 3)
+      // 闪到目标侧后方
+      const ang = Math.atan2(ty - fx.fromY, tx - fx.fromX)
+      const destX = tx - Math.cos(ang) * 28
+      const destY = ty - Math.sin(ang) * 28
+      this._playerX = fx.fromX + (destX - fx.fromX) * e
+      this._playerY = fx.fromY + (destY - fx.fromY) * e
+      const g = this._clampToGrass(this._playerX, this._playerY)
+      this._playerX = g.x
+      this._playerY = g.y
+      if ((fx.ghosts || []).length < 10 || Math.random() < 0.35) {
+        fx.ghosts.push({
+          x: this._playerX,
+          y: this._playerY,
+          life: 0.45,
+          a: ang
+        })
+      }
+      if (fx.ghosts.length > 14) fx.ghosts.splice(0, fx.ghosts.length - 14)
+      if (fx.t >= fx.dashDur) {
+        fx.phase = 'slash'
+        fx.t = 0
+        fx.slashHits = 0
+        fx.nextSlash = 0
+      }
+      return
+    }
+
+    if (fx.phase === 'slash') {
+      for (let i = (fx.ghosts || []).length - 1; i >= 0; i--) {
+        fx.ghosts[i].life -= dt
+        if (fx.ghosts[i].life <= 0) fx.ghosts.splice(i, 1)
+      }
+      fx.nextSlash = (fx.nextSlash || 0) - dt
+      if (fx.nextSlash <= 0 && fx.slashHits < 5 && target && target.state !== 'dead') {
+        fx.nextSlash = 0.18
+        fx.slashHits += 1
+        const a = Math.atan2(ty - this._playerY, tx - this._playerX) + (fx.slashHits % 2 ? 0.4 : -0.4)
+        fx.ghosts.push({ x: this._playerX, y: this._playerY - 8, life: 0.35, a: a, slash: true })
+        this._dealGuardianRatioHit(target, 0.075, this._playerX, this._playerY, realm, null)
+        this._burst(tx, ty, '#bbf7d0', 8)
+        // 偶发火弹点缀
+        if (fx.slashHits === 3) {
+          this._burst(tx, ty, '#fb923c', 10)
+          if (target.state !== 'dead') {
+            target.fireT = Math.max(target.fireT || 0, 2.2)
+            target.fireTick = 0
+          }
+        }
+      }
+      if (fx.t >= fx.slashDur) {
+        fx.phase = 'end'
+        fx.t = 0
+      }
+      return
+    }
+
+    if (fx.phase === 'end') {
+      if (fx.t >= fx.endDur) this._finishGengFx()
+    }
+  },
+
+  /** 筑基大招：颠倒五行阵困敌 + 青元剑芒贯体 */
+  _startWuxingArrayUlt() {
+    let target = null
+    for (let i = 0; i < (this._zombies || []).length; i++) {
+      if (this._zombies[i].state !== 'dead') {
+        target = this._zombies[i]
+        break
+      }
+    }
+    const tx = target ? target.x : this._w * 0.5
+    const ty = target ? target.y : this._h * 0.5
+    const petals = []
+    const colors = ['#22c55e', '#38bdf8', '#fbbf24', '#f87171', '#a78bfa']
+    for (let i = 0; i < 5; i++) {
+      petals.push({
+        a: (Math.PI * 2 * i) / 5 - Math.PI / 2,
+        color: colors[i],
+        beamU: 0
+      })
+    }
+    if (target) {
+      target.bindT = 3.2
+      target.iceT = Math.max(target.iceT || 0, 2.5)
+      target.state = 'hurt'
+      target.frameT = 0
+    }
+    this._qingyuanShield = Math.max(this._qingyuanShield || 0, 4.5)
+    this._gengFx = {
+      style: 'wuxing_array',
+      t: 0,
+      phase: 'form',
+      formDur: 0.7,
+      trapDur: 1.1,
+      pierceDur: 1.4,
+      endDur: 0.4,
+      targetId: target ? target.id : null,
+      targetX: tx,
+      targetY: ty,
+      petals: petals,
+      radius: 54,
+      pierceHits: 0,
+      title: '颠倒五行阵'
+    }
+    this._breakMute = 3.8
+  },
+
+  _updateWuxingArrayUlt(dt, realm) {
+    const fx = this._gengFx
+    if (!fx) return
+    fx.t += dt
+    const target = this._findGengTarget(fx)
+    if (target) {
+      fx.targetX = target.x
+      fx.targetY = target.y
+      // 阵中禁锢
+      if (fx.phase === 'trap' || fx.phase === 'pierce') {
+        target.bindT = Math.max(target.bindT || 0, 0.4)
+        target.iceT = Math.max(target.iceT || 0, 0.4)
+      }
+    }
+    const tx = fx.targetX
+    const ty = fx.targetY
+
+    if (fx.phase === 'form') {
+      if (fx.t >= fx.formDur) {
+        fx.phase = 'trap'
+        fx.t = 0
+      }
+      return
+    }
+    if (fx.phase === 'trap') {
+      if (Math.random() < 0.35) {
+        const a = Math.random() * Math.PI * 2
+        this._particles.push({
+          x: tx + Math.cos(a) * fx.radius,
+          y: ty + Math.sin(a) * fx.radius * 0.7,
+          vx: Math.cos(a + Math.PI) * 30,
+          vy: Math.sin(a + Math.PI) * 30,
+          life: 0.3,
+          color: fx.petals[Math.floor(Math.random() * 5)].color
+        })
+      }
+      if (fx.t >= fx.trapDur) {
+        fx.phase = 'pierce'
+        fx.t = 0
+        fx.pierceHits = 0
+        fx.nextPierce = 0
+      }
+      return
+    }
+    if (fx.phase === 'pierce') {
+      fx.nextPierce = (fx.nextPierce || 0) - dt
+      if (fx.nextPierce <= 0 && fx.pierceHits < 5) {
+        fx.nextPierce = 0.22
+        const idx = fx.pierceHits
+        fx.pierceHits += 1
+        if (fx.petals[idx]) fx.petals[idx].beamU = 1
+        if (target && target.state !== 'dead') {
+          this._dealGuardianRatioHit(target, 0.08, tx, ty, realm, null)
+          this._burst(tx, ty, fx.petals[idx].color, 7)
+        }
+      }
+      for (let i = 0; i < fx.petals.length; i++) {
+        if (fx.petals[i].beamU > 0) fx.petals[i].beamU = Math.max(0, fx.petals[i].beamU - dt * 1.8)
+      }
+      if (fx.t >= fx.pierceDur) {
+        fx.phase = 'end'
+        fx.t = 0
+      }
+      return
+    }
+    if (fx.phase === 'end') {
+      if (fx.t >= fx.endDur) this._finishGengFx()
+    }
+  },
+
+  /** 结丹大招：剑影分光 + 噬金虫收尾 */
+  _startJianyingUlt() {
+    let target = null
+    for (let i = 0; i < (this._zombies || []).length; i++) {
+      if (this._zombies[i].state !== 'dead') {
+        target = this._zombies[i]
+        break
+      }
+    }
+    const tx = target ? target.x : this._w * 0.5
+    const ty = target ? target.y : this._h * 0.5
+    const shadows = []
+    for (let i = 0; i < 8; i++) {
+      const a = (Math.PI * 2 * i) / 8
+      shadows.push({
+        a: a,
+        x: this._playerX,
+        y: this._playerY,
+        ox: Math.cos(a) * 42,
+        oy: Math.sin(a) * 28,
+        hit: false
+      })
+    }
+    this._gengFx = {
+      style: 'jianying',
+      t: 0,
+      phase: 'split',
+      splitDur: 0.55,
+      swarmDur: 1.5,
+      convergeDur: 0.7,
+      endDur: 0.35,
+      targetId: target ? target.id : null,
+      targetX: tx,
+      targetY: ty,
+      shadows: shadows,
+      insects: [],
+      title: '剑影分光'
+    }
+    this._breakMute = 3.4
+  },
+
+  _updateJianyingUlt(dt, realm) {
+    const fx = this._gengFx
+    if (!fx) return
+    fx.t += dt
+    const target = this._findGengTarget(fx)
+    if (target) {
+      fx.targetX = target.x
+      fx.targetY = target.y
+    }
+    const tx = fx.targetX
+    const ty = fx.targetY
+    const px = this._playerX
+    const py = this._playerY
+
+    if (fx.phase === 'split') {
+      const u = Math.min(1, fx.t / fx.splitDur)
+      const e = 1 - Math.pow(1 - u, 2)
+      for (let i = 0; i < fx.shadows.length; i++) {
+        const s = fx.shadows[i]
+        s.x = px + s.ox * e
+        s.y = py - 10 + s.oy * e
+      }
+      if (fx.t >= fx.splitDur) {
+        fx.phase = 'swarm'
+        fx.t = 0
+      }
+      return
+    }
+
+    if (fx.phase === 'swarm') {
+      const u = Math.min(1, fx.t / fx.swarmDur)
+      for (let i = 0; i < fx.shadows.length; i++) {
+        const s = fx.shadows[i]
+        const spin = s.a + u * Math.PI * 2.2
+        const rr = 42 - u * 18
+        s.x = tx + Math.cos(spin) * rr
+        s.y = ty + Math.sin(spin) * rr * 0.65
+        if (!s.hit && u > 0.2 + i * 0.08) {
+          s.hit = true
+          if (target && target.state !== 'dead') {
+            this._dealGuardianRatioHit(target, 0.04, s.x, s.y, realm, null)
+            this._burst(s.x, s.y, '#fde68a', 5)
+          }
+        }
+      }
+      // 噬金虫粒子
+      if (Math.random() < 0.55) {
+        fx.insects.push({
+          x: tx + (Math.random() - 0.5) * 50,
+          y: ty + (Math.random() - 0.5) * 40,
+          vx: (Math.random() - 0.5) * 60,
+          vy: (Math.random() - 0.5) * 60,
+          life: 0.4
+        })
+      }
+      for (let i = fx.insects.length - 1; i >= 0; i--) {
+        const bug = fx.insects[i]
+        bug.life -= dt
+        bug.x += bug.vx * dt
+        bug.y += bug.vy * dt
+        if (bug.life <= 0) fx.insects.splice(i, 1)
+      }
+      if (fx.t >= fx.swarmDur) {
+        fx.phase = 'converge'
+        fx.t = 0
+        if (target && target.state !== 'dead') {
+          this._dealGuardianRatioHit(target, 0.12, tx, ty, realm, 'fire')
+          this._burst(tx, ty, '#f59e0b', 16)
+        }
+      }
+      return
+    }
+
+    if (fx.phase === 'converge') {
+      const u = Math.min(1, fx.t / fx.convergeDur)
+      for (let i = 0; i < fx.shadows.length; i++) {
+        const s = fx.shadows[i]
+        s.x = s.x + (px - s.x) * u * 0.2
+        s.y = s.y + (py - s.y) * u * 0.2
+      }
+      if (fx.t >= fx.convergeDur) {
+        fx.phase = 'end'
+        fx.t = 0
+      }
+      return
+    }
+
+    if (fx.phase === 'end') {
+      if (fx.t >= fx.endDur) this._finishGengFx()
+    }
+  },
+
+  /** 化神：元磁神光 — 吸扯 + 五行磁光贯体 */
+  _startYuanciUlt() {
+    let target = this._pickUltTarget()
+    const tx = target ? target.x : this._w * 0.5
+    const ty = target ? target.y : this._h * 0.5
+    if (target) {
+      target.bindT = 2.8
+      target.windT = Math.max(target.windT || 0, 2.5)
+      target.windCx = tx
+      target.windCy = ty
+      target.windA = 0
+      target.windR = 36
+    }
+    this._gengFx = {
+      style: 'yuanci',
+      t: 0,
+      phase: 'pull',
+      pullDur: 0.7,
+      blastDur: 1.3,
+      endDur: 0.35,
+      targetId: target ? target.id : null,
+      targetX: tx,
+      targetY: ty,
+      hits: 0,
+      title: '元磁神光',
+      color: '#22d3ee'
+    }
+    this._breakMute = 2.6
+  },
+
+  _updateYuanciUlt(dt, realm) {
+    const fx = this._gengFx
+    if (!fx) return
+    fx.t += dt
+    const target = this._findGengTarget(fx)
+    if (target) {
+      fx.targetX = target.x
+      fx.targetY = target.y
+    }
+    const tx = fx.targetX
+    const ty = fx.targetY
+    if (fx.phase === 'pull') {
+      if (target && target.state !== 'dead') {
+        const dx = this._playerX - target.x
+        const dy = this._playerY - target.y
+        target.x += dx * dt * 1.4
+        target.y += dy * dt * 1.4
+      }
+      if (fx.t >= fx.pullDur) {
+        fx.phase = 'blast'
+        fx.t = 0
+        fx.hits = 0
+        fx.nextHit = 0
+      }
+      return
+    }
+    if (fx.phase === 'blast') {
+      fx.nextHit = (fx.nextHit || 0) - dt
+      if (fx.nextHit <= 0 && fx.hits < 5 && target && target.state !== 'dead') {
+        fx.nextHit = 0.2
+        fx.hits += 1
+        this._dealGuardianRatioHit(target, 0.075, this._playerX, this._playerY, realm, null)
+        this._burst(tx, ty, '#67e8f9', 8)
+      }
+      if (fx.t >= fx.blastDur) {
+        fx.phase = 'end'
+        fx.t = 0
+      }
+      return
+    }
+    if (fx.phase === 'end' && fx.t >= fx.endDur) this._finishGengFx()
+  },
+
+  /** 炼虚/大罗：玄天斩灵剑 / 时间本源斩 — 毁灭之丝横斩 */
+  _startXuantianUlt(title) {
+    let target = this._pickUltTarget()
+    const tx = target ? target.x : this._w * 0.5
+    const ty = target ? target.y : this._h * 0.5
+    const fx0 = this._playerX
+    const fy0 = this._playerY - 10
+    const ang = Math.atan2(ty - fy0, tx - fx0)
+    this._gengFx = {
+      style: 'xuantian',
+      t: 0,
+      phase: 'charge',
+      chargeDur: 0.55,
+      slashDur: 0.95,
+      afterDur: 0.75,
+      endDur: 0.35,
+      targetId: target ? target.id : null,
+      targetX: tx,
+      targetY: ty,
+      fromX: fx0,
+      fromY: fy0,
+      hitBits: 0,
+      title: title || '玄天斩灵剑',
+      threads: [],
+      // 三斩：主斩 + 两道斜斩弧，错开时间
+      arcs: [
+        { delay: 0.02, span: 1.15, width: 5, offset: 0, ratio: 0.16 },
+        { delay: 0.22, span: 0.95, width: 3.5, offset: -0.42, ratio: 0.12 },
+        { delay: 0.42, span: 1.05, width: 3.2, offset: 0.48, ratio: 0.12 }
+      ],
+      baseAng: ang,
+      sparks: []
+    }
+    this._breakMute = 2.6
+  },
+
+  _updateXuantianUlt(dt, realm) {
+    const fx = this._gengFx
+    if (!fx) return
+    fx.t += dt
+    const target = this._findGengTarget(fx)
+    if (target) {
+      fx.targetX = target.x
+      fx.targetY = target.y
+      fx.baseAng = Math.atan2(fx.targetY - fx.fromY, fx.targetX - fx.fromX)
+    }
+    if (fx.phase === 'charge') {
+      if (Math.random() < 0.7) {
+        const a = (this._animT || 0) * 6 + Math.random() * 6
+        fx.threads.push({
+          x: this._playerX + Math.cos(a) * (18 + Math.random() * 22),
+          y: this._playerY - 22 + Math.sin(a) * (10 + Math.random() * 14),
+          life: 0.4,
+          r: 4 + Math.random() * 8
+        })
+      }
+      for (let i = fx.threads.length - 1; i >= 0; i--) {
+        fx.threads[i].life -= dt
+        if (fx.threads[i].life <= 0) fx.threads.splice(i, 1)
+      }
+      if (fx.t >= fx.chargeDur) {
+        fx.phase = 'slash'
+        fx.t = 0
+        fx.hitBits = 0
+      }
+      return
+    }
+    if (fx.phase === 'slash') {
+      const arcs = fx.arcs || []
+      for (let i = 0; i < arcs.length; i++) {
+        const arc = arcs[i]
+        if (fx.t >= arc.delay && !(fx.hitBits & (1 << i)) && target && target.state !== 'dead') {
+          fx.hitBits |= (1 << i)
+          this._dealGuardianRatioHit(target, arc.ratio || 0.12, fx.fromX, fx.fromY, realm, i === 0 ? 'wind' : null)
+          this._burst(fx.targetX, fx.targetY, i === 0 ? '#f8fafc' : '#94a3b8', i === 0 ? 16 : 10)
+          for (let k = 0; k < 6; k++) {
+            const sa = fx.baseAng + (Math.random() - 0.5) * 1.2
+            fx.sparks.push({
+              x: fx.targetX,
+              y: fx.targetY,
+              vx: Math.cos(sa) * (80 + Math.random() * 120),
+              vy: Math.sin(sa) * (80 + Math.random() * 120),
+              life: 0.35 + Math.random() * 0.25
+            })
+          }
+        }
+      }
+      for (let i = (fx.sparks || []).length - 1; i >= 0; i--) {
+        const sp = fx.sparks[i]
+        sp.life -= dt
+        sp.x += sp.vx * dt
+        sp.y += sp.vy * dt
+        if (sp.life <= 0) fx.sparks.splice(i, 1)
+      }
+      if (fx.t >= fx.slashDur) {
+        fx.phase = 'after'
+        fx.t = 0
+      }
+      return
+    }
+    if (fx.phase === 'after') {
+      for (let i = (fx.sparks || []).length - 1; i >= 0; i--) {
+        const sp = fx.sparks[i]
+        sp.life -= dt
+        sp.x += sp.vx * dt * 0.4
+        sp.y += sp.vy * dt * 0.4
+        if (sp.life <= 0) fx.sparks.splice(i, 1)
+      }
+      if (fx.t >= fx.afterDur) {
+        fx.phase = 'end'
+        fx.t = 0
+      }
+      return
+    }
+    if (fx.phase === 'end' && fx.t >= fx.endDur) this._finishGengFx()
+  },
+
+  /** 合体惊蛰 / 大乘涅槃：真灵变身近战爆发 */
+  _startAvatarUlt(kind, title) {
+    let target = this._pickUltTarget()
+    const tx = target ? target.x : this._w * 0.5
+    const ty = target ? target.y : this._h * 0.5
+    this._gengFx = {
+      style: 'avatar',
+      kind: kind || 'avatar',
+      t: 0,
+      phase: 'morph',
+      morphDur: 0.5,
+      smashDur: 1.2,
+      endDur: 0.4,
+      targetId: target ? target.id : null,
+      targetX: tx,
+      targetY: ty,
+      hits: 0,
+      title: title || '惊蛰十二变',
+      scale: 1
+    }
+    this._breakMute = 2.4
+    this._qingyuanShield = Math.max(this._qingyuanShield || 0, 3.5)
+  },
+
+  _updateAvatarUlt(dt, realm) {
+    const fx = this._gengFx
+    if (!fx) return
+    fx.t += dt
+    const target = this._findGengTarget(fx)
+    if (target) {
+      fx.targetX = target.x
+      fx.targetY = target.y
+    }
+    if (fx.phase === 'morph') {
+      fx.scale = 1 + Math.min(1, fx.t / fx.morphDur) * (fx.kind === 'niepan' ? 0.55 : 0.35)
+      if (fx.t >= fx.morphDur) {
+        fx.phase = 'smash'
+        fx.t = 0
+        fx.hits = 0
+        fx.nextHit = 0
+      }
+      return
+    }
+    if (fx.phase === 'smash') {
+      fx.scale = fx.kind === 'niepan' ? 1.55 : 1.35
+      fx.nextHit = (fx.nextHit || 0) - dt
+      if (fx.nextHit <= 0 && fx.hits < 4 && target && target.state !== 'dead') {
+        fx.nextHit = 0.25
+        fx.hits += 1
+        const ratio = fx.kind === 'niepan' ? 0.1 : 0.085
+        this._dealGuardianRatioHit(target, ratio, this._playerX, this._playerY, realm, null)
+        this._burst(fx.targetX, fx.targetY, fx.kind === 'niepan' ? '#fb7185' : '#a78bfa', 10)
+      }
+      if (fx.t >= fx.smashDur) {
+        fx.phase = 'end'
+        fx.t = 0
+      }
+      return
+    }
+    if (fx.phase === 'end') {
+      fx.scale = Math.max(1, fx.scale - dt)
+      if (fx.t >= fx.endDur) this._finishGengFx()
+    }
+  },
+
+  /** 真仙/金仙/太乙：时间法则 / 灵域 / 神念囚笼 */
+  _startTimeLawUlt(kind, title) {
+    let target = this._pickUltTarget()
+    const tx = target ? target.x : this._w * 0.5
+    const ty = target ? target.y : this._h * 0.5
+    if (target) {
+      target.bindT = 3.5
+      target.iceT = Math.max(target.iceT || 0, 3.2)
+      target.timeSlow = 3.5
+    }
+    this._gengFx = {
+      style: 'time_law',
+      kind: kind || 'time_law',
+      t: 0,
+      phase: 'domain',
+      domainDur: 0.8,
+      strikeDur: 1.4,
+      endDur: 0.35,
+      targetId: target ? target.id : null,
+      targetX: tx,
+      targetY: ty,
+      hits: 0,
+      title: title || '时间法则',
+      pillars: []
+    }
+    for (let i = 0; i < 6; i++) {
+      this._gengFx.pillars.push({
+        a: (Math.PI * 2 * i) / 6,
+        u: 0
+      })
+    }
+    this._breakMute = 2.8
+  },
+
+  _updateTimeLawUlt(dt, realm) {
+    const fx = this._gengFx
+    if (!fx) return
+    fx.t += dt
+    const target = this._findGengTarget(fx)
+    if (target) {
+      fx.targetX = target.x
+      fx.targetY = target.y
+      target.bindT = Math.max(target.bindT || 0, 0.5)
+      target.timeSlow = Math.max(target.timeSlow || 0, 0.5)
+    }
+    if (fx.phase === 'domain') {
+      const u = Math.min(1, fx.t / fx.domainDur)
+      for (let i = 0; i < fx.pillars.length; i++) fx.pillars[i].u = u
+      if (fx.t >= fx.domainDur) {
+        fx.phase = 'strike'
+        fx.t = 0
+        fx.hits = 0
+        fx.nextHit = 0
+      }
+      return
+    }
+    if (fx.phase === 'strike') {
+      fx.nextHit = (fx.nextHit || 0) - dt
+      if (fx.nextHit <= 0 && fx.hits < 5 && target && target.state !== 'dead') {
+        fx.nextHit = 0.22
+        fx.hits += 1
+        const ratio = fx.kind === 'shennian' ? 0.08 : 0.07
+        this._dealGuardianRatioHit(target, ratio, fx.targetX, fx.targetY, realm, 'elec')
+        this._burst(fx.targetX, fx.targetY, '#fde68a', 7)
+      }
+      if (fx.t >= fx.strikeDur) {
+        fx.phase = 'end'
+        fx.t = 0
+      }
+      return
+    }
+    if (fx.phase === 'end' && fx.t >= fx.endDur) this._finishGengFx()
+  },
+
+  /** 道祖：时间大道 + 掌天瓶吸源 */
+  _startDaoCrushUlt() {
+    let target = this._pickUltTarget()
+    const tx = target ? target.x : this._w * 0.5
+    const ty = target ? target.y : this._h * 0.5
+    if (target) {
+      target.bindT = 4
+      target.timeSlow = 4
+    }
+    this._gengFx = {
+      style: 'dao_crush',
+      t: 0,
+      phase: 'rise',
+      riseDur: 0.6,
+      crushDur: 1.6,
+      endDur: 0.5,
+      targetId: target ? target.id : null,
+      targetX: tx,
+      targetY: ty,
+      hits: 0,
+      title: '时间大道',
+      bottleU: 0
+    }
+    this._breakMute = 3.0
+  },
+
+  _updateDaoCrushUlt(dt, realm) {
+    const fx = this._gengFx
+    if (!fx) return
+    fx.t += dt
+    const target = this._findGengTarget(fx)
+    if (target) {
+      fx.targetX = target.x
+      fx.targetY = target.y
+      target.timeSlow = Math.max(target.timeSlow || 0, 0.6)
+    }
+    if (fx.phase === 'rise') {
+      fx.bottleU = Math.min(1, fx.t / fx.riseDur)
+      if (fx.t >= fx.riseDur) {
+        fx.phase = 'crush'
+        fx.t = 0
+        fx.hits = 0
+        fx.nextHit = 0
+      }
+      return
+    }
+    if (fx.phase === 'crush') {
+      fx.bottleU = 1
+      fx.nextHit = (fx.nextHit || 0) - dt
+      if (fx.nextHit <= 0 && fx.hits < 6 && target && target.state !== 'dead') {
+        fx.nextHit = 0.22
+        fx.hits += 1
+        this._dealGuardianRatioHit(target, 0.09, fx.targetX, fx.targetY, realm, null)
+        this._burst(fx.targetX, fx.targetY, '#fff7ed', 8)
+        this._healPlayer(2)
+      }
+      if (fx.t >= fx.crushDur) {
+        fx.phase = 'end'
+        fx.t = 0
+      }
+      return
+    }
+    if (fx.phase === 'end' && fx.t >= fx.endDur) this._finishGengFx()
+  },
+
+  _pickUltTarget() {
+    for (let i = 0; i < (this._zombies || []).length; i++) {
+      if (this._zombies[i].state !== 'dead') return this._zombies[i]
+    }
+    return null
+  },
+
+  /** 炼气～道祖交锋辅招 */
+  _tickRealmAuxSkill(dt, realm) {
+    const combat = getRealmCombat(this._realmLv)
+    if (!combat || this._gengFx || this._spiritFx || this._breakFx) return
+    if (this._qingyuanShield > 0) this._qingyuanShield = Math.max(0, this._qingyuanShield - dt)
+
+    this._updateFireballs(dt, realm)
+    this._updateInsectFx(dt, realm)
+
+    const kit = getRealmAtkKit(realm.majorKey || combat.key)
+    // 主攻已是同招时，辅招跳过，避免叠打
+    const aux = combat.aux
+    const skipDup =
+      (kit.primary === 'shiling' && aux === 'shiling') ||
+      (kit.primary === 'leihai' && (aux === 'leihai' || aux === 'pixie_lei'))
+    if (skipDup) {
+      if (aux === 'qingyuan' || aux === 'baimai') {
+        this._qingyuanShield = Math.max(this._qingyuanShield || 0, aux === 'baimai' ? 0.35 : 0.2)
+      }
+      return
+    }
+
+    let target = this._pickCombatTarget()
+    if (!target) return
+
+    if ((target.timeSlow || 0) > 0) target.timeSlow = Math.max(0, target.timeSlow - dt)
+
+    this._realmAuxAcc = (this._realmAuxAcc || 0) + dt
+    if (aux === 'huodan') {
+      if (this._realmAuxAcc >= 2.2) {
+        this._realmAuxAcc = 0
+        this._launchFireball(target, realm)
+      }
+    } else if (aux === 'qingyuan') {
+      this._qingyuanShield = Math.max(this._qingyuanShield || 0, 0.2)
+      if (this._realmAuxAcc >= 2.8) {
+        this._realmAuxAcc = 0
+        this._launchQingyuanBeam(target, realm)
+      }
+    } else if (aux === 'shijin') {
+      if (this._realmAuxAcc >= 1.8) {
+        this._realmAuxAcc = 0
+        this._spawnInsectBurst(target)
+      }
+    } else if (aux === 'pixie_lei' || aux === 'leihai') {
+      if (this._realmAuxAcc >= 2.4) {
+        this._realmAuxAcc = 0
+        this._hitZombie(target, 6 + realm.lv, target.x, target.y - 40, realm, 'elec', false)
+        target.elecT = Math.max(target.elecT || 0, 2.2)
+        this._burst(target.x, target.y - 20, '#fde047', 12)
+      }
+    } else if (aux === 'fansheng' || aux === 'avatar_tick' || aux === 'xuansha') {
+      if (this._realmAuxAcc >= 2.0) {
+        this._realmAuxAcc = 0
+        this._hitZombie(target, 5 + Math.floor(realm.lv * 0.8), this._playerX, this._playerY, realm, null, true)
+        this._burst(target.x, target.y, realm.color || '#22d3ee', 8)
+      }
+    } else if (aux === 'shiling') {
+      if (this._realmAuxAcc >= 2.6) {
+        this._realmAuxAcc = 0
+        this._hitZombie(target, 8 + realm.lv, target.x, target.y, realm, 'fire', false)
+        target.fireT = Math.max(target.fireT || 0, 3.0)
+        this._burst(target.x, target.y, '#e2e8f0', 14)
+      }
+    } else if (aux === 'baimai') {
+      this._qingyuanShield = Math.max(this._qingyuanShield || 0, 0.35)
+      if (this._realmAuxAcc >= 2.5) {
+        this._realmAuxAcc = 0
+        this._hitZombie(target, 6 + realm.lv, this._playerX, this._playerY, realm, null, true)
+      }
+    } else if (aux === 'time_press') {
+      if (this._realmAuxAcc >= 2.2) {
+        this._realmAuxAcc = 0
+        target.timeSlow = Math.max(target.timeSlow || 0, 2.0)
+        target.bindT = Math.max(target.bindT || 0, 1.2)
+        this._hitZombie(target, 5 + realm.lv, target.x, target.y, realm, null, false)
+        this._burst(target.x, target.y, '#c4b5fd', 10)
+      }
+    } else if (aux === 'bottle') {
+      if (this._realmAuxAcc >= 2.8) {
+        this._realmAuxAcc = 0
+        this._hitZombie(target, 10 + realm.lv, target.x, target.y, realm, null, false)
+        this._healPlayer(4)
+        this._burst(target.x, target.y, '#fff7ed', 12)
+      }
+    }
+  },
+
+  /** 当前战斗目标：锁定优先，否则最近活怪 */
+  _pickCombatTarget() {
+    let target = this._focusZombie
+    if (target && target.state !== 'dead' && (target.emerge || 0) > 0.5) return target
+    for (let i = 0; i < (this._zombies || []).length; i++) {
+      const z = this._zombies[i]
+      if (z.state !== 'dead' && (z.emerge || 0) > 0.5) return z
+    }
+    return null
+  },
+
+  /**
+   * 大境界主攻：剑修出剑；化神元磁、炼虚斩气、合体真灵爪等按说明
+   */
+  _tickRealmPrimaryAttack(dt, realm, shootEvery) {
+    const kit = getRealmAtkKit(realm.majorKey)
+    const every = kit.interval || shootEvery || 0.5
+    if (kit.primary === 'sword') {
+      if (this._swordAcc >= every && !(this._swords && this._swords.length)) {
+        this._swordAcc = 0
+        this._launchSwords(realm)
+      }
+      return
+    }
+    if (this._swordAcc < every) return
+    const target = this._pickCombatTarget()
+    if (!target) return
+    this._swordAcc = 0
+    const cost = Math.max(2, Math.ceil(2 + (realm.lv || 1) * 0.08))
+    if ((this._lingQi || 0) < cost) {
+      if (this._lingQiWarnT <= 0) {
+        this._lingQiWarnT = 1.6
+        wx.showToast({ title: '灵气不足 · 打坐吸纳', icon: 'none', duration: 1200 })
+      }
+      return
+    }
+    this._addLingQi(-cost)
+    this._launchRealmPrimaryShot(kit.primary, target, realm)
+  },
+
+  _launchRealmPrimaryShot(kind, target, realm) {
+    if (!this._realmShots) this._realmShots = []
+    const tx = target.x
+    const ty = target.y - (target.floatY || 0)
+    const dx = tx - this._playerX
+    const dy = ty - (this._playerY - 10)
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1
+    const baseDmg = 3 + Math.floor((realm.lv || 1) * 0.9)
+    const color = realm.color || '#67e8f9'
+    const n = kind === 'leihai' ? 3 : (kind === 'time_silk' ? 2 : 1)
+    for (let i = 0; i < n; i++) {
+      const spread = (i - (n - 1) / 2) * 0.18
+      const ang = Math.atan2(dy, dx) + spread
+      const speed = kind === 'dao_ray' ? 320 : (kind === 'void_slash' ? 380 : 260)
+      this._realmShots.push({
+        kind: kind,
+        x: this._playerX,
+        y: this._playerY - 10,
+        vx: Math.cos(ang) * speed,
+        vy: Math.sin(ang) * speed,
+        ang: ang,
+        life: 1.8,
+        r: kind === 'spirit_claw' ? 14 : 8,
+        dmg: baseDmg + (kind === 'dao_ray' || kind === 'origin_slash' ? 4 : 0),
+        color: color,
+        enchant: kind === 'leihai' || kind === 'yuanci' ? 'elec' : (kind === 'shiling' ? 'fire' : null),
+        hitIds: {}
+      })
+    }
+    this._burst(this._playerX, this._playerY - 10, color, 6)
+  },
+
+  _updateRealmShots(dt, realm) {
+    const list = this._realmShots || []
+    for (let i = list.length - 1; i >= 0; i--) {
+      const s = list[i]
+      s.life -= dt
+      s.x += s.vx * dt
+      s.y += s.vy * dt
+      if (s.life <= 0) {
+        list.splice(i, 1)
+        continue
+      }
+      // 神念/真灵：近身直接结算后消散
+      if (s.kind === 'spirit_claw' || s.kind === 'shennian') {
+        for (let zi = 0; zi < (this._zombies || []).length; zi++) {
+          const z = this._zombies[zi]
+          if (z.state === 'dead' || (z.emerge || 0) < 0.5) continue
+          const dx = z.x - s.x
+          const dy = z.y - (z.floatY || 0) - s.y
+          if (dx * dx + dy * dy < (z.r + s.r) * (z.r + s.r)) {
+            this._hitZombie(z, s.dmg, s.x, s.y, realm, s.enchant, true)
+            if (s.kind === 'shennian') {
+              z.bindT = Math.max(z.bindT || 0, 1.1)
+              z.timeSlow = Math.max(z.timeSlow || 0, 0.8)
+            }
+            this._burst(z.x, z.y, s.color, 8)
+            list.splice(i, 1)
+            break
+          }
+        }
+        continue
+      }
+      let hit = false
+      for (let zi = 0; zi < (this._zombies || []).length; zi++) {
+        const z = this._zombies[zi]
+        if (z.state === 'dead' || (z.emerge || 0) < 0.5) continue
+        if (s.hitIds[z.id]) continue
+        const dx = z.x - s.x
+        const dy = z.y - (z.floatY || 0) - s.y
+        if (dx * dx + dy * dy < (z.r + s.r + 4) * (z.r + s.r + 4)) {
+          s.hitIds[z.id] = 1
+          this._hitZombie(z, s.dmg, s.x, s.y, realm, s.enchant, false)
+          if (s.kind === 'shiling') z.fireT = Math.max(z.fireT || 0, 2.2)
+          if (s.kind === 'leihai' || s.kind === 'yuanci') z.elecT = Math.max(z.elecT || 0, 1.6)
+          if (s.kind === 'time_silk' || s.kind === 'origin_slash') {
+            z.timeSlow = Math.max(z.timeSlow || 0, 1.4)
+          }
+          this._burst(z.x, z.y, s.color, 7)
+          // 斩类可穿透一只
+          if (s.kind !== 'void_slash' && s.kind !== 'origin_slash' && s.kind !== 'time_silk') {
+            hit = true
+            break
+          }
+        }
+      }
+      if (hit) list.splice(i, 1)
+    }
+  },
+
+  _drawRealmShots(ctx) {
+    const list = this._realmShots || []
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i]
+      ctx.save()
+      ctx.translate(s.x, s.y)
+      ctx.rotate(s.ang || 0)
+      ctx.globalAlpha = 0.9
+      if (s.kind === 'yuanci') {
+        ctx.strokeStyle = '#67e8f9'
+        ctx.lineWidth = 3
+        ctx.beginPath()
+        ctx.moveTo(-10, 0)
+        ctx.lineTo(16, 0)
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.arc(8, 0, 6, 0, Math.PI * 2)
+        ctx.stroke()
+      } else if (s.kind === 'void_slash' || s.kind === 'origin_slash') {
+        ctx.strokeStyle = s.color
+        ctx.lineWidth = 2.5
+        ctx.shadowColor = s.color
+        ctx.shadowBlur = 8
+        ctx.beginPath()
+        ctx.moveTo(-18, -2)
+        ctx.quadraticCurveTo(0, 8, 20, 0)
+        ctx.stroke()
+        ctx.shadowBlur = 0
+      } else if (s.kind === 'shiling') {
+        ctx.fillStyle = 'rgba(248,250,252,0.85)'
+        ctx.beginPath()
+        ctx.ellipse(0, 0, 12, 6, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = '#fb7185'
+        ctx.beginPath()
+        ctx.arc(4, 0, 4, 0, Math.PI * 2)
+        ctx.fill()
+      } else if (s.kind === 'leihai') {
+        ctx.strokeStyle = '#fde047'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(-8, -4)
+        ctx.lineTo(0, 2)
+        ctx.lineTo(10, -3)
+        ctx.stroke()
+      } else if (s.kind === 'time_silk') {
+        ctx.strokeStyle = '#fdba74'
+        ctx.lineWidth = 1.5
+        ctx.setLineDash([3, 3])
+        ctx.beginPath()
+        ctx.moveTo(-14, 0)
+        ctx.lineTo(16, 0)
+        ctx.stroke()
+        ctx.setLineDash([])
+      } else if (s.kind === 'spirit_claw') {
+        ctx.strokeStyle = '#a78bfa'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(-6, -8)
+        ctx.lineTo(10, 0)
+        ctx.lineTo(-6, 8)
+        ctx.stroke()
+      } else if (s.kind === 'shennian') {
+        ctx.fillStyle = 'rgba(231,229,228,0.55)'
+        ctx.beginPath()
+        ctx.arc(0, 0, 10, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = '#a8a29e'
+        ctx.lineWidth = 1.5
+        ctx.stroke()
+      } else if (s.kind === 'dao_ray') {
+        ctx.fillStyle = '#fff7ed'
+        ctx.beginPath()
+        ctx.moveTo(-6, -3)
+        ctx.lineTo(22, 0)
+        ctx.lineTo(-6, 3)
+        ctx.closePath()
+        ctx.fill()
+      } else {
+        ctx.fillStyle = s.color || '#fff'
+        ctx.beginPath()
+        ctx.arc(0, 0, 5, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.restore()
+    }
+  },
+
+  _launchFireball(target, realm) {
+    if (!this._fireballs) this._fireballs = []
+    const dx = target.x - this._playerX
+    const dy = target.y - this._playerY
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1
+    this._fireballs.push({
+      x: this._playerX,
+      y: this._playerY - 12,
+      vx: (dx / dist) * 220,
+      vy: (dy / dist) * 220,
+      life: 2.2,
+      r: 7,
+      dmg: 4 + Math.floor((realm.lv || 2) * 1.5)
+    })
+    this._burst(this._playerX, this._playerY - 12, '#fb923c', 6)
+  },
+
+  _updateFireballs(dt, realm) {
+    const list = this._fireballs || []
+    for (let i = list.length - 1; i >= 0; i--) {
+      const b = list[i]
+      b.life -= dt
+      b.x += b.vx * dt
+      b.y += b.vy * dt
+      if (Math.random() < 0.4) {
+        this._particles.push({
+          x: b.x,
+          y: b.y,
+          vx: (Math.random() - 0.5) * 20,
+          vy: (Math.random() - 0.5) * 20,
+          life: 0.2,
+          color: Math.random() > 0.5 ? '#fb923c' : '#fde047'
+        })
+      }
+      let hit = false
+      for (let zi = 0; zi < (this._zombies || []).length; zi++) {
+        const z = this._zombies[zi]
+        if (z.state === 'dead') continue
+        const dx = b.x - z.x
+        const dy = b.y - (z.y - (z.floatY || 0))
+        if (dx * dx + dy * dy < (z.r + b.r) * (z.r + b.r)) {
+          this._hitZombie(z, b.dmg, b.x, b.y, realm, 'fire', true)
+          z.fireT = Math.max(z.fireT || 0, 2.8)
+          z.fireTick = 0
+          this._burst(b.x, b.y, '#fb923c', 10)
+          hit = true
+          break
+        }
+      }
+      if (hit || b.life <= 0) list.splice(i, 1)
+    }
+  },
+
+  _launchQingyuanBeam(target, realm) {
+    const dx = target.x - this._playerX
+    const dy = target.y - this._playerY
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1
+    // 瞬时剑芒：直线粒子 + 伤害
+    for (let i = 0; i < 10; i++) {
+      const u = i / 10
+      this._particles.push({
+        x: this._playerX + dx * u,
+        y: this._playerY - 8 + dy * u,
+        vx: (dx / dist) * 40,
+        vy: (dy / dist) * 40,
+        life: 0.28,
+        color: '#67e8f9'
+      })
+    }
+    this._hitZombie(target, 7 + (realm.lv || 3) * 2, this._playerX, this._playerY, realm, null, true)
+    this._burst(target.x, target.y, '#38bdf8', 8)
+  },
+
+  _spawnInsectBurst(target) {
+    if (!this._insectFx) this._insectFx = []
+    for (let i = 0; i < 10; i++) {
+      this._insectFx.push({
+        x: this._playerX + (Math.random() - 0.5) * 30,
+        y: this._playerY + (Math.random() - 0.5) * 24,
+        tx: target.x + (Math.random() - 0.5) * 20,
+        ty: target.y + (Math.random() - 0.5) * 16,
+        life: 0.7 + Math.random() * 0.3,
+        hit: false
+      })
+    }
+  },
+
+  _updateInsectFx(dt, realm) {
+    const list = this._insectFx || []
+    for (let i = list.length - 1; i >= 0; i--) {
+      const bug = list[i]
+      bug.life -= dt
+      bug.x += (bug.tx - bug.x) * Math.min(1, dt * 5)
+      bug.y += (bug.ty - bug.y) * Math.min(1, dt * 5)
+      if (!bug.hit && bug.life < 0.35) {
+        bug.hit = true
+        for (let zi = 0; zi < (this._zombies || []).length; zi++) {
+          const z = this._zombies[zi]
+          if (z.state === 'dead') continue
+          const dx = bug.x - z.x
+          const dy = bug.y - z.y
+          if (dx * dx + dy * dy < (z.r + 14) * (z.r + 14)) {
+            this._hitZombie(z, 2 + Math.floor((realm.lv || 4) * 0.6), bug.x, bug.y, realm, null, false)
+            break
+          }
+        }
+      }
+      if (bug.life <= 0) list.splice(i, 1)
+    }
+  },
+
+  /** 元婴大庚：天圆竖剑 → 汇聚 → 长老下拉剑圈 → 点指贯体 5s → 插地 → 长老消散 → 剑归 */
+  _startVoidGengFormation() {
+    const w = this._w
+    const h = this._h
+    const px = this._playerX
+    const py = this._playerY
+    let target = null
+    for (let i = 0; i < (this._zombies || []).length; i++) {
+      const z = this._zombies[i]
+      if (z.state !== 'dead') {
+        target = z
+        break
+      }
+    }
+    const tx = target ? target.x : w * 0.5
+    const ty = target ? target.y : h * 0.5
+    // 人物移到阵心
+    const mid = this._clampToGrass((px + tx) * 0.5, (py + ty) * 0.5)
+    this._playerX = mid.x
+    this._playerY = mid.y
+    const cx = mid.x
+    const cy = mid.y
+    const skyR = Math.min(w, h) * 0.38
+    const swords = []
+    // 插地：横 7 竖 8 = 56，余下 8 把插在外围
+    const plantCols = 7
+    const plantRows = 8
+    for (let i = 0; i < GENG_SWORD_COUNT; i++) {
+      const a = (Math.PI * 2 * i) / GENG_SWORD_COUNT - Math.PI / 2
+      const skyX = cx + Math.cos(a) * skyR
+      const skyY = Math.max(40, cy - Math.min(h * 0.4, 170)) + Math.sin(a) * skyR * 0.28
+      let plantX
+      let plantY
+      if (i < plantCols * plantRows) {
+        const col = i % plantCols
+        const row = Math.floor(i / plantCols)
+        plantX = tx - ((plantCols - 1) * 15) * 0.5 + col * 15
+        plantY = ty - ((plantRows - 1) * 13) * 0.5 + row * 13
+      } else {
+        const j = i - plantCols * plantRows
+        const aa = (Math.PI * 2 * j) / 8
+        plantX = tx + Math.cos(aa) * 62
+        plantY = ty + Math.sin(aa) * 48
+      }
+      swords.push({
+        i: i,
+        a: a,
+        x: skyX,
+        y: skyY - 50,
+        skyX: skyX,
+        skyY: skyY,
+        tipAngle: Math.PI / 2,
+        scale: 0,
+        delay: (i / GENG_SWORD_COUNT) * 0.35,
+        plantX: plantX,
+        plantY: plantY,
+        piercePhase: (i / GENG_SWORD_COUNT) * 0.85
+      })
+    }
+    this._gengFx = {
+      style: 'void64',
+      t: 0,
+      phase: 'sky',
+      swords: swords,
+      links: [],
+      cx: cx,
+      cy: cy - 90,
+      ringR: skyR,
+      targetId: target ? target.id : null,
+      targetX: tx,
+      targetY: ty,
+      skyDur: 1.25,
+      convergeDur: 1.05,
+      pullDur: 1.0,
+      pointDur: 0.6,
+      pierceDur: 5.0,
+      plantDur: 1.2,
+      vanishDur: 0.85,
+      recallDur: 1.4,
+      endDur: 0.45,
+      killed: false,
+      dmgAcc: 0,
+      pierceDealt: 0,
+      // 贯体过程磨血，收尾必斩杀长老（对应「死亡后剑归」演出）
+      pierceHpRatio: 0.55
+    }
+    this._breakMute = 14.5
   },
 
   /** 为场上僵尸分配剑阵内散开落点（不全挤中间） */
@@ -3174,6 +6239,42 @@ Page({
   _updateGengFormation(dt, realm) {
     const fx = this._gengFx
     if (!fx) return
+    if (fx.style === 'void64') {
+      this._updateVoidGengFormation(dt, realm)
+      return
+    }
+    if (fx.style === 'blink_jian') {
+      this._updateBlinkJianUlt(dt, realm)
+      return
+    }
+    if (fx.style === 'wuxing_array') {
+      this._updateWuxingArrayUlt(dt, realm)
+      return
+    }
+    if (fx.style === 'jianying') {
+      this._updateJianyingUlt(dt, realm)
+      return
+    }
+    if (fx.style === 'yuanci') {
+      this._updateYuanciUlt(dt, realm)
+      return
+    }
+    if (fx.style === 'xuantian') {
+      this._updateXuantianUlt(dt, realm)
+      return
+    }
+    if (fx.style === 'avatar') {
+      this._updateAvatarUlt(dt, realm)
+      return
+    }
+    if (fx.style === 'time_law') {
+      this._updateTimeLawUlt(dt, realm)
+      return
+    }
+    if (fx.style === 'dao_crush') {
+      this._updateDaoCrushUlt(dt, realm)
+      return
+    }
     fx.t += dt
     const px = this._playerX
     const py = this._playerY
@@ -3194,7 +6295,6 @@ Page({
       if (fx.t >= fx.gatherDur) {
         fx.phase = 'fly'
         fx.t = 0
-        // 锁定起飞起点（人物当前位置环上）
         for (let i = 0; i < fx.swords.length; i++) {
           const s = fx.swords[i]
           s.fromX = s.x
@@ -3205,20 +6305,16 @@ Page({
       return
     }
 
-    // 各自飞向屏幕中央预定落点，围成圆圈；剑尖翻转向内
     if (fx.phase === 'fly') {
       const u = Math.min(1, fx.t / fx.flyDur)
-      const ease = 1 - Math.pow(1 - u, 3)
       for (let i = 0; i < fx.swords.length; i++) {
         const s = fx.swords[i]
-        // 错开起飞，外圈感更强
         const iu = Math.min(1, Math.max(0, (u * 1.15) - (i / GENG_SWORD_COUNT) * 0.15))
         const e = 1 - Math.pow(1 - iu, 3)
         const fx0 = s.fromX != null ? s.fromX : px
         const fy0 = s.fromY != null ? s.fromY : py
         s.x = fx0 + (s.tx - fx0) * e
         s.y = fy0 + (s.ty - fy0) * e
-        // 尖朝外 → 尖朝内
         let da = s.tipIn - s.tipOut
         while (da > Math.PI) da -= Math.PI * 2
         while (da < -Math.PI) da += Math.PI * 2
@@ -3277,11 +6373,32 @@ Page({
         fx.killed = true
         for (let i = this._zombies.length - 1; i >= 0; i--) {
           const z = this._zombies[i]
+          if (z.state === 'dead') continue
           this._burst(z.x, z.y, '#fbbf24', 14)
           this._burst(z.x, z.y, '#fef08a', 10)
-          this._dropLootFromZombie(z)
-          this._zombies.splice(i, 1)
-          this._registerKill({ skipDan: true })
+          // 境主：大庚只砍一段血，不秒杀
+          if (z.isRealmGuardian || z.isBoss) {
+            this._dealGuardianRatioHit(z, 0.26, fx.cx, fx.cy, realm, 'elec')
+            z.gengScale = 1
+            z.state = z.hp <= 0 ? 'dead' : 'hurt'
+            z.frameT = 0
+            if (z.hp <= 0) {
+              this._dropLootFromZombie(z)
+              const wasGuardian = !!z.isRealmGuardian
+              const wasHeart = !!z.isHeartDemon
+              this._zombies.splice(i, 1)
+              this._registerKill({
+                skipDan: true,
+                boss: true,
+                realmGuardian: wasGuardian,
+                heartDemon: wasHeart
+              })
+            }
+          } else {
+            this._dropLootFromZombie(z)
+            this._zombies.splice(i, 1)
+            this._registerKill({ skipDan: true })
+          }
         }
         this._focusZombie = null
       }
@@ -3298,7 +6415,309 @@ Page({
         this._corpseDan = 0
         this.setData({ corpseDan: 0 })
         if (this._bossDeferred) this._maybeStartBossChallenge()
+        if (this._bossDefeatedDeferred) {
+          this._bossDefeatedDeferred = false
+          const skip = !!this._bossDefeatedDeferredHeart
+          this._bossDefeatedDeferredHeart = false
+          this._onBossDefeated({ skipHeartDemon: skip })
+        }
       }
+    }
+  },
+
+  _findGengTarget(fx, allowDead) {
+    if (!fx) return null
+    const list = this._zombies || []
+    if (fx.targetId != null) {
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].id === fx.targetId) {
+          if (allowDead || list[i].state !== 'dead') return list[i]
+        }
+      }
+    }
+    for (let i = 0; i < list.length; i++) {
+      if (allowDead || list[i].state !== 'dead') return list[i]
+    }
+    return null
+  },
+
+  _finishGengFx() {
+    this._gengFx = null
+    this._corpseDan = 0
+    this.setData({ corpseDan: 0 })
+    if (this._bossDeferred) this._maybeStartBossChallenge()
+    if (this._bossDefeatedDeferred) {
+      this._bossDefeatedDeferred = false
+      const skip = !!this._bossDefeatedDeferredHeart
+      this._bossDefeatedDeferredHeart = false
+      this._onBossDefeated({ skipHeartDemon: skip })
+    }
+  },
+
+  _updateVoidGengFormation(dt, realm) {
+    const fx = this._gengFx
+    if (!fx) return
+    fx.t += dt
+    const px = this._playerX
+    const py = this._playerY
+    const target = this._findGengTarget(fx)
+    if (target) {
+      fx.targetX = target.x
+      fx.targetY = target.y
+    }
+    const tx = fx.targetX
+    const ty = fx.targetY
+
+    // 天空：大圆圈上竖立 64 雷剑
+    if (fx.phase === 'sky') {
+      for (let i = 0; i < fx.swords.length; i++) {
+        const s = fx.swords[i]
+        const local = Math.max(0, fx.t - s.delay)
+        const u = Math.min(1, local / 0.45)
+        const ease = 1 - Math.pow(1 - u, 2)
+        s.x = s.skyX
+        s.y = s.skyY - 36 + ease * 36
+        s.tipAngle = Math.PI / 2
+        s.scale = ease
+      }
+      if (fx.t >= fx.skyDur) {
+        fx.phase = 'converge'
+        fx.t = 0
+        for (let i = 0; i < fx.swords.length; i++) {
+          const s = fx.swords[i]
+          s.fromX = s.x
+          s.fromY = s.y
+          s.scale = 1
+        }
+      }
+      return
+    }
+
+    // 汇聚：圆圈收拢到人物上空
+    if (fx.phase === 'converge') {
+      const u = Math.min(1, fx.t / fx.convergeDur)
+      const ring = fx.ringR * (1 - 0.35 * u)
+      fx.cx = px
+      fx.cy = py - 88
+      for (let i = 0; i < fx.swords.length; i++) {
+        const s = fx.swords[i]
+        const destX = fx.cx + Math.cos(s.a) * ring
+        const destY = fx.cy + Math.sin(s.a) * ring * 0.42
+        const iu = Math.min(1, Math.max(0, u * 1.12 - s.delay * 0.4))
+        const e = 1 - Math.pow(1 - iu, 3)
+        s.x = s.fromX + (destX - s.fromX) * e
+        s.y = s.fromY + (destY - s.fromY) * e
+        s.tipAngle = Math.PI / 2
+        s.scale = 1
+      }
+      if (fx.t >= fx.convergeDur) {
+        fx.phase = 'pull'
+        fx.t = 0
+        for (let i = 0; i < fx.swords.length; i++) {
+          const s = fx.swords[i]
+          s.fromX = s.x
+          s.fromY = s.y
+        }
+      }
+      return
+    }
+
+    // 魔族把剑圆拉到自己下方，人物仍在圆中
+    if (fx.phase === 'pull') {
+      const u = Math.min(1, fx.t / fx.pullDur)
+      const ease = 1 - Math.pow(1 - u, 2)
+      const ring = fx.ringR * 0.55
+      fx.cx = px + (tx - px) * 0.35 * ease
+      fx.cy = py + ((ty + 36) - py) * ease
+      // 魔族略微上提，像在拽阵
+      if (target && target.state !== 'dead') {
+        target.floatY = 10 + ease * 16
+        target.state = 'skill'
+      }
+      for (let i = 0; i < fx.swords.length; i++) {
+        const s = fx.swords[i]
+        const destX = fx.cx + Math.cos(s.a) * ring
+        const destY = fx.cy + Math.sin(s.a) * ring * 0.5
+        s.x = s.fromX + (destX - s.fromX) * ease
+        s.y = s.fromY + (destY - s.fromY) * ease
+        s.tipAngle = Math.PI / 2
+        s.scale = 1
+      }
+      if (fx.t >= fx.pullDur) {
+        fx.phase = 'point'
+        fx.t = 0
+        if (target) target.floatY = 0
+      }
+      return
+    }
+
+    if (fx.phase === 'point') {
+      fx.cx = px
+      fx.cy = ty + 28
+      const ring = fx.ringR * 0.5
+      for (let i = 0; i < fx.swords.length; i++) {
+        const s = fx.swords[i]
+        s.x = fx.cx + Math.cos(s.a) * ring
+        s.y = fx.cy + Math.sin(s.a) * ring * 0.48
+        s.tipAngle = Math.atan2(ty - s.y, tx - s.x)
+        s.scale = 1.05
+      }
+      if (fx.t >= fx.pointDur) {
+        fx.phase = 'pierce'
+        fx.t = 0
+        fx.dmgAcc = 0
+        fx.pierceDealt = 0
+        for (let i = 0; i < fx.swords.length; i++) {
+          const s = fx.swords[i]
+          s.fromX = s.x
+          s.fromY = s.y
+        }
+      }
+      return
+    }
+
+    if (fx.phase === 'pierce') {
+      for (let i = 0; i < fx.swords.length; i++) {
+        const s = fx.swords[i]
+        const cycle = ((fx.t * 1.4 + s.piercePhase) % 1)
+        const pass = cycle < 0.6 ? cycle / 0.6 : 1
+        const ease = pass * pass
+        const overX = tx + Math.sin(i * 1.7) * 8
+        const overY = ty + 48
+        s.x = s.fromX + (overX - s.fromX) * ease
+        s.y = s.fromY + (overY - s.fromY) * ease
+        s.tipAngle = Math.atan2(overY - s.fromY, overX - s.fromX)
+        s.scale = 0.95 + Math.sin(fx.t * 20 + i) * 0.08
+        if (cycle > 0.9) {
+          s.fromX = fx.cx + Math.cos(s.a) * fx.ringR * 0.45
+          s.fromY = fx.cy + Math.sin(s.a) * fx.ringR * 0.4
+        }
+      }
+      // 贯体持续削血；收尾斩杀长老
+      fx.dmgAcc += dt
+      if (target && target.state !== 'dead' && fx.dmgAcc >= 0.22) {
+        fx.dmgAcc = 0
+        const budget = Math.max(80, Math.floor(target.maxHp * (fx.pierceHpRatio || 0.55)))
+        const left = Math.max(0, budget - (fx.pierceDealt || 0))
+        if (left > 0) {
+          const ticks = Math.max(1, Math.ceil(fx.pierceDur / 0.22))
+          const tickDmg = Math.max(4, Math.ceil(budget / ticks))
+          const deal = Math.min(left, tickDmg)
+          fx.pierceDealt = (fx.pierceDealt || 0) + deal
+          this._hitZombie(target, deal, tx, ty, realm, 'elec', false)
+          this._burst(tx, ty, '#fef08a', 4)
+        }
+      }
+      if (fx.t >= fx.pierceDur) {
+        if (target && target.state !== 'dead') {
+          this._hitZombie(target, target.hp + 99, tx, ty, realm, 'elec', false)
+        }
+        for (let i = 0; i < fx.swords.length; i++) {
+          const s = fx.swords[i]
+          s.fromX = s.x
+          s.fromY = s.y
+        }
+        fx.phase = 'plant'
+        fx.t = 0
+      }
+      return
+    }
+
+    if (fx.phase === 'plant') {
+      for (let i = 0; i < fx.swords.length; i++) {
+        const s = fx.swords[i]
+        const iu = Math.min(1, Math.max(0, (fx.t / fx.plantDur) * 1.2 - (i / GENG_SWORD_COUNT) * 0.25))
+        const e = 1 - Math.pow(1 - iu, 2)
+        s.x = s.fromX + (s.plantX - s.fromX) * e
+        s.y = s.fromY + (s.plantY - s.fromY) * e
+        s.tipAngle = -Math.PI / 2
+        s.scale = 1
+      }
+      if (fx.t >= fx.plantDur) {
+        fx.phase = 'vanish'
+        fx.t = 0
+        const left = this._findGengTarget(fx, true) || target
+        if (left) {
+          fx.killZombie = left
+          left.state = 'dead'
+          left.frameT = 0
+          left.gengScale = 1
+          this._emitMonsterFx(left, 'death', 1.4)
+          this._burst(left.x, left.y, '#1e1b4b', 18)
+          this._burst(left.x, left.y, '#7c3aed', 12)
+        }
+      }
+      return
+    }
+
+    // 长老黑气消散，剑仍插地；消散完才召回
+    if (fx.phase === 'vanish') {
+      const u = Math.min(1, fx.t / (fx.vanishDur || 0.85))
+      const z = fx.killZombie
+      if (z) {
+        z.gengScale = Math.max(0.05, 1 - u)
+        z.alphaMul = Math.max(0.05, 1 - u)
+        z.floatY = u * 20
+      }
+      if (fx.t >= (fx.vanishDur || 0.85)) {
+        if (z) {
+          const idx = this._zombies.indexOf(z)
+          if (idx >= 0) {
+            this._dropLootFromZombie(z)
+            this._zombies.splice(idx, 1)
+          }
+          this._focusZombie = null
+          this._bossDefeatedDeferred = true
+          this._bossActive = false
+          this._kills += 1
+          if (canSpaceBlink(this._realmLv)) {
+            this._spaceForce = Math.min(SPACE_FORCE_MAX, (this._spaceForce || 0) + SPACE_FORCE_PER_KILL)
+            this.setData({ spaceForce: Math.floor(this._spaceForce), maxSpaceForce: SPACE_FORCE_MAX })
+          }
+          const cur = realmByLv(this._realmLv)
+          this.setData({
+            kills: this._kills,
+            realmLv: cur.lv,
+            realmName: cur.name,
+            realmTierName: cur.tierName
+          })
+          this._persistProgress(false)
+          fx.killZombie = null
+        }
+        fx.killed = true
+        fx.phase = 'recall'
+        fx.t = 0
+        for (let i = 0; i < fx.swords.length; i++) {
+          const s = fx.swords[i]
+          s.fromX = s.x
+          s.fromY = s.y
+        }
+      }
+      return
+    }
+
+    if (fx.phase === 'recall') {
+      for (let i = 0; i < fx.swords.length; i++) {
+        const s = fx.swords[i]
+        const a = (Math.PI * 2 * i) / GENG_SWORD_COUNT
+        const destX = px + Math.cos(a) * 28
+        const destY = py + Math.sin(a) * 28
+        const iu = Math.min(1, Math.max(0, (fx.t / fx.recallDur) * 1.15 - (i / GENG_SWORD_COUNT) * 0.2))
+        const e = 1 - Math.pow(1 - iu, 3)
+        s.x = s.fromX + (destX - s.fromX) * e
+        s.y = s.fromY + (destY - s.fromY) * e
+        s.tipAngle = a
+        s.scale = 1 - e * 0.35
+      }
+      if (fx.t >= fx.recallDur) {
+        fx.phase = 'end'
+        fx.t = 0
+      }
+      return
+    }
+
+    if (fx.phase === 'end') {
+      if (fx.t >= fx.endDur) this._finishGengFx()
     }
   },
 
@@ -3318,7 +6737,7 @@ Page({
     this._healPlayer(Math.floor(this._maxHp * 0.35))
 
     // 最高境：清场后飞至中央，水墨「大圆满」
-    if (realm.lv >= REALMS.length || realm.name === '道祖') {
+    if (realm.lv >= REALMS.length || realm.majorKey === 'daozu') {
       this._breakFx = null
       this._breakMute = 999
       this._perfectFx = {
@@ -3361,6 +6780,7 @@ Page({
     this._animT += dt
     if (fx.t >= fx.flyDur + fx.holdDur && !this._perfect) {
       this._perfect = true
+      this._teardownCanvas()
       this.setData({
         perfect: true,
         kills: this._kills,
@@ -3376,26 +6796,35 @@ Page({
     if ((this._lingQi || 0) < cost) {
       if (this._lingQiWarnT <= 0) {
         this._lingQiWarnT = 1.6
-        wx.showToast({ title: '灵气不足 · 打坐或拾灵石', icon: 'none', duration: 1400 })
+        wx.showToast({ title: '灵气不足 · 打坐吸纳', icon: 'none', duration: 1400 })
       }
       return
     }
     this._addLingQi(-cost)
+    const combat = getRealmCombat(realm.lv)
+    const majorKey = (combat && combat.key) || realm.majorKey || 'lianqi'
+    const sw = getRealmSwordStyle(majorKey)
     const baseAngle = -Math.PI / 2
     const spread = Math.min(Math.PI * 1.6, 0.11 * (n - 1))
     const orbitR = 22
     for (let i = 0; i < n; i++) {
       const a = (Math.PI * 2 * i) / n + (this._animT || 0) * 1.05
       const ang = n === 1 ? baseAngle : (baseAngle - spread / 2 + (i / Math.max(1, n - 1)) * spread)
+      let enchant = null
+      if (sw.enchant && Math.random() < (sw.enchantChance || 0)) enchant = sw.enchant
+      // 合体：偶发双色合道剑；大罗：偶发三尸斩
+      if (majorKey === 'heti' && Math.random() < 0.35) enchant = 'elec'
+      if (majorKey === 'daluo' && i % 3 === 0) enchant = 'elec'
       this._swords.push({
         x: this._playerX + Math.cos(a) * orbitR,
         y: this._playerY - 14 + Math.sin(a) * (orbitR * 0.55),
         angle: ang,
-        speed: 270 + realm.lv * 35,
-        dmg: 2 + Math.floor(realm.lv * 0.85),
+        speed: 270 + realm.lv * 35 + (sw.speed || 0),
+        dmg: 2 + Math.floor(realm.lv * 0.85) + (sw.dmg || 0),
         life: 4.5,
-        color: realm.sword || realm.color,
-        enchant: null,
+        color: sw.color || realm.sword || realm.color,
+        enchant: enchant,
+        style: sw.style || 'ink',
         hitIds: {},
         mode: 'hunt'
       })
@@ -3419,6 +6848,7 @@ Page({
 
   _gameOver() {
     this._over = true
+    this._teardownCanvas()
     this.setData({
       over: true,
       kills: this._kills,
@@ -3429,12 +6859,76 @@ Page({
 
   _drawFlyingSword(ctx, s) {
     const color = s.color || '#334155'
+    const style = s.style || 'ink'
     ctx.save()
     ctx.translate(s.x, s.y)
     ctx.rotate(s.angle)
-    this._paintInkSword(ctx, color, 1)
-    // 附魔剑刃特效
+    // 境界剑气拖尾
+    this._paintSwordTrail(ctx, color, style)
+    this._paintInkSword(ctx, color, 1, style)
     if (s.enchant) this._paintSwordEnchantFx(ctx, s.enchant)
+    ctx.restore()
+  },
+
+  /** 飞剑拖尾：按大境界气质区分 */
+  _paintSwordTrail(ctx, color, style) {
+    const t = this._animT || 0
+    ctx.save()
+    ctx.globalAlpha = 0.35
+    if (style === 'void') {
+      ctx.strokeStyle = color
+      ctx.lineWidth = 1.4
+      ctx.setLineDash([4, 5])
+      ctx.beginPath()
+      ctx.moveTo(-28, 0)
+      ctx.lineTo(-6, 0)
+      ctx.stroke()
+      ctx.setLineDash([])
+    } else if (style === 'magnet') {
+      ctx.strokeStyle = color
+      ctx.lineWidth = 1.2
+      for (let i = 1; i <= 2; i++) {
+        ctx.beginPath()
+        ctx.arc(-8 - i * 6, 0, 4 + i, 0, Math.PI * 2)
+        ctx.stroke()
+      }
+    } else if (style === 'thunder') {
+      ctx.strokeStyle = '#fef08a'
+      ctx.lineWidth = 1.3
+      ctx.beginPath()
+      ctx.moveTo(-22, -3)
+      ctx.lineTo(-14, 2)
+      ctx.lineTo(-8, -2)
+      ctx.stroke()
+    } else if (style === 'flame' || style === 'law') {
+      ctx.fillStyle = style === 'law' ? 'rgba(251,113,133,0.35)' : 'rgba(251,146,60,0.4)'
+      ctx.beginPath()
+      ctx.ellipse(-12, 0, 12, 3 + Math.sin(t * 14) * 1.5, 0, 0, Math.PI * 2)
+      ctx.fill()
+    } else if (style === 'spirit' || style === 'origin') {
+      ctx.strokeStyle = color
+      ctx.lineWidth = 1.2
+      ctx.beginPath()
+      ctx.moveTo(-20, -4)
+      ctx.lineTo(-6, 0)
+      ctx.moveTo(-20, 4)
+      ctx.lineTo(-6, 0)
+      ctx.stroke()
+    } else if (style === 'time' || style === 'dao') {
+      ctx.strokeStyle = color
+      ctx.globalAlpha = 0.45
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.arc(-10, 0, 6 + Math.sin(t * 6), 0, Math.PI * 1.6)
+      ctx.stroke()
+    } else if (style === 'leaf' || style === 'wave') {
+      ctx.strokeStyle = color
+      ctx.lineWidth = 1.2
+      ctx.beginPath()
+      ctx.moveTo(-18, 0)
+      ctx.quadraticCurveTo(-12, style === 'wave' ? 5 : -4, -6, 0)
+      ctx.stroke()
+    }
     ctx.restore()
   },
 
@@ -3478,7 +6972,8 @@ Page({
   },
 
   _drawLoot(ctx, p) {
-    const def = LOOT_DEFS[p.key] || LOOT_DEFS.lingshi
+    if (!p || isLootTempDisabled(p.key)) return
+    const def = LOOT_DEFS[p.key] || LOOT_DEFS.hp
     const bob = Math.sin(p.bob || 0) * 3
     ctx.save()
     ctx.translate(p.x, p.y + bob)
@@ -3573,8 +7068,9 @@ Page({
   /**
    * 水墨剑形：剑刃 + 护手 + 剑柄，带飞白/墨点（尖端朝 +X）
    */
-  _paintInkSword(ctx, color, scale) {
+  _paintInkSword(ctx, color, scale, style) {
     const sc = scale || 1
+    const st = style || 'ink'
     ctx.save()
     ctx.scale(sc, sc)
     ctx.fillStyle = color
@@ -3582,26 +7078,86 @@ Page({
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
 
-    // 剑刃（菱形长锋）
+    // 按境界气质改剑刃轮廓
     ctx.globalAlpha = 0.95
     ctx.beginPath()
-    ctx.moveTo(22, 0)
-    ctx.lineTo(6, 2.6)
-    ctx.lineTo(-8, 2.2)
-    ctx.lineTo(-8, -2.2)
-    ctx.lineTo(6, -2.6)
-    ctx.closePath()
+    if (st === 'leaf') {
+      ctx.moveTo(22, 0)
+      ctx.quadraticCurveTo(10, 5, -6, 2.2)
+      ctx.lineTo(-8, 0)
+      ctx.lineTo(-6, -2.2)
+      ctx.quadraticCurveTo(10, -5, 22, 0)
+    } else if (st === 'wave') {
+      ctx.moveTo(22, 0)
+      ctx.lineTo(8, 3.4)
+      ctx.lineTo(-2, 1.6)
+      ctx.lineTo(-8, 2.4)
+      ctx.lineTo(-8, -2.4)
+      ctx.lineTo(-2, -1.6)
+      ctx.lineTo(8, -3.4)
+      ctx.closePath()
+    } else if (st === 'flame' || st === 'law') {
+      ctx.moveTo(24, 0)
+      ctx.lineTo(12, 3.5)
+      ctx.lineTo(6, 1.5)
+      ctx.lineTo(-2, 3.2)
+      ctx.lineTo(-8, 2)
+      ctx.lineTo(-8, -2)
+      ctx.lineTo(-2, -3.2)
+      ctx.lineTo(6, -1.5)
+      ctx.lineTo(12, -3.5)
+      ctx.closePath()
+    } else if (st === 'magnet') {
+      ctx.moveTo(20, 0)
+      ctx.lineTo(6, 3.4)
+      ctx.lineTo(-8, 3)
+      ctx.lineTo(-8, -3)
+      ctx.lineTo(6, -3.4)
+      ctx.closePath()
+    } else if (st === 'void' || st === 'dao') {
+      ctx.moveTo(23, 0)
+      ctx.lineTo(5, 2)
+      ctx.lineTo(-10, 1.4)
+      ctx.lineTo(-10, -1.4)
+      ctx.lineTo(5, -2)
+      ctx.closePath()
+    } else if (st === 'thunder') {
+      ctx.moveTo(22, 0)
+      ctx.lineTo(10, 2.8)
+      ctx.lineTo(4, 0.8)
+      ctx.lineTo(-2, 3)
+      ctx.lineTo(-8, 1.6)
+      ctx.lineTo(-8, -1.6)
+      ctx.lineTo(-2, -3)
+      ctx.lineTo(4, -0.8)
+      ctx.lineTo(10, -2.8)
+      ctx.closePath()
+    } else if (st === 'spirit' || st === 'origin' || st === 'infant') {
+      ctx.moveTo(21, 0)
+      ctx.lineTo(7, 2.8)
+      ctx.lineTo(-8, 2.4)
+      ctx.lineTo(-8, -2.4)
+      ctx.lineTo(7, -2.8)
+      ctx.closePath()
+    } else {
+      ctx.moveTo(22, 0)
+      ctx.lineTo(6, 2.6)
+      ctx.lineTo(-8, 2.2)
+      ctx.lineTo(-8, -2.2)
+      ctx.lineTo(6, -2.6)
+      ctx.closePath()
+    }
     ctx.fill()
 
-    // 刃中脊（飞白细线）
+    // 刃中脊
     ctx.globalAlpha = 0.35
     ctx.lineWidth = 1
     ctx.beginPath()
     ctx.moveTo(-7, 0)
-    ctx.lineTo(18, 0)
+    ctx.lineTo(st === 'magnet' ? 16 : 18, 0)
     ctx.stroke()
 
-    // 护手
+    // 护手 / 柄（时间剑加环钮，合道加双护手）
     ctx.globalAlpha = 0.9
     ctx.beginPath()
     ctx.moveTo(-8, -5.5)
@@ -3610,12 +7166,22 @@ Page({
     ctx.lineTo(-8, 5.5)
     ctx.closePath()
     ctx.fill()
-    // 护手横档
     ctx.beginPath()
     ctx.ellipse(-6.5, 0, 2.2, 6.2, 0, 0, Math.PI * 2)
     ctx.fill()
+    if (st === 'time' || st === 'origin') {
+      ctx.globalAlpha = 0.7
+      ctx.beginPath()
+      ctx.arc(-6.5, 0, 7.5, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    if (st === 'spirit') {
+      ctx.globalAlpha = 0.55
+      ctx.beginPath()
+      ctx.ellipse(-6.5, 0, 3.2, 8, 0, 0, Math.PI * 2)
+      ctx.stroke()
+    }
 
-    // 剑柄
     ctx.globalAlpha = 0.88
     ctx.beginPath()
     ctx.moveTo(-8, -1.6)
@@ -3625,12 +7191,10 @@ Page({
     ctx.closePath()
     ctx.fill()
 
-    // 柄头
     ctx.beginPath()
     ctx.arc(-19.5, 0, 2.2, 0, Math.PI * 2)
     ctx.fill()
 
-    // 墨点飞白
     const dots = [
       [10, 4.2, 0.9], [14, -3.8, 0.75], [-2, 5.5, 0.7],
       [-12, -4.8, 0.65], [4, -5.2, 0.55]
@@ -3643,7 +7207,6 @@ Page({
       ctx.fill()
     }
 
-    // 尾部淡墨气
     ctx.globalAlpha = 0.18
     ctx.beginPath()
     ctx.ellipse(-22, 0, 4, 2.4, 0, 0, Math.PI * 2)
@@ -3671,7 +7234,16 @@ Page({
       ctx.fill()
       ctx.globalAlpha = 1
     }
-    ctx.drawImage(img, -size / 2, -size / 2, size, size)
+    // 横条多帧图：只画左起一格，避免走动时整页四小怪
+    const iw = img.width || 0
+    const ih = img.height || 0
+    if (iw > 0 && ih > 0 && iw / ih >= 1.6) {
+      const frames = Math.max(2, Math.min(6, Math.round(iw / ih)))
+      const fw = Math.floor(iw / frames)
+      ctx.drawImage(img, 0, 0, fw, ih, -size / 2, -size / 2, size, size)
+    } else {
+      ctx.drawImage(img, -size / 2, -size / 2, size, size)
+    }
     ctx.restore()
   },
 
@@ -3816,6 +7388,38 @@ Page({
       ctx.arc(cx, drawY, size * (0.35 + u * 0.4), ang - 0.55, ang + 0.55)
       ctx.closePath()
       ctx.fill()
+    } else if (atk === 'crescent') {
+      // 魔族：蓄力月牙魔气
+      const mx = cx + Math.cos(ang) * size * (0.3 + u * 0.15)
+      const my = drawY - 4
+      ctx.globalAlpha = 0.75 * fade
+      ctx.fillStyle = '#4c1d95'
+      ctx.beginPath()
+      ctx.arc(mx, my, 10 + u * 8, ang - 1.1, ang + 1.1)
+      ctx.arc(mx + Math.cos(ang) * 7, my + Math.sin(ang) * 7, 7 + u * 5, ang + 1.1, ang - 1.1, true)
+      ctx.closePath()
+      ctx.fill()
+      ctx.strokeStyle = '#c4b5fd'
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+    } else if (atk === 'claw' || atk === 'phase') {
+      ctx.strokeStyle = z.crescentGlow || z.tint || '#86efac'
+      ctx.lineWidth = 2.4
+      ctx.lineCap = 'round'
+      for (let i = -1; i <= 1; i++) {
+        const a0 = ang - 0.55 + u * 1.1 + i * 0.2
+        ctx.globalAlpha = (0.8 - Math.abs(i) * 0.2) * fade
+        ctx.beginPath()
+        ctx.arc(cx, drawY, size * (0.3 + u * 0.15), a0, a0 + 0.5)
+        ctx.stroke()
+      }
+      if (atk === 'phase') {
+        ctx.globalAlpha = 0.4 * fade
+        ctx.strokeStyle = '#67e8f9'
+        ctx.beginPath()
+        ctx.ellipse(cx, drawY, size * 0.35, size * 0.18, ang, 0, Math.PI * 2)
+        ctx.stroke()
+      }
     } else {
       // 腐尸近战：弧形爪痕 + 斩击闪光
       const sweep = ang - 0.7 + u * 1.4
@@ -3871,6 +7475,9 @@ Page({
       ctx.fillRect(0, 0, w, h)
     }
 
+    // 凡人打坐：风雨雷电 / 破晓天气层
+    if (this._isMortalCultivate()) this._drawMortalWeather(ctx)
+
     // 新背景已含山石小路，不再叠画程序风景，避免挡画面
 
     // 黑液毒潭（在角色之下）
@@ -3915,8 +7522,14 @@ Page({
       ctx.restore()
     }
 
+    // 撕裂虚空之缝（人物下层）
+    if (this._voidBlink) this._drawVoidTear(ctx, this._voidBlink)
+
     for (let i = 0; i < this._pickups.length; i++) this._drawLoot(ctx, this._pickups[i])
     for (let i = 0; i < this._swords.length; i++) this._drawFlyingSword(ctx, this._swords[i])
+    this._drawRealmShots(ctx)
+    this._drawFireballs(ctx)
+    this._drawInsectFx(ctx)
 
     for (let zi = 0; zi < this._zombies.length; zi++) {
       const z = this._zombies[zi]
@@ -3964,24 +7577,36 @@ Page({
         : (z.state === 'emerge' ? 1 : (0.4 + 0.6 * emerge)) * (z.alphaMul == null ? 1 : z.alphaMul)
       if ((z.iceT || 0) > 0) ctx.globalAlpha *= 0.9
       const flashOnly = z.flash > 0 ? 'rgba(255,255,255,0.4)' : null
-      this._drawSprite(ctx, img, drawX, drawY, size, flashOnly, null, faceLeft)
+      if (z.isShadowSelf) {
+        this._drawShadowSelfGuardian(ctx, z, drawX, drawY, size, faceLeft, flashOnly)
+      } else if (z.proceduralBody && z.gDraw) {
+        this._drawProceduralCreature(ctx, z, drawX, drawY, size, faceLeft, flashOnly)
+      } else {
+        this._drawSprite(ctx, img, drawX, drawY, size, flashOnly, null, faceLeft)
+        if (z.isRealmGuardian && z.gDraw) this._drawGuardianStyle(ctx, z, drawX, drawY, size, faceLeft)
+      }
       ctx.restore()
-      if (z.typeName && emerge > 0.55 && z.state !== 'dead') {
+      if (z.typeName && emerge > 0.55 && z.state !== 'dead' && (z.proceduralBody || !z.isBoss)) {
         ctx.save()
-        ctx.globalAlpha = 0.92
+        ctx.globalAlpha = 0.9
         ctx.fillStyle = '#f8fafc'
-        ctx.strokeStyle = 'rgba(15,23,42,0.55)'
-        ctx.lineWidth = 3
-        ctx.font = 'bold 10px sans-serif'
+        ctx.font = z.isBoss ? 'bold 12px "KaiTi", "STKaiti", serif' : 'bold 10px sans-serif'
         ctx.textAlign = 'center'
-        ctx.strokeText(z.typeName, drawX, drawY - size * 0.48)
         ctx.fillText(z.typeName, drawX, drawY - size * 0.48)
         ctx.restore()
       }
       if (attacking || z.atkFx) this._drawMonsterAttackFx(ctx, z, drawY, size, drawX)
+      if ((z.isRealmGuardian || z.isDemon || z.isShadowSelf) && z.state !== 'dead' && emerge > 0.4) {
+        if (z.isDemon || z.isShadowSelf) this._drawDemonAura(ctx, z, drawX, drawY, size)
+        else this._drawGuardianAura(ctx, z, drawX, drawY, size)
+      }
       this._drawZombieElementFx(ctx, z, drawY)
 
-      const hideBar = z.state === 'emerge' || (this._gengFx && (this._gengFx.phase === 'suck' || this._gengFx.phase === 'zap' || this._gengFx.phase === 'end'))
+      const hideBar = z.state === 'emerge' || (this._gengFx && (
+        this._gengFx.phase === 'suck' || this._gengFx.phase === 'zap' || this._gengFx.phase === 'end' ||
+        this._gengFx.phase === 'pierce' || this._gengFx.phase === 'plant' || this._gengFx.phase === 'recall' ||
+        this._gengFx.phase === 'pull' || this._gengFx.phase === 'point' || this._gengFx.phase === 'vanish'
+      ))
       if (emerge > 0.5 && z.state !== 'dead' && !hideBar) {
         if (z.isBoss) {
           this._drawBossHpBars(ctx, z, drawY, size)
@@ -3995,19 +7620,12 @@ Page({
         }
       }
 
-      if (z === this._focusZombie && z.state !== 'dead') {
-        const ringR = z.isBoss ? size * 0.42 : (z.r + 10)
-        ctx.strokeStyle = '#fde047'
-        ctx.lineWidth = z.isBoss ? 2.5 : 2
-        ctx.globalAlpha = 0.9
-        ctx.beginPath()
-        ctx.arc(drawX, drawY, ringR, 0, Math.PI * 2)
-        ctx.stroke()
-        ctx.globalAlpha = 1
-      }
+      // 不再画锁定黄圈：每境一只境主时会常驻，看起来像怪物外框
     }
 
     this._drawGooShots(ctx)
+    this._drawDemonCrescents(ctx)
+    this._drawEnemySwords(ctx)
     this._drawGroundSwords(ctx)
 
     // 元婴剑侍（画在主角下层，技能帧带剑气）
@@ -4019,25 +7637,42 @@ Page({
     // 升级演出中隐藏本体；环剑先画在正后方，再画人物盖住
     const upgrading = !!(this._spiritFx || this._breakFx)
     const mortal = this._isMortalCultivate()
-    if (!this._gengFx && !upgrading && !mortal) {
-      if (!this._perfect) this._drawOrbitSwords(ctx, realm)
-      this._drawRideSword(ctx, realm)
+    const voidHidden = !!(this._voidBlink && (this._voidBlink.hidden || (this._voidBlink.t > 0.5 && this._voidBlink.t < 1.12)))
+    if (!this._gengFx && !upgrading && !mortal && !voidHidden) {
+      if (!this._perfect && realmUsesSwords(realm.lv)) this._drawOrbitSwords(ctx, realm)
+      if (realmUsesSwords(realm.lv)) this._drawRideSword(ctx, realm)
     }
     if (!upgrading) {
       if (mortal) this._drawMortalQiAura(ctx)
       else if (this._meditating) this._drawMeditateAura(ctx)
-      const hurtFlash = this._playerHurtT > 0 ? 'rgba(255,255,255,0.4)' : null
-      const size = mortal ? 96 : 76
-      const hide = (this._playerHideT || 0) > 0
-      ctx.save()
-      if (hide) ctx.globalAlpha = 0.32 + Math.sin((this._animT || 0) * 8) * 0.08
-      // 扔符时人物略前倾并抬手
-      const throwPose = this._fuThrow && this._fuThrow.t < (this._fuThrow.wind || 0.28)
-      const py = this._playerY - (mortal ? 10 : 8) - (throwPose ? 4 : 0)
-      this._drawSprite(ctx, heroImg, this._playerX + (throwPose ? 3 : 0), py, size * (throwPose ? 1.04 : 1), hurtFlash, null)
-      if (throwPose) this._drawThrowFuHand(ctx)
-      ctx.restore()
-      if (!this._perfectFx) this._drawRealmBadge(ctx, realm)
+      this._drawQingyuanShield(ctx)
+      const pose = this._voidBlinkDrawPose()
+      if (!(pose.hide || (pose.alpha != null && pose.alpha < 0.04))) {
+        const hurtFlash = this._playerHurtT > 0 ? 'rgba(255,255,255,0.4)' : null
+        // 凡人：单帧定姿 + 极缓呼吸缩放（非分镜轮播）
+        let size = mortal ? (96 + Math.sin((this._animT || 0) * 1.15) * 2.2) : 76
+        if (this._gengFx && this._gengFx.style === 'avatar' && this._gengFx.scale) {
+          size *= this._gengFx.scale
+        }
+        const hide = (this._playerHideT || 0) > 0
+        ctx.save()
+        let alpha = 1
+        if (hide) alpha = 0.32 + Math.sin((this._animT || 0) * 8) * 0.08
+        if (pose.alpha != null) alpha *= pose.alpha
+        ctx.globalAlpha = alpha
+        // 扔符时人物略前倾并抬手
+        const throwPose = this._fuThrow && this._fuThrow.t < (this._fuThrow.wind || 0.28)
+        let drawX = pose.x != null ? pose.x : this._playerX
+        let drawY = (pose.y != null ? pose.y : this._playerY) - (mortal ? 10 : 8) - (throwPose ? 4 : 0)
+        if (pose.suckU != null && pose.suckU > 0) {
+          drawX = drawX + (pose.suckX - drawX) * pose.suckU * 0.85
+          drawY = drawY + (pose.suckY - drawY) * pose.suckU * 0.85
+        }
+        this._drawSprite(ctx, heroImg, drawX + (throwPose ? 3 : 0), drawY, size * (throwPose ? 1.04 : 1) * (pose.suckU ? 1 - pose.suckU * 0.35 : 1), hurtFlash, null)
+        if (throwPose) this._drawThrowFuHand(ctx)
+        ctx.restore()
+        if (!this._perfectFx && !this._voidBlink) this._drawRealmBadge(ctx, realm)
+      }
     }
     this._drawFuThrow(ctx)
 
@@ -4056,6 +7691,7 @@ Page({
     if (this._gengFx) this._drawGengFormation(ctx)
 
     if (this._spiritFx) this._drawSpiritDomain(ctx, this._spiritFx)
+    if (this._qiVortexFx) this._drawQiVortex(ctx, this._qiVortexFx)
     if (this._breakFx) this._drawBreakthrough(ctx, this._breakFx)
     if (this._perfectFx || this._perfect) this._drawPerfect(ctx)
 
@@ -4274,37 +7910,8 @@ Page({
     ctx.restore()
   },
 
-  _drawGroundSwords(ctx) {
-    const list = this._groundSwords || []
-    for (let i = 0; i < list.length; i++) {
-      const s = list[i]
-      const g = Math.max(0.08, Math.min(1, s.grow || 0))
-      ctx.save()
-      ctx.translate(s.x, s.y)
-      // 土堆
-      ctx.fillStyle = 'rgba(120, 80, 40, 0.55)'
-      ctx.beginPath()
-      ctx.ellipse(0, 6, 12, 5, 0, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.save()
-      ctx.beginPath()
-      ctx.rect(-16, -40 * g, 32, 40 * g)
-      ctx.clip()
-      ctx.translate(0, 18 - 36 * g)
-      ctx.rotate(-Math.PI / 2)
-      this._paintInkSword(ctx, '#fde68a', 0.85 * (0.7 + 0.3 * g))
-      ctx.restore()
-      if (g >= 1) {
-        ctx.globalAlpha = 0.4 + Math.sin((this._animT || 0) * 6) * 0.15
-        ctx.strokeStyle = '#fef08a'
-        ctx.lineWidth = 1.5
-        ctx.beginPath()
-        ctx.arc(0, -8, 16, 0, Math.PI * 2)
-        ctx.stroke()
-      }
-      ctx.restore()
-    }
-  },
+  /** 出土剑绘制：暂时关闭（勿再写完整实现，后写会覆盖前面空函数） */
+  _drawGroundSwords() {},
 
   /** 山峰 / 河流 / 湖泊 */
   _drawScenery(ctx) {
@@ -4438,13 +8045,110 @@ Page({
     }
   },
 
-  /** 凡人打坐分镜（循环） */
+  /** 凡人打坐：单帧定姿（一个动作），仅极缓呼吸感由绘制缩放体现 */
   _mortalMeditateFrame() {
     const imgs = this._mortalMeditateImgs || []
     if (!imgs.length) return this._playerImg
-    const fps = 2.4
-    const idx = Math.floor((this._animT || 0) * fps) % imgs.length
-    return imgs[idx] || imgs[0] || this._playerImg
+    return imgs[0] || this._playerImg
+  },
+
+  /** 凡人打坐天气层：风暴天图 + 风线/雨丝/雷电/破晓 */
+  _drawMortalWeather(ctx) {
+    const w = this._w
+    const h = this._h
+    const ratio = Math.min(1, (this._qiAbsorb || 0) / MORTAL_QI_NEED)
+    const mw = this._mortalWeather || { rain: [], wind: [], flash: 0, bolt: null }
+    ctx.save()
+
+    // 天空图：前中期风暴，后期渐入破晓
+    const skyH = h * 0.58
+    const storm = this._weatherStormImg
+    const dawn = this._weatherDawnImg
+    if (storm) {
+      ctx.globalAlpha = 0.35 + Math.min(0.45, ratio * 0.55)
+      ctx.drawImage(storm, 0, 0, w, skyH)
+    } else {
+      ctx.globalAlpha = 0.25 + ratio * 0.35
+      const g = ctx.createLinearGradient(0, 0, 0, skyH)
+      g.addColorStop(0, '#0f172a')
+      g.addColorStop(0.55, '#1e293b')
+      g.addColorStop(1, 'rgba(30,41,59,0)')
+      ctx.fillStyle = g
+      ctx.fillRect(0, 0, w, skyH)
+    }
+    if (dawn && ratio > 0.78) {
+      ctx.globalAlpha = Math.min(0.75, (ratio - 0.78) / 0.22 * 0.75)
+      ctx.drawImage(dawn, 0, 0, w, skyH)
+    }
+
+    // 暗色罩（雷暴前更深）
+    ctx.globalAlpha = 0.12 + Math.min(0.28, ratio * 0.32) - (ratio > 0.88 ? (ratio - 0.88) * 1.2 : 0)
+    ctx.fillStyle = '#020617'
+    ctx.fillRect(0, 0, w, h)
+
+    // 风
+    ctx.globalAlpha = 0.18 + ratio * 0.22
+    ctx.strokeStyle = 'rgba(226,232,240,0.55)'
+    ctx.lineWidth = 1.2
+    for (let i = 0; i < (mw.wind || []).length; i++) {
+      const p = mw.wind[i]
+      ctx.beginPath()
+      ctx.moveTo(p.x, p.y)
+      ctx.lineTo(p.x + p.len, p.y + 2)
+      ctx.stroke()
+    }
+
+    // 雨
+    if (ratio >= 0.35) {
+      ctx.globalAlpha = 0.35 + ratio * 0.35
+      ctx.strokeStyle = 'rgba(186,230,253,0.7)'
+      ctx.lineWidth = 1
+      for (let i = 0; i < (mw.rain || []).length; i++) {
+        const r = mw.rain[i]
+        ctx.beginPath()
+        ctx.moveTo(r.x, r.y)
+        ctx.lineTo(r.x + 3, r.y + r.len)
+        ctx.stroke()
+      }
+    }
+
+    // 闪电
+    if (mw.bolt && mw.bolt.segs && mw.bolt.segs.length) {
+      const segs = mw.bolt.segs
+      ctx.globalAlpha = Math.max(0.2, mw.bolt.life / 0.28)
+      ctx.strokeStyle = '#e0f2fe'
+      ctx.lineWidth = 2.5
+      ctx.shadowColor = '#67e8f9'
+      ctx.shadowBlur = 12
+      ctx.beginPath()
+      ctx.moveTo(segs[0].x, segs[0].y)
+      for (let i = 1; i < segs.length; i++) ctx.lineTo(segs[i].x, segs[i].y)
+      ctx.stroke()
+      ctx.strokeStyle = '#fef9c3'
+      ctx.lineWidth = 1.2
+      ctx.stroke()
+      ctx.shadowBlur = 0
+    }
+
+    // 闪白
+    if ((mw.flash || 0) > 0) {
+      ctx.globalAlpha = Math.min(0.55, mw.flash * 3.5)
+      ctx.fillStyle = '#f8fafc'
+      ctx.fillRect(0, 0, w, h)
+    }
+
+    // 破晓金光
+    if (ratio > 0.85) {
+      const u = (ratio - 0.85) / 0.15
+      ctx.globalAlpha = 0.15 + u * 0.35
+      const gg = ctx.createRadialGradient(w * 0.5, h * 0.12, 8, w * 0.5, h * 0.2, w * 0.55)
+      gg.addColorStop(0, 'rgba(254,243,199,0.9)')
+      gg.addColorStop(0.4, 'rgba(251,191,36,0.35)')
+      gg.addColorStop(1, 'rgba(251,191,36,0)')
+      ctx.fillStyle = gg
+      ctx.fillRect(0, 0, w, h * 0.55)
+    }
+    ctx.restore()
   },
 
   /** 天地灵气入体：丹田漩涡 + 环绕光带 */
@@ -4496,8 +8200,9 @@ Page({
     const ratio = Math.max(0, Math.min(1, this._hp / (this._maxHp || 1)))
     const qiRatio = Math.max(0, Math.min(1, (this._lingQi || 0) / (this._maxLingQi || 1)))
     ctx.save()
+    const panelH = canSpaceBlink(realm.lv) ? thick + 56 : thick + 40
     ctx.fillStyle = 'rgba(15,23,42,0.55)'
-    ctx.fillRect(x - 4, y - 14, barW + 8, thick + 40)
+    ctx.fillRect(x - 4, y - 14, barW + 8, panelH)
     ctx.fillStyle = '#e2e8f0'
     ctx.font = '11px sans-serif'
     ctx.textAlign = 'left'
@@ -4525,10 +8230,28 @@ Page({
     ctx.fillStyle = '#f8fafc'
     ctx.font = '10px sans-serif'
     ctx.fillText(Math.floor(this._lingQi || 0) + '/' + (this._maxLingQi || 0), x + 4, qy + thick - 1)
+
+    if (canSpaceBlink(realm.lv)) {
+      const sy = qy + thick + 14
+      const spRatio = Math.max(0, Math.min(1, (this._spaceForce || 0) / SPACE_FORCE_MAX))
+      const full = spRatio >= 0.995
+      ctx.fillStyle = '#e2e8f0'
+      ctx.font = '11px sans-serif'
+      ctx.fillText(full ? '空间 · 可撕裂虚空' : '空间之力', x, sy - 2)
+      ctx.fillStyle = '#0f172a'
+      ctx.fillRect(x, sy + 2, barW, thick - 1)
+      ctx.fillStyle = full ? '#22d3ee' : '#67e8f9'
+      ctx.fillRect(x, sy + 2, barW * spRatio, thick - 1)
+      ctx.strokeStyle = full ? 'rgba(34,211,238,0.8)' : 'rgba(255,255,255,0.35)'
+      ctx.strokeRect(x, sy + 2, barW, thick - 1)
+      ctx.fillStyle = '#f8fafc'
+      ctx.font = '10px sans-serif'
+      ctx.fillText(Math.floor(this._spaceForce || 0) + '/' + SPACE_FORCE_MAX, x + 4, sy + thick - 1)
+    }
     ctx.restore()
   },
 
-  /** 经验条 + 尸丹条；凡人阶段显示灵气入体进度 */
+  /** 经验条 + 战意条；凡人阶段显示灵气入体进度 */
   _drawExpAndDanBars(ctx, realm) {
     const w = this._w
     const barW = Math.min(148, w * 0.4)
@@ -4538,27 +8261,37 @@ Page({
     if (this._isMortalCultivate()) {
       const qi = this._qiAbsorb || 0
       const ratio = Math.min(1, qi / MORTAL_QI_NEED)
-      ctx.fillStyle = 'rgba(15,23,42,0.55)'
-      ctx.fillRect(x - 2, y - 12, barW + 8, 36)
+      const quote = MORTAL_MEDITATE_QUOTE
+      const panelW = Math.min(w - 20, Math.max(barW + 24, 220))
+      ctx.fillStyle = 'rgba(15,23,42,0.6)'
+      ctx.fillRect(x - 2, y - 14, panelW, 58)
       ctx.fillStyle = '#a5f3fc'
       ctx.font = '10px sans-serif'
       ctx.textAlign = 'left'
-      ctx.fillText('天地灵气入体 →炼气', x, y)
+      ctx.fillText('凡人修仙 · 灵气入体', x, y)
+      // 旁白紧挨「凡人修仙」标题右侧（窄屏折到下一行）
+      ctx.fillStyle = '#fde68a'
+      ctx.font = '9px "KaiTi", "STKaiti", serif'
+      if (w >= 380) {
+        ctx.fillText(quote, x + 118, y)
+      } else {
+        ctx.fillText(quote, x, y + 28)
+      }
       ctx.fillStyle = '#0f172a'
-      ctx.fillRect(x, y + 4, barW, 9)
+      ctx.fillRect(x, y + 6, barW, 9)
       ctx.fillStyle = '#22d3ee'
-      ctx.fillRect(x, y + 4, barW * ratio, 9)
+      ctx.fillRect(x, y + 6, barW * ratio, 9)
       ctx.strokeStyle = 'rgba(255,255,255,0.3)'
-      ctx.strokeRect(x, y + 4, barW, 9)
+      ctx.strokeRect(x, y + 6, barW, 9)
       ctx.fillStyle = '#f8fafc'
       ctx.font = '9px sans-serif'
-      ctx.fillText(Math.floor(qi) + '/' + MORTAL_QI_NEED, x + 2, y + 12)
+      ctx.fillText(Math.floor(qi) + '/' + MORTAL_QI_NEED, x + 2, y + 14)
       ctx.restore()
       return
     }
-    const exp = realmExpProgress(this._kills || 0, this._realmLv || 1)
-    const dan = this._corpseDan || 0
-    const danNeed = CORPSE_DAN_NEED
+    const exp = realmExpProgress(this._kills || 0, this._realmLv || 1, this._stageKills || 0)
+    const dan = Math.floor(this._corpseDan || 0)
+    const danNeed = WAR_INTENT_NEED
     ctx.fillStyle = 'rgba(15,23,42,0.55)'
     ctx.fillRect(x - 2, y - 12, barW + 8, 48)
 
@@ -4566,34 +8299,507 @@ Page({
     ctx.font = '10px sans-serif'
     ctx.textAlign = 'left'
     let expLabel = exp.maxed ? '经验 大圆满' : ('经验 →' + exp.nextName)
-    if (exp.awaitBoss || this._bossActive) expLabel = this._bossActive ? '击败劫尸突破' : ('劫尸将至 →' + exp.nextName)
+    const combat = getRealmCombat(this._realmLv)
+    const guardianMode = isGuardianCombatRealm(this._realmLv)
+    if (guardianMode && combat) {
+      expLabel = this._bossActive
+        ? ('击败' + (combat.guardianName || '境主') + '破境')
+        : ((combat.guardianName || '境主') + '将至 →' + exp.nextName)
+    } else if (exp.awaitMinor) {
+      expLabel = '灵气将满 · 漩涡入丹 →' + exp.nextName
+    }
     ctx.fillText(expLabel, x, y)
     ctx.fillStyle = '#0f172a'
     ctx.fillRect(x, y + 4, barW, 7)
-    ctx.fillStyle = (exp.awaitBoss || this._bossActive) ? '#fbbf24' : '#38bdf8'
-    ctx.fillRect(x, y + 4, barW * exp.ratio, 7)
+    const barRatio = guardianMode ? 1 : exp.ratio
+    ctx.fillStyle = (guardianMode || exp.awaitBoss || this._bossActive || exp.awaitMinor) ? '#fbbf24' : '#38bdf8'
+    ctx.fillRect(x, y + 4, barW * barRatio, 7)
     ctx.strokeStyle = 'rgba(255,255,255,0.3)'
     ctx.strokeRect(x, y + 4, barW, 7)
     ctx.fillStyle = '#f8fafc'
     ctx.font = '9px sans-serif'
-    ctx.fillText(exp.maxed ? 'MAX' : (exp.cur + '/' + exp.need), x + 2, y + 10)
+    ctx.fillText(
+      guardianMode ? (combat.ultName || '境主战') : (exp.maxed ? 'MAX' : (exp.cur + '/' + exp.need)),
+      x + 2,
+      y + 10
+    )
 
     ctx.fillStyle = '#e2e8f0'
     ctx.font = '10px sans-serif'
-    ctx.fillText('尸丹 ' + dan + '/' + danNeed, x, y + 26)
+    ctx.fillText('勇气 ' + dan + '/' + danNeed, x, y + 26)
     ctx.fillStyle = '#0f172a'
     ctx.fillRect(x, y + 30, barW, 7)
-    ctx.fillStyle = '#c4b5fd'
+    ctx.fillStyle = '#fbbf24'
     ctx.fillRect(x, y + 30, barW * Math.min(1, dan / danNeed), 7)
     ctx.strokeStyle = 'rgba(255,255,255,0.3)'
     ctx.strokeRect(x, y + 30, barW, 7)
     ctx.restore()
   },
 
-  /** 大庚剑阵：身上汇聚 → 飞向中央围圆 + 雷丝（约 10s） */
+  /** 大庚剑阵绘制 */
+  /** 炼气大招绘制：残影 + 斩线 */
+  _drawBlinkJianUlt(ctx, fx) {
+    ctx.save()
+    ctx.fillStyle = '#bbf7d0'
+    ctx.font = 'bold 18px "KaiTi", "STKaiti", serif'
+    ctx.textAlign = 'center'
+    ctx.globalAlpha = 0.9
+    ctx.fillText(fx.title || '眨眼剑法', this._w * 0.5, 72)
+    const ghosts = fx.ghosts || []
+    for (let i = 0; i < ghosts.length; i++) {
+      const g = ghosts[i]
+      ctx.globalAlpha = Math.max(0.15, g.life * 1.4)
+      ctx.save()
+      ctx.translate(g.x, g.y)
+      ctx.rotate(g.a || 0)
+      if (g.slash) {
+        ctx.strokeStyle = '#f0fdf4'
+        ctx.lineWidth = 3
+        ctx.beginPath()
+        ctx.moveTo(-6, 0)
+        ctx.lineTo(36, 0)
+        ctx.stroke()
+      } else {
+        ctx.fillStyle = 'rgba(134,239,172,0.55)'
+        ctx.beginPath()
+        ctx.ellipse(0, 0, 14, 22, 0, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.restore()
+    }
+    ctx.restore()
+  },
+
+  /** 筑基大招：五行阵环 + 剑芒 */
+  _drawWuxingArrayUlt(ctx, fx) {
+    const tx = fx.targetX
+    const ty = fx.targetY
+    const fade = fx.phase === 'end' ? Math.max(0, 1 - fx.t / fx.endDur) : 1
+    ctx.save()
+    ctx.globalAlpha = 0.92 * fade
+    ctx.fillStyle = '#e0f2fe'
+    ctx.font = 'bold 18px "KaiTi", "STKaiti", serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(fx.title || '颠倒五行阵', tx, ty - fx.radius - 28)
+    ctx.globalAlpha = 0.35 * fade
+    ctx.strokeStyle = '#67e8f9'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(tx, ty, fx.radius, 0, Math.PI * 2)
+    ctx.stroke()
+    for (let i = 0; i < (fx.petals || []).length; i++) {
+      const p = fx.petals[i]
+      const x = tx + Math.cos(p.a) * fx.radius
+      const y = ty + Math.sin(p.a) * fx.radius * 0.72
+      ctx.globalAlpha = 0.75 * fade
+      ctx.fillStyle = p.color
+      ctx.beginPath()
+      ctx.arc(x, y, 7, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.moveTo(tx, ty)
+      ctx.lineTo(x, y)
+      ctx.strokeStyle = p.color
+      ctx.globalAlpha = 0.35 * fade
+      ctx.stroke()
+      if (p.beamU > 0) {
+        ctx.globalAlpha = 0.85 * p.beamU * fade
+        ctx.strokeStyle = '#f8fafc'
+        ctx.lineWidth = 3
+        ctx.beginPath()
+        ctx.moveTo(x, y)
+        ctx.lineTo(tx, ty)
+        ctx.stroke()
+      }
+    }
+    // 护盾环（人物）
+    if ((this._qingyuanShield || 0) > 0) {
+      ctx.globalAlpha = 0.35 + Math.sin((this._animT || 0) * 6) * 0.1
+      ctx.strokeStyle = '#67e8f9'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.arc(this._playerX, this._playerY - 8, 34, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    ctx.restore()
+  },
+
+  /** 结丹大招：剑影环绕 + 噬金虫 */
+  _drawJianyingUlt(ctx, fx) {
+    const fade = fx.phase === 'end' ? Math.max(0, 1 - fx.t / fx.endDur) : 1
+    ctx.save()
+    ctx.globalAlpha = 0.92 * fade
+    ctx.fillStyle = '#fef3c7'
+    ctx.font = 'bold 18px "KaiTi", "STKaiti", serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(fx.title || '剑影分光', fx.targetX, fx.targetY - 70)
+    for (let i = 0; i < (fx.shadows || []).length; i++) {
+      const s = fx.shadows[i]
+      ctx.save()
+      ctx.translate(s.x, s.y)
+      ctx.rotate(s.a + (this._animT || 0) * 2)
+      ctx.globalAlpha = 0.7 * fade
+      this._paintInkSword(ctx, '#fbbf24', 0.85)
+      ctx.restore()
+    }
+    for (let i = 0; i < (fx.insects || []).length; i++) {
+      const bug = fx.insects[i]
+      ctx.globalAlpha = Math.max(0.2, bug.life * 2) * fade
+      ctx.fillStyle = '#f59e0b'
+      ctx.beginPath()
+      ctx.arc(bug.x, bug.y, 2.5, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.restore()
+  },
+
+  _drawYuanciUlt(ctx, fx) {
+    const fade = fx.phase === 'end' ? Math.max(0, 1 - fx.t / fx.endDur) : 1
+    const t = this._animT || 0
+    ctx.save()
+    ctx.globalAlpha = 0.9 * fade
+    ctx.fillStyle = '#a5f3fc'
+    ctx.font = 'bold 18px "KaiTi", "STKaiti", serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(fx.title || '元磁神光', fx.targetX, fx.targetY - 64)
+    // 多层磁环 + 扭曲线
+    for (let i = 0; i < 4; i++) {
+      const r = 22 + i * 14 + Math.sin(t * 7 + i) * 4
+      ctx.strokeStyle = i % 2 ? '#22d3ee' : '#67e8f9'
+      ctx.lineWidth = 2.2 - i * 0.3
+      ctx.globalAlpha = (0.55 - i * 0.08) * fade
+      ctx.beginPath()
+      ctx.ellipse(fx.targetX, fx.targetY, r, r * 0.55, t + i * 0.4, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    // 神光束（渐变宽带）
+    ctx.save()
+    const dx = fx.targetX - this._playerX
+    const dy = fx.targetY - (this._playerY - 8)
+    const ang = Math.atan2(dy, dx)
+    const len = Math.sqrt(dx * dx + dy * dy)
+    ctx.translate(this._playerX, this._playerY - 8)
+    ctx.rotate(ang)
+    const g = ctx.createLinearGradient(0, 0, len, 0)
+    g.addColorStop(0, 'rgba(103,232,249,0)')
+    g.addColorStop(0.3, 'rgba(34,211,238,0.55)')
+    g.addColorStop(1, 'rgba(165,243,252,0.85)')
+    ctx.fillStyle = g
+    ctx.globalAlpha = 0.7 * fade
+    ctx.beginPath()
+    ctx.moveTo(0, -3)
+    ctx.lineTo(len, -10)
+    ctx.lineTo(len, 10)
+    ctx.lineTo(0, 3)
+    ctx.closePath()
+    ctx.fill()
+    ctx.restore()
+    ctx.restore()
+  },
+
+  _drawXuantianUlt(ctx, fx) {
+    const fade = fx.phase === 'end' ? Math.max(0, 1 - fx.t / fx.endDur) : 1
+    const midX = (fx.fromX + fx.targetX) * 0.5
+    const midY = (fx.fromY + fx.targetY) * 0.5
+    const dist = Math.max(40, Math.sqrt(
+      (fx.targetX - fx.fromX) * (fx.targetX - fx.fromX) +
+      (fx.targetY - fx.fromY) * (fx.targetY - fx.fromY)
+    ))
+    ctx.save()
+    ctx.globalAlpha = 0.95 * fade
+    ctx.fillStyle = '#e2e8f0'
+    ctx.font = 'bold 18px "KaiTi", "STKaiti", serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(fx.title || '玄天斩灵剑', this._w * 0.5, 72)
+
+    // 蓄力：周身银丝螺旋
+    for (let i = 0; i < (fx.threads || []).length; i++) {
+      const th = fx.threads[i]
+      ctx.globalAlpha = Math.max(0.15, th.life * 2.2) * fade
+      ctx.strokeStyle = '#e2e8f0'
+      ctx.lineWidth = 1.4
+      ctx.beginPath()
+      ctx.arc(th.x, th.y, th.r || 6, 0, Math.PI * 1.6)
+      ctx.stroke()
+    }
+
+    if (fx.phase === 'slash' || fx.phase === 'after') {
+      const arcs = fx.arcs || []
+      for (let i = 0; i < arcs.length; i++) {
+        const arc = arcs[i]
+        const localT = fx.phase === 'slash' ? fx.t - arc.delay : 1
+        if (localT < 0) continue
+        const u = fx.phase === 'after' ? 1 : Math.min(1, localT / 0.28)
+        const ang = (fx.baseAng || 0) + (arc.offset || 0)
+        ctx.save()
+        ctx.translate(midX, midY)
+        ctx.rotate(ang)
+        // 宽剑气带
+        ctx.globalAlpha = (0.25 + 0.45 * (1 - Math.abs(u - 0.55))) * fade
+        const grd = ctx.createLinearGradient(-dist * 0.55, 0, dist * 0.55, 0)
+        grd.addColorStop(0, 'rgba(148,163,184,0)')
+        grd.addColorStop(0.35, 'rgba(248,250,252,0.85)')
+        grd.addColorStop(0.65, 'rgba(226,232,240,0.9)')
+        grd.addColorStop(1, 'rgba(148,163,184,0)')
+        ctx.fillStyle = grd
+        const half = (arc.width || 4) * (1.2 + u * 2.2)
+        ctx.beginPath()
+        ctx.moveTo(-dist * 0.55, -half)
+        ctx.quadraticCurveTo(0, -half * (1.6 + (arc.span || 1)), dist * 0.55, -half * 0.4)
+        ctx.lineTo(dist * 0.55, half * 0.4)
+        ctx.quadraticCurveTo(0, half * (1.6 + (arc.span || 1)), -dist * 0.55, half)
+        ctx.closePath()
+        ctx.fill()
+        // 刃心亮线
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = i === 0 ? 2.6 : 1.6
+        ctx.shadowColor = '#cbd5e1'
+        ctx.shadowBlur = 12
+        ctx.globalAlpha = 0.9 * fade * u
+        ctx.beginPath()
+        ctx.moveTo(-dist * 0.5, 0)
+        ctx.quadraticCurveTo(0, (i - 1) * 10, dist * 0.5, 0)
+        ctx.stroke()
+        ctx.shadowBlur = 0
+        // 斩痕残影剑
+        if (u > 0.35) {
+          ctx.globalAlpha = 0.55 * fade
+          ctx.translate(dist * 0.15 * (u - 0.35), (i - 1) * 6)
+          this._paintInkSword(ctx, '#f8fafc', 0.75 + (i === 0 ? 0.25 : 0), 'void')
+        }
+        ctx.restore()
+      }
+      // 命中裂空环
+      ctx.globalAlpha = 0.4 * fade
+      ctx.strokeStyle = '#94a3b8'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.ellipse(fx.targetX, fx.targetY, 28 + (fx.t || 0) * 20, 12, fx.baseAng || 0, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+
+    for (let i = 0; i < (fx.sparks || []).length; i++) {
+      const sp = fx.sparks[i]
+      ctx.globalAlpha = Math.max(0, sp.life * 2) * fade
+      ctx.fillStyle = '#f1f5f9'
+      ctx.beginPath()
+      ctx.arc(sp.x, sp.y, 2.2, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.restore()
+  },
+
+  _drawAvatarUlt(ctx, fx) {
+    const fade = fx.phase === 'end' ? Math.max(0, 1 - fx.t / fx.endDur) : 1
+    const t = this._animT || 0
+    const px = this._playerX
+    const py = this._playerY - 8
+    ctx.save()
+    ctx.globalAlpha = 0.9 * fade
+    ctx.fillStyle = fx.kind === 'niepan' ? '#fda4af' : '#ddd6fe'
+    ctx.font = 'bold 18px "KaiTi", "STKaiti", serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(fx.title || '惊蛰十二变', px, py - 62)
+    const sc = fx.scale || 1.3
+    // 真灵法相剪影
+    ctx.globalAlpha = 0.35 * fade
+    ctx.fillStyle = fx.kind === 'niepan' ? 'rgba(251,113,133,0.45)' : 'rgba(167,139,250,0.45)'
+    ctx.beginPath()
+    ctx.moveTo(px, py - 40 * sc)
+    ctx.lineTo(px + 28 * sc, py + 20 * sc)
+    ctx.lineTo(px - 28 * sc, py + 20 * sc)
+    ctx.closePath()
+    ctx.fill()
+    ctx.strokeStyle = fx.kind === 'niepan' ? '#fb7185' : '#a78bfa'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.arc(px, py, 30 * sc, 0, Math.PI * 2)
+    ctx.stroke()
+    const n = fx.kind === 'niepan' ? 8 : 12
+    for (let i = 0; i < n; i++) {
+      const a = (Math.PI * 2 * i) / n + t * (fx.kind === 'niepan' ? 2.2 : 1.4)
+      const rr = 34 * sc + Math.sin(t * 5 + i) * 4
+      ctx.beginPath()
+      ctx.arc(px + Math.cos(a) * rr, py + Math.sin(a) * rr * 0.65, fx.kind === 'niepan' ? 5 : 3.5, 0, Math.PI * 2)
+      ctx.fillStyle = fx.kind === 'niepan' ? '#fb7185' : '#c4b5fd'
+      ctx.globalAlpha = 0.55 * fade
+      ctx.fill()
+    }
+    ctx.restore()
+  },
+
+  _drawTimeLawUlt(ctx, fx) {
+    const fade = fx.phase === 'end' ? Math.max(0, 1 - fx.t / fx.endDur) : 1
+    const t = this._animT || 0
+    ctx.save()
+    ctx.globalAlpha = 0.9 * fade
+    ctx.fillStyle = '#fef08a'
+    ctx.font = 'bold 18px "KaiTi", "STKaiti", serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(fx.title || '时间法则', fx.targetX, fx.targetY - 78)
+    // 钟盘灵域
+    ctx.globalAlpha = 0.22 * fade
+    ctx.fillStyle = 'rgba(253,230,138,0.4)'
+    ctx.beginPath()
+    ctx.arc(fx.targetX, fx.targetY, 62, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = fx.kind === 'shennian' ? '#e7e5e4' : '#fde68a'
+    ctx.lineWidth = 2
+    ctx.globalAlpha = 0.7 * fade
+    ctx.beginPath()
+    ctx.arc(fx.targetX, fx.targetY, 52, 0, Math.PI * 2)
+    ctx.stroke()
+    for (let i = 0; i < 12; i++) {
+      const a = (Math.PI * 2 * i) / 12
+      ctx.beginPath()
+      ctx.moveTo(fx.targetX + Math.cos(a) * 44, fx.targetY + Math.sin(a) * 44)
+      ctx.lineTo(fx.targetX + Math.cos(a) * 52, fx.targetY + Math.sin(a) * 52)
+      ctx.stroke()
+    }
+    // 时针
+    ctx.lineWidth = 2.5
+    ctx.beginPath()
+    ctx.moveTo(fx.targetX, fx.targetY)
+    ctx.lineTo(fx.targetX + Math.cos(t * 1.2) * 30, fx.targetY + Math.sin(t * 1.2) * 30)
+    ctx.stroke()
+    ctx.lineWidth = 1.6
+    ctx.beginPath()
+    ctx.moveTo(fx.targetX, fx.targetY)
+    ctx.lineTo(fx.targetX + Math.cos(t * 3.5) * 40, fx.targetY + Math.sin(t * 3.5) * 40)
+    ctx.stroke()
+    for (let i = 0; i < (fx.pillars || []).length; i++) {
+      const p = fx.pillars[i]
+      const x = fx.targetX + Math.cos(p.a) * 52 * p.u
+      const y = fx.targetY + Math.sin(p.a) * 36 * p.u
+      ctx.globalAlpha = 0.55 * fade * p.u
+      ctx.strokeStyle = fx.kind === 'shennian' ? '#e7e5e4' : '#fde68a'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(x, y + 28)
+      ctx.lineTo(x, y - 40)
+      ctx.stroke()
+    }
+    ctx.restore()
+  },
+
+  _drawDaoCrushUlt(ctx, fx) {
+    const fade = fx.phase === 'end' ? Math.max(0, 1 - fx.t / fx.endDur) : 1
+    const u = fx.bottleU || 0
+    ctx.save()
+    ctx.globalAlpha = 0.92 * fade
+    ctx.fillStyle = '#fff7ed'
+    ctx.font = 'bold 18px "KaiTi", "STKaiti", serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(fx.title || '时间大道', this._w * 0.5, 68)
+    // 掌天瓶虚影
+    const bx = this._w * 0.5
+    const by = 110
+    ctx.globalAlpha = 0.35 + u * 0.45
+    ctx.strokeStyle = '#fdba74'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.ellipse(bx, by, 14 * u + 4, 22 * u + 6, 0, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(bx, by + 20 * u)
+    ctx.lineTo(fx.targetX, fx.targetY)
+    ctx.strokeStyle = '#fef3c7'
+    ctx.globalAlpha = 0.4 * fade
+    ctx.stroke()
+    ctx.globalAlpha = 0.2 * fade
+    ctx.fillStyle = 'rgba(255,247,237,0.4)'
+    ctx.beginPath()
+    ctx.arc(fx.targetX, fx.targetY, 70 * u, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  },
+
+  _drawFireballs(ctx) {
+    const list = this._fireballs || []
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i]
+      ctx.save()
+      ctx.globalAlpha = 0.9
+      const g = ctx.createRadialGradient(b.x, b.y, 1, b.x, b.y, b.r + 4)
+      g.addColorStop(0, '#fef9c3')
+      g.addColorStop(0.5, '#fb923c')
+      g.addColorStop(1, 'rgba(249,115,22,0)')
+      ctx.fillStyle = g
+      ctx.beginPath()
+      ctx.arc(b.x, b.y, b.r + 4, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    }
+  },
+
+  _drawInsectFx(ctx) {
+    const list = this._insectFx || []
+    for (let i = 0; i < list.length; i++) {
+      const bug = list[i]
+      ctx.globalAlpha = Math.max(0.25, bug.life)
+      ctx.fillStyle = '#b45309'
+      ctx.beginPath()
+      ctx.arc(bug.x, bug.y, 2.2, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.globalAlpha = 1
+    }
+  },
+
+  _drawQingyuanShield(ctx) {
+    const combat = getRealmCombat(this._realmLv)
+    const ultShield = this._gengFx && (this._gengFx.style === 'wuxing_array' || this._gengFx.style === 'avatar')
+    const auxShield = combat && (combat.aux === 'qingyuan' || combat.aux === 'baimai')
+    if (!(auxShield || ultShield)) return
+    if ((this._qingyuanShield || 0) <= 0 && !ultShield) return
+    ctx.save()
+    ctx.globalAlpha = 0.28 + Math.sin((this._animT || 0) * 5) * 0.08
+    ctx.strokeStyle = '#67e8f9'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(this._playerX, this._playerY - 6, 32, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.restore()
+  },
+
   _drawGengFormation(ctx) {
     const fx = this._gengFx
     if (!fx) return
+    if (fx.style === 'void64') {
+      this._drawVoidGengFormation(ctx, fx)
+      return
+    }
+    if (fx.style === 'blink_jian') {
+      this._drawBlinkJianUlt(ctx, fx)
+      return
+    }
+    if (fx.style === 'wuxing_array') {
+      this._drawWuxingArrayUlt(ctx, fx)
+      return
+    }
+    if (fx.style === 'jianying') {
+      this._drawJianyingUlt(ctx, fx)
+      return
+    }
+    if (fx.style === 'yuanci') {
+      this._drawYuanciUlt(ctx, fx)
+      return
+    }
+    if (fx.style === 'xuantian') {
+      this._drawXuantianUlt(ctx, fx)
+      return
+    }
+    if (fx.style === 'avatar') {
+      this._drawAvatarUlt(ctx, fx)
+      return
+    }
+    if (fx.style === 'time_law') {
+      this._drawTimeLawUlt(ctx, fx)
+      return
+    }
+    if (fx.style === 'dao_crush') {
+      this._drawDaoCrushUlt(ctx, fx)
+      return
+    }
     const fade =
       fx.phase === 'end' ? Math.max(0, 1 - fx.t / fx.endDur) :
       (fx.phase === 'gather' ? Math.min(1, fx.t / 0.35) : 1)
@@ -4668,6 +8874,687 @@ Page({
       }
     }
     ctx.restore()
+  },
+
+  /** 元婴大庚：天圆竖剑 / 下拉 / 点指贯体 / 插地召回 */
+  _drawVoidGengFormation(ctx, fx) {
+    const fade = fx.phase === 'end' ? Math.max(0, 1 - fx.t / fx.endDur) : 1
+    ctx.save()
+    ctx.globalAlpha = 0.95 * fade
+    ctx.fillStyle = '#fef9c3'
+    ctx.font = 'bold 20px "KaiTi", "STKaiti", serif'
+    ctx.textAlign = 'center'
+    const titleY = fx.phase === 'sky' ? 56 : Math.max(48, (fx.cy != null ? fx.cy : 80) - 56)
+    ctx.fillText('大庚剑阵', this._w * 0.5, titleY)
+
+    // 金色大圆阵环
+    if (fx.phase === 'sky' || fx.phase === 'converge' || fx.phase === 'pull' || fx.phase === 'point') {
+      const rr = fx.phase === 'sky' ? (fx.ringR || 120) : (fx.ringR || 120) * (fx.phase === 'point' ? 0.5 : 0.65)
+      ctx.globalAlpha = 0.45 * fade
+      ctx.strokeStyle = '#fbbf24'
+      ctx.lineWidth = 2.5
+      ctx.beginPath()
+      ctx.ellipse(fx.cx || this._w * 0.5, fx.cy || 100, rr, rr * (fx.phase === 'sky' ? 0.28 : 0.48), 0, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.globalAlpha = 0.12 * fade
+      ctx.fillStyle = 'rgba(251,191,36,0.35)'
+      ctx.beginPath()
+      ctx.ellipse(fx.cx || this._w * 0.5, fx.cy || 100, rr, rr * (fx.phase === 'sky' ? 0.28 : 0.48), 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    // 点指：人物下方金光指示
+    if (fx.phase === 'point' || (fx.phase === 'pierce' && fx.t < 0.35)) {
+      const px = this._playerX
+      const py = this._playerY
+      ctx.globalAlpha = 0.85 * fade
+      ctx.strokeStyle = '#fde047'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      ctx.moveTo(px + 10, py - 8)
+      ctx.lineTo(px + 10, py + 36)
+      ctx.stroke()
+      ctx.fillStyle = 'rgba(253,224,71,0.35)'
+      ctx.beginPath()
+      ctx.arc(px + 10, py + 40, 8 + Math.sin((this._animT || 0) * 16) * 2, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    // 贯体雷丝
+    if (fx.phase === 'pierce') {
+      ctx.globalAlpha = 0.35 * fade
+      ctx.strokeStyle = '#fef08a'
+      ctx.lineWidth = 1.2
+      for (let i = 0; i < 12; i++) {
+        const a = (this._animT || 0) * 8 + i
+        ctx.beginPath()
+        ctx.moveTo(fx.targetX + Math.cos(a) * 8, fx.targetY + Math.sin(a) * 6)
+        ctx.lineTo(fx.targetX + Math.cos(a + 1) * 40, fx.targetY + Math.sin(a + 1) * 30)
+        ctx.stroke()
+      }
+    }
+
+    for (let i = 0; i < fx.swords.length; i++) {
+      const s = fx.swords[i]
+      const sc = s.scale != null ? s.scale : 1
+      if (sc <= 0.02) continue
+      ctx.save()
+      ctx.globalAlpha = 0.97 * fade * Math.min(1, sc + 0.1)
+      ctx.translate(s.x, s.y)
+      ctx.rotate(s.tipAngle)
+      this._paintGengSword(ctx, (fx.phase === 'sky' ? 0.62 : 0.5) * sc)
+      ctx.restore()
+    }
+    ctx.restore()
+  },
+
+  /** 心魔黑影：全黑人形剪影，只漏血红眼睛与白牙 */
+  _drawShadowSelfGuardian(ctx, z, drawX, drawY, size, faceLeft, flashOnly) {
+    const t = this._animT || 0
+    ctx.save()
+    ctx.translate(drawX, drawY)
+    if (faceLeft) ctx.scale(-1, 1)
+
+    // 全黑人形（头+发髻+袍+臂+腿）
+    ctx.fillStyle = '#050505'
+    ctx.strokeStyle = '#0a0a0a'
+    ctx.lineWidth = 1.5
+    // 发髻
+    ctx.beginPath()
+    ctx.ellipse(0, -size * 0.42, size * 0.1, size * 0.08, 0, 0, Math.PI * 2)
+    ctx.fill()
+    // 头
+    ctx.beginPath()
+    ctx.arc(0, -size * 0.28, size * 0.145, 0, Math.PI * 2)
+    ctx.fill()
+    // 颈
+    ctx.fillRect(-size * 0.04, -size * 0.16, size * 0.08, size * 0.08)
+    // 袍身
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.2, -size * 0.1)
+    ctx.lineTo(-size * 0.28, size * 0.38)
+    ctx.lineTo(size * 0.28, size * 0.38)
+    ctx.lineTo(size * 0.2, -size * 0.1)
+    ctx.closePath()
+    ctx.fill()
+    // 双臂
+    ctx.beginPath()
+    ctx.ellipse(-size * 0.26, size * 0.02, size * 0.07, size * 0.16, -0.35, 0, Math.PI * 2)
+    ctx.ellipse(size * 0.26, size * 0.02, size * 0.07, size * 0.16, 0.35, 0, Math.PI * 2)
+    ctx.fill()
+    // 脚影
+    ctx.globalAlpha = 0.55
+    ctx.beginPath()
+    ctx.ellipse(0, size * 0.4, size * 0.26, size * 0.07, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.globalAlpha = 1
+
+    // 只漏眼睛
+    const eyeY = -size * 0.3
+    const eyeX = size * 0.055
+    const blink = Math.sin(t * 3 + (z.id || 0)) > 0.92 ? 0.2 : 1
+    for (let side = -1; side <= 1; side += 2) {
+      const ex = side * eyeX
+      ctx.fillStyle = '#7f1d1d'
+      ctx.beginPath()
+      ctx.ellipse(ex, eyeY, size * 0.035, size * 0.028 * blink, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#ef4444'
+      ctx.beginPath()
+      ctx.ellipse(ex, eyeY, size * 0.022, size * 0.018 * blink, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#fecaca'
+      ctx.beginPath()
+      ctx.arc(ex + size * 0.008, eyeY - size * 0.006, size * 0.008, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    // 只漏牙齿
+    const open = 0.4 + Math.sin(t * 5.5 + (z.id || 0)) * 0.15
+    const my = -size * 0.18
+    const mw = size * 0.09
+    ctx.fillStyle = '#111'
+    ctx.beginPath()
+    ctx.ellipse(0, my, mw, mw * 0.4 * open, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#f8fafc'
+    for (let i = 0; i < 5; i++) {
+      const u = (i / 4) * 2 - 1
+      const tx = u * mw * 0.72
+      ctx.beginPath()
+      ctx.moveTo(tx - size * 0.012, my - mw * 0.12 * open)
+      ctx.lineTo(tx, my + size * 0.035 + open * size * 0.02)
+      ctx.lineTo(tx + size * 0.012, my - mw * 0.12 * open)
+      ctx.closePath()
+      ctx.fill()
+    }
+
+    if (flashOnly) {
+      ctx.globalAlpha = 0.25
+      ctx.fillStyle = '#fff'
+      ctx.beginPath()
+      ctx.ellipse(0, 0, size * 0.24, size * 0.38, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.restore()
+  },
+
+  /** @deprecated 尖牙已并入 _drawShadowSelfGuardian */
+  _drawSharkTeeth(ctx, z, drawX, drawY, size) {},
+
+  _drawDemonAura(ctx, z, drawX, drawY, size) {
+    const t = this._animT || 0
+    const shadow = !!z.isShadowSelf
+    ctx.save()
+    ctx.globalAlpha = 0.45 + Math.sin(t * 5 + z.id) * 0.12
+    const grd = ctx.createRadialGradient(drawX, drawY, size * 0.1, drawX, drawY, size * 0.62)
+    if (shadow) {
+      grd.addColorStop(0, 'rgba(127,29,29,0.55)')
+      grd.addColorStop(0.55, 'rgba(15,23,42,0.4)')
+      grd.addColorStop(1, 'rgba(0,0,0,0)')
+    } else {
+      grd.addColorStop(0, 'rgba(76,29,149,0.55)')
+      grd.addColorStop(0.55, 'rgba(15,23,42,0.35)')
+      grd.addColorStop(1, 'rgba(0,0,0,0)')
+    }
+    ctx.fillStyle = grd
+    ctx.beginPath()
+    ctx.arc(drawX, drawY, size * 0.62, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = shadow ? 'rgba(127,29,29,0.75)' : 'rgba(30,27,75,0.75)'
+    ctx.lineWidth = 1.5
+    for (let i = 0; i < 5; i++) {
+      const a = t * 1.8 + i * 1.25
+      ctx.globalAlpha = 0.35
+      ctx.beginPath()
+      ctx.moveTo(drawX + Math.cos(a) * size * 0.2, drawY + Math.sin(a) * size * 0.15)
+      ctx.quadraticCurveTo(
+        drawX + Math.cos(a + 0.4) * size * 0.45,
+        drawY - size * 0.35 + Math.sin(a) * 10,
+        drawX + Math.cos(a + 0.8) * size * 0.25,
+        drawY - size * 0.55
+      )
+      ctx.stroke()
+    }
+    ctx.restore()
+  },
+
+  /** 境主身周气场（非魔族也有，按 tint） */
+  _drawGuardianAura(ctx, z, drawX, drawY, size) {
+    const t = this._animT || 0
+    const col = z.crescentGlow || z.tint || '#86efac'
+    ctx.save()
+    ctx.globalAlpha = 0.32 + Math.sin(t * 4 + z.id) * 0.08
+    const grd = ctx.createRadialGradient(drawX, drawY, size * 0.08, drawX, drawY, size * 0.55)
+    grd.addColorStop(0, col)
+    grd.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.fillStyle = grd
+    ctx.beginPath()
+    ctx.arc(drawX, drawY, size * 0.55, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  },
+
+  /** #rrggbb → rgba 字符串 */
+  _hexToRgba(hex, alpha) {
+    const h = String(hex || '#64748b').replace('#', '')
+    const full = h.length === 3 ? h[0] + h[0] + h[1] + h[1] + h[2] + h[2] : h
+    const n = parseInt(full.slice(0, 6), 16)
+    if (!isFinite(n)) return 'rgba(100,116,139,' + (alpha == null ? 0.4 : alpha) + ')'
+    const r = (n >> 16) & 255
+    const g = (n >> 8) & 255
+    const b = n & 255
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + (alpha == null ? 0.4 : alpha) + ')'
+  },
+
+  /**
+   * 各大境界敌修外形档案（独立人形，不用主角贴图）
+   */
+  _getEnemyCultivatorLook(style, tint, glow) {
+    const looks = {
+      sha: {
+        name: '煞影修士', hair: 'horn', robe: 'flare', skin: '#f5d0c8',
+        hairCol: '#0f172a', robeCol: tint || '#0e7490', accent: glow || '#67e8f9', mark: '煞'
+      },
+      voidbeast: {
+        name: '虚空修士', hair: 'hood', robe: 'wide', skin: '#e2e8f0',
+        hairCol: '#134e4a', robeCol: tint || '#0f766e', accent: glow || '#99f6e4', mark: '虚'
+      },
+      mutate: {
+        name: '真灵修士', hair: 'wild', robe: 'split', skin: '#f5e6ff',
+        hairCol: '#4c1d95', robeCol: tint || '#6d28d9', accent: glow || '#ddd6fe', mark: '灵'
+      },
+      overlord: {
+        name: '霸体修士', hair: 'crown', robe: 'armor', skin: '#ffe4e6',
+        hairCol: '#881337', robeCol: tint || '#be123c', accent: glow || '#fecdd3', mark: '霸'
+      },
+      leibeast: {
+        name: '雷劫修士', hair: 'spike', robe: 'flare', skin: '#fff7ed',
+        hairCol: '#a16207', robeCol: tint || '#ca8a04', accent: glow || '#fef08a', mark: '雷'
+      },
+      timeprison: {
+        name: '时囚修士', hair: 'bun', robe: 'layer', skin: '#ffedd5',
+        hairCol: '#9a3412', robeCol: tint || '#c2410c', accent: glow || '#fdba74', mark: '时'
+      },
+      tianmo: {
+        name: '天魔修士', hair: 'flat', robe: 'jade', skin: '#e7e5e4',
+        hairCol: '#44403c', robeCol: tint || '#78716c', accent: glow || '#fafaf9', mark: '魔'
+      },
+      sanshi: {
+        name: '三尸修士', hair: 'triple', robe: 'ghost', skin: '#ede9fe',
+        hairCol: '#5b21b6', robeCol: tint || '#6d28d9', accent: glow || '#c4b5fd', mark: '尸'
+      },
+      chaos: {
+        name: '混沌修士', hair: 'flow', robe: 'dao', skin: '#fffbeb',
+        hairCol: '#78350f', robeCol: tint || '#fdba74', accent: glow || '#fff7ed', mark: '道'
+      },
+      demon: {
+        name: '魔影修士', hair: 'horn', robe: 'flare', skin: '#ede9fe',
+        hairCol: '#2e1065', robeCol: tint || '#7c3aed', accent: glow || '#a78bfa', mark: '魔'
+      }
+    }
+    return looks[style] || looks.sha
+  },
+
+  /**
+   * 元婴后敌修：每大境界独立生成的人形（非主角贴图）
+   */
+  _drawProceduralCreature(ctx, z, drawX, drawY, size, faceLeft, flashOnly) {
+    const tint = z.tint || z.crescentColor || '#67e8f9'
+    const glow = z.crescentGlow || z.glow || tint
+    const style = z.gDraw || 'sha'
+    const look = this._getEnemyCultivatorLook(style, tint, glow)
+    const t = this._animT || 0
+    const bob = Math.sin(t * 3 + (z.id || 0)) * size * 0.012
+    ctx.save()
+    ctx.translate(drawX, drawY + bob)
+    if (faceLeft) ctx.scale(-1, 1)
+
+    // 脚底灵气
+    ctx.globalAlpha = 0.3
+    ctx.fillStyle = look.accent
+    ctx.beginPath()
+    ctx.ellipse(0, size * 0.42, size * 0.28, size * 0.08, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.globalAlpha = 1
+
+    // —— 发型 ——
+    ctx.fillStyle = look.hairCol
+    if (look.hair === 'horn') {
+      ctx.beginPath()
+      ctx.moveTo(-size * 0.08, -size * 0.38)
+      ctx.lineTo(-size * 0.18, -size * 0.55)
+      ctx.lineTo(-size * 0.02, -size * 0.4)
+      ctx.moveTo(size * 0.08, -size * 0.38)
+      ctx.lineTo(size * 0.18, -size * 0.55)
+      ctx.lineTo(size * 0.02, -size * 0.4)
+      ctx.fill()
+    } else if (look.hair === 'hood') {
+      ctx.beginPath()
+      ctx.ellipse(0, -size * 0.3, size * 0.2, size * 0.18, 0, Math.PI, Math.PI * 2)
+      ctx.fill()
+    } else if (look.hair === 'wild') {
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath()
+        ctx.moveTo(i * size * 0.04, -size * 0.35)
+        ctx.lineTo(i * size * 0.06, -size * 0.52)
+        ctx.lineTo(i * size * 0.02 + size * 0.03, -size * 0.36)
+        ctx.fill()
+      }
+    } else if (look.hair === 'crown') {
+      ctx.beginPath()
+      ctx.moveTo(-size * 0.12, -size * 0.4)
+      ctx.lineTo(0, -size * 0.58)
+      ctx.lineTo(size * 0.12, -size * 0.4)
+      ctx.closePath()
+      ctx.fill()
+    } else if (look.hair === 'spike') {
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath()
+        ctx.moveTo(i * size * 0.045, -size * 0.36)
+        ctx.lineTo(i * size * 0.045 + 2, -size * 0.56)
+        ctx.lineTo(i * size * 0.045 + 5, -size * 0.36)
+        ctx.fill()
+      }
+    } else if (look.hair === 'triple') {
+      ctx.beginPath()
+      ctx.arc(-size * 0.12, -size * 0.4, size * 0.06, 0, Math.PI * 2)
+      ctx.arc(0, -size * 0.48, size * 0.07, 0, Math.PI * 2)
+      ctx.arc(size * 0.12, -size * 0.4, size * 0.06, 0, Math.PI * 2)
+      ctx.fill()
+    } else if (look.hair === 'flow') {
+      ctx.beginPath()
+      ctx.ellipse(0, -size * 0.34, size * 0.18, size * 0.12, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.moveTo(-size * 0.16, -size * 0.3)
+      ctx.quadraticCurveTo(-size * 0.35, 0, -size * 0.2, size * 0.2)
+      ctx.quadraticCurveTo(-size * 0.12, 0, -size * 0.1, -size * 0.28)
+      ctx.fill()
+    } else if (look.hair === 'flat') {
+      ctx.beginPath()
+      ctx.ellipse(0, -size * 0.38, size * 0.16, size * 0.06, 0, 0, Math.PI * 2)
+      ctx.fill()
+    } else {
+      // bun
+      ctx.beginPath()
+      ctx.arc(0, -size * 0.44, size * 0.07, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    // —— 头脸 ——
+    ctx.fillStyle = look.skin
+    ctx.beginPath()
+    ctx.arc(0, -size * 0.26, size * 0.13, 0, Math.PI * 2)
+    ctx.fill()
+    // 眉眼
+    ctx.fillStyle = '#1e293b'
+    ctx.beginPath()
+    ctx.ellipse(-size * 0.045, -size * 0.27, size * 0.02, size * 0.015, 0, 0, Math.PI * 2)
+    ctx.ellipse(size * 0.045, -size * 0.27, size * 0.02, size * 0.015, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = look.accent
+    ctx.beginPath()
+    ctx.arc(-size * 0.045, -size * 0.27, size * 0.008, 0, Math.PI * 2)
+    ctx.arc(size * 0.045, -size * 0.27, size * 0.008, 0, Math.PI * 2)
+    ctx.fill()
+
+    // —— 袍身（按款式） ——
+    ctx.fillStyle = look.robeCol
+    ctx.beginPath()
+    if (look.robe === 'armor') {
+      ctx.moveTo(-size * 0.22, -size * 0.12)
+      ctx.lineTo(-size * 0.3, size * 0.08)
+      ctx.lineTo(-size * 0.22, size * 0.36)
+      ctx.lineTo(size * 0.22, size * 0.36)
+      ctx.lineTo(size * 0.3, size * 0.08)
+      ctx.lineTo(size * 0.22, -size * 0.12)
+      ctx.closePath()
+    } else if (look.robe === 'wide') {
+      ctx.moveTo(-size * 0.16, -size * 0.12)
+      ctx.lineTo(-size * 0.34, size * 0.32)
+      ctx.lineTo(size * 0.34, size * 0.32)
+      ctx.lineTo(size * 0.16, -size * 0.12)
+      ctx.closePath()
+    } else if (look.robe === 'split') {
+      ctx.moveTo(-size * 0.2, -size * 0.12)
+      ctx.lineTo(-size * 0.26, size * 0.36)
+      ctx.lineTo(-size * 0.02, size * 0.2)
+      ctx.lineTo(size * 0.02, size * 0.2)
+      ctx.lineTo(size * 0.26, size * 0.36)
+      ctx.lineTo(size * 0.2, -size * 0.12)
+      ctx.closePath()
+    } else if (look.robe === 'jade') {
+      ctx.rect(-size * 0.2, -size * 0.12, size * 0.4, size * 0.48)
+    } else {
+      ctx.moveTo(-size * 0.18, -size * 0.12)
+      ctx.lineTo(-size * 0.26, size * 0.38)
+      ctx.lineTo(size * 0.26, size * 0.38)
+      ctx.lineTo(size * 0.18, -size * 0.12)
+      ctx.closePath()
+    }
+    ctx.fill()
+
+    // 腰带 / 甲线
+    ctx.strokeStyle = look.accent
+    ctx.lineWidth = 1.6
+    ctx.globalAlpha = 0.85
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.16, size * 0.06)
+    ctx.lineTo(size * 0.16, size * 0.06)
+    ctx.stroke()
+
+    // 胸口境界字印
+    ctx.globalAlpha = 0.7
+    ctx.fillStyle = look.accent
+    ctx.font = 'bold ' + Math.max(9, Math.floor(size * 0.14)) + 'px "KaiTi","STKaiti",serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(look.mark || '修', 0, size * 0.02)
+
+    // 双臂
+    ctx.globalAlpha = 1
+    ctx.fillStyle = look.robeCol
+    ctx.beginPath()
+    ctx.ellipse(-size * 0.24, size * 0.02, size * 0.07, size * 0.15, -0.4, 0, Math.PI * 2)
+    ctx.ellipse(size * 0.24, size * 0.02, size * 0.07, size * 0.15, 0.4, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = look.skin
+    ctx.beginPath()
+    ctx.arc(-size * 0.28, size * 0.14, size * 0.04, 0, Math.PI * 2)
+    ctx.arc(size * 0.28, size * 0.14, size * 0.04, 0, Math.PI * 2)
+    ctx.fill()
+
+    // 境界专属装饰
+    ctx.strokeStyle = look.accent
+    ctx.lineWidth = 1.4
+    ctx.globalAlpha = 0.7
+    if (style === 'voidbeast' || style === 'chaos') {
+      ctx.beginPath()
+      ctx.ellipse(0, size * 0.05, size * 0.32, size * 0.12, t * 0.5, 0, Math.PI * 2)
+      ctx.stroke()
+    } else if (style === 'leibeast') {
+      ctx.beginPath()
+      ctx.moveTo(-size * 0.1, -size * 0.48)
+      ctx.lineTo(0, -size * 0.6)
+      ctx.lineTo(size * 0.1, -size * 0.48)
+      ctx.stroke()
+    } else if (style === 'timeprison') {
+      ctx.beginPath()
+      ctx.arc(0, size * 0.12, size * 0.1, 0, Math.PI * 2)
+      ctx.stroke()
+    } else if (style === 'sanshi') {
+      ctx.globalAlpha = 0.28
+      ctx.fillStyle = look.robeCol
+      ctx.beginPath()
+      ctx.arc(-size * 0.2, -size * 0.05, size * 0.12, 0, Math.PI * 2)
+      ctx.arc(size * 0.2, -size * 0.05, size * 0.12, 0, Math.PI * 2)
+      ctx.fill()
+    } else if (style === 'mutate') {
+      ctx.beginPath()
+      ctx.arc(-size * 0.22, -size * 0.2, size * 0.06, 0, Math.PI * 2)
+      ctx.arc(size * 0.22, -size * 0.2, size * 0.06, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+
+    if (flashOnly) {
+      ctx.globalAlpha = 0.28
+      ctx.fillStyle = '#fff'
+      ctx.beginPath()
+      ctx.ellipse(0, 0, size * 0.24, size * 0.38, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    if ((z.blockCd || 0) > (z.blockCdMax || 0.4) * 0.55) {
+      ctx.globalAlpha = 0.8
+      ctx.strokeStyle = z.crescentColor || '#fde68a'
+      ctx.lineWidth = 2.8
+      ctx.beginPath()
+      ctx.arc(size * 0.12, 0, size * 0.36, -1.15, 1.15)
+      ctx.stroke()
+    }
+    ctx.restore()
+  },
+
+  /**
+   * 境主形象叠绘：按大境界说明区分（腐气/傀儡线/金丹光环/虚空裂/雷纹等）
+   * 不改原贴图资源，仅在其上叠加可辨识特征
+   */
+  _drawGuardianStyle(ctx, z, drawX, drawY, size, faceLeft) {
+    const style = z.gDraw || ''
+    const t = this._animT || 0
+    ctx.save()
+    ctx.translate(drawX, drawY)
+    if (faceLeft) ctx.scale(-1, 1)
+    ctx.globalAlpha = 0.85
+    if (style === 'rotking') {
+      // 腐尸王：头顶腐气 + 骨刺
+      ctx.fillStyle = 'rgba(74,222,128,0.35)'
+      for (let i = 0; i < 5; i++) {
+        const a = t * 2 + i * 1.2
+        ctx.beginPath()
+        ctx.ellipse(Math.cos(a) * 10, -size * 0.38 + Math.sin(a) * 4, 5, 9, 0, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.strokeStyle = '#a3e635'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(-8, -size * 0.2)
+      ctx.lineTo(-14, -size * 0.42)
+      ctx.moveTo(8, -size * 0.18)
+      ctx.lineTo(12, -size * 0.4)
+      ctx.stroke()
+    } else if (style === 'puppet') {
+      // 傀儡：关节线 + 牵丝
+      ctx.strokeStyle = 'rgba(125,211,252,0.85)'
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.moveTo(0, -size * 0.55)
+      ctx.lineTo(0, -size * 0.28)
+      ctx.moveTo(-12, -size * 0.1)
+      ctx.lineTo(-18, size * 0.05)
+      ctx.moveTo(12, -size * 0.1)
+      ctx.lineTo(18, size * 0.05)
+      ctx.stroke()
+      ctx.fillStyle = '#38bdf8'
+      ctx.beginPath()
+      ctx.arc(0, -size * 0.55, 3, 0, Math.PI * 2)
+      ctx.fill()
+    } else if (style === 'jindan') {
+      // 金丹尸煞：腹前金丹光球
+      const pulse = 0.7 + Math.sin(t * 6) * 0.15
+      ctx.fillStyle = 'rgba(251,191,36,0.55)'
+      ctx.beginPath()
+      ctx.arc(0, size * 0.02, 9 * pulse, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = '#fde68a'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.arc(0, size * 0.02, 14 + Math.sin(t * 4) * 2, 0, Math.PI * 2)
+      ctx.stroke()
+    } else if (style === 'demon' || style === 'sanshi' || style === 'overlord') {
+      ctx.strokeStyle = z.crescentGlow || '#a78bfa'
+      ctx.lineWidth = 2
+      for (let i = 0; i < (style === 'sanshi' ? 3 : 2); i++) {
+        const a = t * 1.5 + i * 2.1
+        ctx.beginPath()
+        ctx.arc(Math.cos(a) * size * 0.22, -size * 0.05 + Math.sin(a) * 6, 10, -0.8, 0.8)
+        ctx.stroke()
+      }
+    } else if (style === 'voidbeast' || style === 'chaos' || style === 'timeprison') {
+      ctx.strokeStyle = style === 'timeprison' ? '#fdba74' : '#67e8f9'
+      ctx.lineWidth = 1.8
+      ctx.globalAlpha = 0.7
+      for (let i = 0; i < 3; i++) {
+        const r = size * (0.2 + i * 0.12) + Math.sin(t * 5 + i) * 3
+        ctx.beginPath()
+        ctx.ellipse(0, 0, r, r * 0.45, t + i, 0, Math.PI * 2)
+        ctx.stroke()
+      }
+      if (style === 'chaos') {
+        ctx.fillStyle = 'rgba(255,247,237,0.25)'
+        ctx.beginPath()
+        ctx.arc(0, 0, size * 0.18, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    } else if (style === 'sha' || style === 'tianmo') {
+      ctx.fillStyle = 'rgba(34,211,238,0.25)'
+      for (let i = 0; i < 6; i++) {
+        const a = t * 2.5 + i
+        ctx.beginPath()
+        ctx.ellipse(Math.cos(a) * 16, Math.sin(a) * 10, 4, 10, a, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    } else if (style === 'leibeast') {
+      ctx.strokeStyle = '#fef08a'
+      ctx.lineWidth = 1.6
+      for (let i = 0; i < 4; i++) {
+        const x0 = (i - 1.5) * 8
+        ctx.beginPath()
+        ctx.moveTo(x0, -size * 0.45)
+        ctx.lineTo(x0 + 4, -size * 0.2)
+        ctx.lineTo(x0 - 2, size * 0.05)
+        ctx.stroke()
+      }
+    } else if (style === 'mutate') {
+      ctx.strokeStyle = '#e9d5ff'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.arc(0, -size * 0.15, size * 0.28 + Math.sin(t * 8) * 3, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    // 抵挡态：身前挡招盾形
+    if ((z.blockCd || 0) > (z.blockCdMax || 0.4) * 0.55) {
+      ctx.globalAlpha = 0.75
+      ctx.strokeStyle = z.crescentColor || '#fde68a'
+      ctx.lineWidth = 2.5
+      ctx.beginPath()
+      ctx.arc(size * 0.15, 0, size * 0.32, -1.1, 1.1)
+      ctx.stroke()
+    }
+    ctx.restore()
+  },
+
+  _drawDemonCrescents(ctx) {
+    const list = this._demonCrescents || []
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i]
+      ctx.save()
+      ctx.translate(c.x, c.y)
+      ctx.rotate(c.ang || 0)
+      const alpha = c.mode === 'block' ? 0.9 : Math.min(1, c.life)
+      ctx.globalAlpha = 0.85 * alpha
+      ctx.fillStyle = c.color || (c.mode === 'block' ? '#7c3aed' : '#4c1d95')
+      ctx.strokeStyle = c.glow || '#c4b5fd'
+      ctx.lineWidth = 1.5
+      const shape = c.blockShape || 'crescent'
+      if (c.mode === 'block' && shape === 'ring') {
+        ctx.beginPath()
+        ctx.arc(0, 0, c.r, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.globalAlpha = 0.35 * alpha
+        ctx.beginPath()
+        ctx.arc(0, 0, c.r * 0.55, 0, Math.PI * 2)
+        ctx.fill()
+      } else if (c.mode === 'block' && shape === 'rift') {
+        ctx.beginPath()
+        ctx.moveTo(-c.r * 0.2, -c.r)
+        ctx.lineTo(c.r * 0.15, 0)
+        ctx.lineTo(-c.r * 0.2, c.r)
+        ctx.lineTo(c.r * 0.35, 0)
+        ctx.closePath()
+        ctx.fill()
+        ctx.stroke()
+      } else if (c.mode === 'block' && shape === 'arc') {
+        ctx.beginPath()
+        ctx.arc(0, 0, c.r, -1.2, 1.2)
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.arc(0, 0, c.r * 0.7, -1.0, 1.0)
+        ctx.stroke()
+      } else if (c.mode === 'block' && shape === 'triple') {
+        for (let k = -1; k <= 1; k++) {
+          ctx.beginPath()
+          ctx.arc(k * 6, k * 2, c.r * 0.7, -0.9, 0.9)
+          ctx.arc(k * 6 + 5, k * 2, c.r * 0.5, 0.9, -0.9, true)
+          ctx.closePath()
+          ctx.fill()
+        }
+      } else {
+        ctx.beginPath()
+        ctx.arc(0, 0, c.r, -0.9, 0.9)
+        ctx.arc(6, 0, c.r * 0.72, 0.9, -0.9, true)
+        ctx.closePath()
+        ctx.fill()
+        ctx.stroke()
+        ctx.globalAlpha = 0.35 * alpha
+        ctx.fillStyle = '#000'
+        ctx.beginPath()
+        ctx.arc(-2, 0, c.r * 0.9, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.restore()
+    }
   },
 
   _gengTip(s) {
@@ -4797,38 +9684,41 @@ Page({
     ctx.stroke()
   },
 
-  /** 环剑画在人物正后方：剑圈中心略偏身后，扁椭圆环，绘制顺序在人物之前 */
+  /** 环剑画在人物正后方：多层扁椭圆；剑柄朝内、剑尖朝外 */
   _drawOrbitSwords(ctx, realm) {
     const owned = Math.max(1, Math.min(MAX_SWORD_COUNT, this._swordCount || 1))
     const inFlight = (this._swords || []).length
     const n = Math.max(0, owned - Math.min(owned, inFlight))
     if (n <= 0) return
 
-    // 正后方：圆心在躯干后侧（略上移），扁椭圆如背后剑轮
+    const sw = getRealmSwordStyle(realm.majorKey || 'lianqi')
     const cx = this._playerX
     const cy = this._playerY - 14
-    const color = realm.sword || realm.color || '#334155'
-    const layers = n <= 16 ? 1 : (n <= 36 ? 2 : 3)
+    const color = sw.color || realm.sword || realm.color || '#334155'
+    const style = sw.style || 'ink'
+    // 多层剑环：剑多时 1→2→3 圈
+    const layers = n <= 12 ? 1 : (n <= 28 ? 2 : 3)
     const baseSpin = (this._animT || 0) * 1.05
     let drawn = 0
     for (let layer = 0; layer < layers; layer++) {
       const remain = n - drawn
       const layersLeft = layers - layer
       const count = Math.ceil(remain / layersLeft)
-      const rx = 20 + layer * 11
-      const ry = 11 + layer * 6
+      const rx = 18 + layer * 12
+      const ry = 10 + layer * 7
       const spin = baseSpin * (layer % 2 === 0 ? 1 : -0.85) + layer * 0.55
-      const scale = Math.max(0.24, 0.34 - layer * 0.03)
-      const alpha = 0.78 - layer * 0.1
+      const scale = Math.max(0.26, 0.36 - layer * 0.04)
+      const alpha = 0.82 - layer * 0.12
       for (let i = 0; i < count; i++) {
         const a = spin + (Math.PI * 2 * i) / count
         const x = cx + Math.cos(a) * rx
         const y = cy + Math.sin(a) * ry - 2
         ctx.save()
         ctx.translate(x, y)
-        ctx.rotate(a + Math.PI * 0.5)
+        // 剑绘制尖端朝 +X：沿径向旋转 → 柄朝圆心、尖朝外
+        ctx.rotate(a)
         ctx.globalAlpha = alpha
-        this._paintInkSword(ctx, color, scale)
+        this._paintInkSword(ctx, color, scale, style)
         ctx.restore()
       }
       drawn += count
@@ -4882,6 +9772,75 @@ Page({
     ctx.fillStyle = 'rgba(226,232,240,0.75)'
     ctx.fillText(realm.tierName || '', x, y + 16)
     ctx.restore()
+  },
+
+  /**
+   * 小境界升层：天地灵气漩涡灌入丹田
+   */
+  _drawQiVortex(ctx, fx) {
+    const px = this._playerX
+    const py = this._playerY + 10
+    const u = Math.min(1, fx.t / Math.max(0.01, fx.dur))
+    const spin = (this._animT || 0) * 6
+    ctx.save()
+    // 丹田核心光
+    const core = ctx.createRadialGradient(px, py, 2, px, py, 28 + u * 16)
+    core.addColorStop(0, 'rgba(165,243,252,0.85)')
+    core.addColorStop(0.45, 'rgba(34,211,238,0.35)')
+    core.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.globalAlpha = 0.55 + Math.sin(spin) * 0.12
+    ctx.fillStyle = core
+    ctx.beginPath()
+    ctx.arc(px, py, 36 + u * 10, 0, Math.PI * 2)
+    ctx.fill()
+    // 多层漩涡环
+    for (let i = 0; i < 4; i++) {
+      const rr = 22 + i * 18 + (1 - u) * 40
+      ctx.globalAlpha = 0.55 - i * 0.1
+      ctx.strokeStyle = i % 2 ? '#67e8f9' : '#a5f3fc'
+      ctx.lineWidth = 2.2 - i * 0.3
+      ctx.beginPath()
+      ctx.ellipse(px, py, rr, rr * 0.42, spin * 0.35 + i * 0.7, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    // 向丹田收敛的弧线
+    ctx.globalAlpha = 0.7
+    ctx.strokeStyle = '#e0f2fe'
+    ctx.lineWidth = 1.4
+    for (let i = 0; i < 8; i++) {
+      const a = spin + i * (Math.PI / 4)
+      const r0 = 70 + (1 - u) * 50
+      ctx.beginPath()
+      ctx.moveTo(px + Math.cos(a) * r0, py + Math.sin(a) * r0 * 0.45)
+      ctx.quadraticCurveTo(
+        px + Math.cos(a + 0.6) * r0 * 0.55,
+        py + Math.sin(a + 0.6) * r0 * 0.25,
+        px,
+        py
+      )
+      ctx.stroke()
+    }
+    ctx.globalAlpha = 0.9
+    ctx.fillStyle = '#f0fdfa'
+    ctx.font = 'bold 13px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText('天地灵气 · 漩涡入丹', px, py - 52)
+    if (fx.realm && fx.realm.name) {
+      ctx.font = '11px sans-serif'
+      ctx.fillStyle = '#67e8f9'
+      ctx.fillText('→ ' + fx.realm.name, px, py - 34)
+    }
+    ctx.restore()
+    // 粒子
+    for (let i = 0; i < this._particles.length; i++) {
+      const p = this._particles[i]
+      ctx.globalAlpha = Math.max(0, p.life * 2.2)
+      ctx.fillStyle = p.color
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, p.vortex ? 2.4 : 2, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.globalAlpha = 1
   },
 
   /**

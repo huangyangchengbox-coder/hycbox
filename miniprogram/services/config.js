@@ -30,5 +30,18 @@ module.exports = {
   prodApi: PROD_API,
   trialApi: TRIAL_API,
   /** 仙途游戏图：走后台 uploads，不进小程序主包 */
-  gameAssetBase: 'https://hychyr.top/uploads/game/xian'
+  gameAssetBase: 'https://hychyr.top/uploads/game/xian',
+  /**
+   * 开发版 / 体验版：true；正式版：false。
+   * 用于仙途跳境调试等仅非生产可用的能力。
+   */
+  isDevOrTrialEnv() {
+    try {
+      const info = wx.getAccountInfoSync()
+      const env = info && info.miniProgram && info.miniProgram.envVersion
+      return env !== 'release'
+    } catch (e) {
+      return true
+    }
+  }
 }

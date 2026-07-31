@@ -50,6 +50,13 @@
       </view>
       <switch checked="{{hubVillage}}" bindchange="onHubVillageChange" color="#07c160" disabled="{{hubSaving}}" />
     </view>
+    <view class="menu-item">
+      <view class="menu-main">
+        <view class="menu-title">工具·仙途</view>
+        <view class="hyc-sub">对用户显示该入口（默认隐藏）</view>
+      </view>
+      <switch checked="{{hubXian}}" bindchange="onHubXianChange" color="#07c160" disabled="{{hubSaving}}" />
+    </view>
     <view class="menu-item" bindtap="goUser">
       <view>
         <view class="menu-title">进入用户端</view>

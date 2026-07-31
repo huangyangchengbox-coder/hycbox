@@ -560,6 +560,30 @@ const api = {
     })
   },
 
+  /** 仙途进度：小程序用户 id */
+  getXianProgress(userId) {
+    return request({
+      url: '/xian/progress',
+      data: { userId: userId || '' }
+    })
+  },
+
+  saveXianProgress(data) {
+    return request({
+      url: '/xian/progress',
+      method: 'PUT',
+      data: data || {}
+    })
+  },
+
+  clearXianProgress(userId) {
+    const uid = encodeURIComponent(userId || '')
+    return request({
+      url: '/xian/progress?userId=' + uid,
+      method: 'DELETE'
+    })
+  },
+
   uploadImage(filePath) {
     if (config.useMock) {
       return wrapMock(() => ({ code: 0, data: { url: filePath } }))

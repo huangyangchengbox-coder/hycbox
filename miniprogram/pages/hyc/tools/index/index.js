@@ -1,4 +1,23 @@
+const api = require('../../../../services/api')
+
 Page({
+  data: {
+    showXian: false
+  },
+
+  onShow() {
+    this.loadEntries()
+  },
+
+  loadEntries() {
+    api.getHubEntries().then(res => {
+      if (res.code !== 0 || !res.data) return
+      this.setData({ showXian: !!res.data.xian })
+    }).catch(err => {
+      console.warn('[tools] hub entries', err && err.message)
+    })
+  },
+
   goLocator() {
     wx.navigateTo({ url: '/pages/hyc/tools/locator/locator' })
   },

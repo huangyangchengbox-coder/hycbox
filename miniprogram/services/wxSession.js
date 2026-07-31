@@ -102,6 +102,10 @@ module.exports = {
   syncRole,
   saveSession,
   getOpenid,
+  getUserId() {
+    return wx.getStorageSync(USER_ID_KEY) || wx.getStorageSync(OPENID_KEY) || ''
+  },
   OPENID_KEY,
+  USER_ID_KEY,
   ROLE_KEY
 }

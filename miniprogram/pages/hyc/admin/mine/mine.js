@@ -17,6 +17,7 @@ Page({
     hubFlash: false,
     hubExpress: false,
     hubVillage: false,
+    hubXian: false,
     hubSaving: false
   },
 
@@ -42,7 +43,8 @@ Page({
       this.setData({
         hubFlash: !!res.data.flash,
         hubExpress: !!res.data.express,
-        hubVillage: !!res.data.village
+        hubVillage: !!res.data.village,
+        hubXian: !!res.data.xian
       })
     }).catch(err => {
       console.warn('[admin mine] hub entries', err && err.message)
@@ -61,6 +63,10 @@ Page({
     this.saveHubEntry('village', !!e.detail.value, 'hubVillage')
   },
 
+  onHubXianChange(e) {
+    this.saveHubEntry('xian', !!e.detail.value, 'hubXian')
+  },
+
   saveHubEntry(field, value, dataKey) {
     const prev = this.data[dataKey]
     const payload = {}
@@ -76,7 +82,8 @@ Page({
         this.setData({
           hubFlash: !!res.data.flash,
           hubExpress: !!res.data.express,
-          hubVillage: !!res.data.village
+          hubVillage: !!res.data.village,
+          hubXian: !!res.data.xian
         })
       }
       wx.showToast({ title: value ? '已显示' : '已隐藏', icon: 'success' })

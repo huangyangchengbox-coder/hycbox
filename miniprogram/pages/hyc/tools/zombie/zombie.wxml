@@ -1,55 +1,102 @@
-<!-- 仙途主界面 -->
+<!-- 仙途：顶栏与弹层不得叠在 type=2d canvas 上（原生层会盖住 view） -->
 <view class="xian-page">
-  <view class="hud">
-    <view class="hud-item">击杀 {{kills}}</view>
-    <view class="hud-item">{{realmTierName}} · {{realmName}}</view>
-    <view class="hud-item">飞剑 ×{{swordCount}}</view>
-    <view class="hud-item">灵气 {{lingQi}}/{{maxLingQi}}</view>
-    <view class="hud-item" wx:if="{{heldFu}}">符 · {{heldFu}}</view>
-    <view class="hud-item">波次 {{wave}}</view>
+  <view wx:if="{{progressLoading}}" class="gate-screen">
+    <view class="gate-title">灵气汇聚中…</view>
+    <view class="gate-sub">正在读取仙途进度</view>
+  </view>
+  <view wx:elif="{{showContinueGate}}" class="gate-screen">
+    <view class="gate-title">仙途未尽</view>
+    <view class="gate-sub">上次 · {{continueRealmName}} · 击杀 {{continueKills}}</view>
+    <view class="gate-btn-main" bindtap="onContinueXian">再续仙途</view>
+    <view class="gate-btn-sub" bindtap="onRebirthMortal">重生凡人</view>
   </view>
 
-  <canvas
-    type="2d"
-    id="gameCanvas"
-    class="canvas"
-    bindtouchstart="onTouchStart"
-    bindtouchmove="onTouchMove"
-    bindtouchend="onTouchEnd"
-    bindtouchcancel="onTouchEnd"
-  ></canvas>
+  <block wx:if="{{gameUiReady}}">
+    <!-- 选境 / 境界说明：全屏普通 view，此时不挂 canvas -->
+    <view wx:if="{{showRealmPick}}" class="panel-screen">
+      <view class="info-title">选择境界</view>
+      <view class="info-sub">开发/体验版 · 选后播突破动画直达</view>
+      <scroll-view scroll-y class="panel-scroll">
+        <view
+          wx:for="{{realmPickList}}"
+          wx:key="lv"
+          class="pick-row"
+          data-lv="{{item.lv}}"
+          bindtap="onPickRealm"
+        >
+          <view class="pick-name">{{item.tierName}} · {{item.name}}</view>
+          <view class="pick-meta">击杀门槛 {{item.kills}}</view>
+        </view>
+      </scroll-view>
+      <view class="info-close" bindtap="closeRealmPick">关闭</view>
+    </view>
 
-  <!-- 左上角：境界详情 -->
-  <cover-view class="realm-btn" wx:if="{{!over && !perfect && !showRealmInfo}}" bindtap="toggleRealmInfo">境界</cover-view>
+    <view wx:elif="{{showRealmInfo}}" class="panel-screen">
+      <view class="info-title">修仙境界</view>
+      <view class="info-sub">大境界划分小境界 · 小境升层灵气入丹 · 巅峰击败境主破大境</view>
+      <scroll-view scroll-y class="panel-scroll">
+        <view wx:for="{{realmInfoList}}" wx:key="title" class="info-group">
+          <view class="info-group-title">{{item.title}}</view>
+          <view wx:for="{{item.items}}" wx:for-item="r" wx:key="name" class="info-row">
+            <view class="info-name">{{r.name}}期</view>
+            <view class="info-meta" wx:if="{{r.stages}}">小境界：{{r.stages}}</view>
+            <view class="info-meta" wx:if="{{r.skills}}">技能：{{r.skills}}</view>
+            <view class="info-meta" wx:if="{{r.guardian}}">境主：{{r.guardian}}</view>
+            <view class="info-desc">{{r.desc}}</view>
+            <view class="info-desc tip-line" wx:if="{{r.tip}}">玩法：{{r.tip}}</view>
+          </view>
+        </view>
+      </scroll-view>
+      <view class="info-close" bindtap="closeRealmInfo">关闭</view>
+    </view>
 
-  <view class="tip" wx:if="{{!over && !perfect && !showRealmInfo && realmName === '凡人'}}">盘膝吸纳天地灵气 · 僵尸之手伤不得你</view>
-  <view class="tip" wx:elif="{{!over && !perfect && !showRealmInfo && heldFu}}">点按落点扔出「{{heldFu}}」</view>
-  <view class="tip" wx:elif="{{!over && !perfect && !showRealmInfo && (realmName === '炼气' || realmName === '筑基' || realmName === '结丹')}}">御剑耗灵气 · 静止打坐回灵 · 出土剑/丹药/符箓</view>
-  <view class="tip" wx:elif="{{!over && !perfect && !showRealmInfo}}">点按顺移 · 持符点按释放 · 左下太极切换自动</view>
+    <view wx:elif="{{perfect}}" class="panel-screen mask-panel">
+      <view class="ink-epitaph">大圆满</view>
+      <view class="mask-sub">道祖 · 击杀 {{kills}}</view>
+      <view class="mask-btn" bindtap="restart">再修一回</view>
+    </view>
 
-  <cover-view class="info-mask" wx:if="{{showRealmInfo && !over && !perfect}}">
-    <cover-view class="info-title">修仙境界</cover-view>
-    <cover-view class="info-scroll">
-      <cover-view wx:for="{{realmInfoList}}" wx:key="title" class="info-group">
-        <cover-view class="info-group-title">{{item.title}}</cover-view>
-        <cover-view wx:for="{{item.items}}" wx:for-item="r" wx:key="name" class="info-row">
-          <cover-view class="info-name">{{r.name}}期 · 击杀{{r.kills}}+</cover-view>
-          <cover-view class="info-desc">{{r.desc}}</cover-view>
-        </cover-view>
-      </cover-view>
-    </cover-view>
-    <cover-view class="info-close" bindtap="closeRealmInfo">关闭</cover-view>
-  </cover-view>
+    <view wx:elif="{{over}}" class="panel-screen mask-panel">
+      <view class="ink-epitaph">大道无情</view>
+      <view class="mask-sub">击杀 {{kills}} · 境界 {{realmName}}</view>
+      <view class="mask-btn" bindtap="restart">再修一回</view>
+    </view>
 
-  <cover-view class="mask" wx:if="{{perfect}}">
-    <cover-view class="ink-epitaph">大圆满</cover-view>
-    <cover-view class="mask-sub">道祖 · 击杀 {{kills}}</cover-view>
-    <cover-view class="mask-btn" bindtap="restart">再修一回</cover-view>
-  </cover-view>
+    <!-- 对局：顶栏在 canvas 上方独立区域，不会被原生画布盖住 -->
+    <block wx:else>
+      <view class="top-chrome">
+        <view class="realm-btn" bindtap="toggleRealmInfo">境界</view>
+        <view class="hud">
+          <view class="hud-item">击杀 {{kills}}</view>
+          <view class="hud-item">{{realmTierName}} · {{realmName}}</view>
+          <view class="hud-item">飞剑 ×{{swordCount}}</view>
+          <view class="hud-item">灵气 {{lingQi}}/{{maxLingQi}}</view>
+          <view class="hud-item" wx:if="{{spaceUnlocked}}">空间 {{spaceForce}}/{{maxSpaceForce}}</view>
+          <view class="hud-item" wx:if="{{heldFu}}">符 · {{heldFu}}</view>
+          <view class="hud-item">波次 {{wave}}</view>
+        </view>
+        <view
+          class="realm-btn realm-btn-skip"
+          wx:if="{{canPickRealm}}"
+          bindtap="openRealmPick"
+        >跳境</view>
+      </view>
+      <view class="tip-bar tip-bar-quote" wx:if="{{realmMajorName === '凡人'}}">身如枯木，心若止水，待惊雷破晓！</view>
+      <view class="tip-bar" wx:elif="{{heldFu}}">点按落点扔出「{{heldFu}}」</view>
+      <view class="tip-bar" wx:elif="{{realmTip}}">{{realmTip}}</view>
+      <view class="tip-bar" wx:else>点按锁定 · 持符点按释放 · 左下太极切换自动</view>
 
-  <cover-view class="mask" wx:if="{{over && !perfect}}">
-    <cover-view class="ink-epitaph">大道无情</cover-view>
-    <cover-view class="mask-sub">击杀 {{kills}} · 境界 {{realmName}}</cover-view>
-    <cover-view class="mask-btn" bindtap="restart">再修一回</cover-view>
-  </cover-view>
+      <view class="game-area">
+        <canvas
+          type="2d"
+          id="gameCanvas"
+          class="canvas"
+          bindtouchstart="onTouchStart"
+          bindtouchmove="onTouchMove"
+          bindtouchend="onTouchEnd"
+          bindtouchcancel="onTouchEnd"
+        ></canvas>
+      </view>
+    </block>
+  </block>
 </view>
