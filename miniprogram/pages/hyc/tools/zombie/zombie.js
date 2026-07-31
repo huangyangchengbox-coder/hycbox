@@ -1918,12 +1918,23 @@ Page({
     }
   },
 
-  _clampToGrass(x, y) {
+  /** pad：实体半宽，避免大体型角色中心贴边时身子画出屏幕 */
+  _clampToGrass(x, y, pad) {
     const g = this._grassRect()
+    const p = Math.max(0, pad || 0)
     return {
-      x: Math.max(g.minX, Math.min(g.maxX, x)),
-      y: Math.max(g.minY, Math.min(g.maxY, y))
+      x: Math.max(g.minX + p, Math.min(g.maxX - p, x)),
+      y: Math.max(g.minY + p, Math.min(g.maxY - p, y))
     }
+  },
+
+  /** 每帧校正主角落点（瞬移目标未钳制时兜底） */
+  _ensurePlayerInBounds() {
+    if (this._voidBlink) return
+    const pad = 18
+    const g = this._clampToGrass(this._playerX, this._playerY, pad)
+    this._playerX = g.x
+    this._playerY = g.y
   },
 
   /** 草地上随机出土点（远离玩家） */
@@ -1965,11 +1976,9 @@ Page({
 
   /** 全地图行走，限制在草地区域（不上山/树） */
   _movePlayerTo(x, y) {
-    const g = this._grassRect()
-    this._playerX = Math.max(g.minX, Math.min(g.maxX, x))
-    if (y != null) {
-      this._playerY = Math.max(g.minY, Math.min(g.maxY, y))
-    }
+    const g = this._clampToGrass(x, y == null ? this._playerY : y, 18)
+    this._playerX = g.x
+    if (y != null) this._playerY = g.y
   },
 
   /** 元婴后：空间之力蓄满 → 撕裂虚空顺移 */
@@ -1984,8 +1993,8 @@ Page({
       return false
     }
     const g = this._grassRect()
-    const tx = Math.max(g.minX, Math.min(g.maxX, x))
-    const ty = Math.max(g.minY, Math.min(g.maxY, y == null ? this._playerY : y))
+    const tx = Math.max(g.minX + 18, Math.min(g.maxX - 18, x))
+    const ty = Math.max(g.minY + 18, Math.min(g.maxY - 18, y == null ? this._playerY : y))
     const dx = tx - this._playerX
     const dy = ty - this._playerY
     if (dx * dx + dy * dy < 36 * 36) return false
@@ -2000,13 +2009,16 @@ Page({
 
   /** 撕裂虚空：原地裂开飞入 → 远处裂开飞出 */
   _startVoidBlink(fx, fy, tx, ty, realm) {
+    // 起终点一律钳在草地内，避免躲伤 hop 飞出屏幕外
+    const from = this._clampToGrass(fx, fy, 18)
+    const to = this._clampToGrass(tx, ty, 18)
     this._voidBlink = {
       t: 0,
       dur: VOID_BLINK_DUR,
-      fx: fx,
-      fy: fy,
-      tx: tx,
-      ty: ty,
+      fx: from.x,
+      fy: from.y,
+      tx: to.x,
+      ty: to.y,
       color: (realm && realm.color) || '#67e8f9',
       arrived: false,
       hidden: false
@@ -2017,14 +2029,14 @@ Page({
       const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.2
       const s = 30 + Math.random() * 80
       this._particles.push({
-        x: fx, y: fy - 8,
+        x: from.x, y: from.y - 8,
         vx: Math.cos(a) * s * 0.35,
         vy: Math.sin(a) * s,
         life: 0.35 + Math.random() * 0.25,
         color: i % 2 ? '#67e8f9' : '#e0f2fe'
       })
     }
-    console.log('仙途撕裂虚空', Math.round(fx), Math.round(fy), '→', Math.round(tx), Math.round(ty))
+    console.log('仙途撕裂虚空', Math.round(from.x), Math.round(from.y), '→', Math.round(to.x), Math.round(to.y))
   },
 
   _updateVoidBlink(dt) {
@@ -2036,10 +2048,13 @@ Page({
     if (t >= 0.58 && !vb.arrived) {
       vb.arrived = true
       vb.hidden = true
-      this._playerX = vb.tx
-      this._playerY = vb.ty
-      this._prevPlayerX = vb.tx
-      this._prevPlayerY = vb.ty
+      const landed = this._clampToGrass(vb.tx, vb.ty, 18)
+      vb.tx = landed.x
+      vb.ty = landed.y
+      this._playerX = landed.x
+      this._playerY = landed.y
+      this._prevPlayerX = landed.x
+      this._prevPlayerY = landed.y
       for (let i = 0; i < 12; i++) {
         const a = Math.random() * Math.PI * 2
         const s = 35 + Math.random() * 70
@@ -2598,6 +2613,7 @@ Page({
       if (this._blinkFx.t >= this._blinkFx.dur) this._blinkFx = null
     }
     if (this._voidBlink) this._updateVoidBlink(dt)
+    this._ensurePlayerInBounds()
     // 元婴起缓慢积蓄空间之力（击杀另有加成）
     if (canSpaceBlink(this._realmLv) && !this._voidBlink) {
       const before = this._spaceForce || 0
@@ -3203,13 +3219,16 @@ Page({
       const dy0 = this._playerY - (fromY == null ? this._playerY : fromY)
       const d0 = Math.sqrt(dx0 * dx0 + dy0 * dy0) || 1
       const hop = 118 + Math.min(70, (realmByLv(this._realmLv).majorIndex || 0) * 8)
-      const tx = this._playerX + (dx0 / d0) * hop
-      const ty = this._playerY + (dy0 / d0) * hop
+      const raw = this._clampToGrass(
+        this._playerX + (dx0 / d0) * hop,
+        this._playerY + (dy0 / d0) * hop,
+        18
+      )
       const cost = Math.min(this._spaceForce, 55)
       this._spaceForce = Math.max(0, (this._spaceForce || 0) - cost)
       this.setData({ spaceForce: Math.floor(this._spaceForce), maxSpaceForce: SPACE_FORCE_MAX })
       const realm = realmByLv(this._realmLv)
-      this._startVoidBlink(this._playerX, this._playerY, tx, ty, realm)
+      this._startVoidBlink(this._playerX, this._playerY, raw.x, raw.y, realm)
       this._burst(this._playerX, this._playerY, '#67e8f9', 10)
       wx.showToast({ title: '破碎虚空 · 躲伤', icon: 'none', duration: 700 })
       return
@@ -3407,6 +3426,9 @@ Page({
       z.glow = realm.glow || kit.crescentGlow
       z.crescentColor = kit.crescentColor
       z.crescentGlow = kit.crescentGlow
+      // 碰撞半径随体型软封顶，避免后期胖到出屏
+      const softR = Math.min(z.r, 28)
+      z.r = softR
       const lookName = ({
         sha: '煞影修士', voidbeast: '虚空修士', mutate: '真灵修士', overlord: '霸体修士',
         leibeast: '雷劫修士', timeprison: '时囚修士', tianmo: '天魔修士', sanshi: '三尸修士',
@@ -3479,6 +3501,7 @@ Page({
     if (isAfterYuanying(realm.lv)) {
       boss.proceduralBody = true
       boss.handOnly = true
+      boss.r = Math.min(boss.r, 36)
     }
     if (kit.isShadowSelf) {
       boss.alphaMul = 0.9
@@ -3861,7 +3884,7 @@ Page({
     const hpBars = kit.hpBars
     const hpPerBar = kit.hpPerBar
     const hp = hpBars * hpPerBar
-    const r = 26 * (realm.bodyScale || 1)
+    const r = Math.min(34, 26 * Math.min(1.35, realm.bodyScale || 1))
     let pos = this._spawnPointOnGrass()
     const pdx = pos.x - this._playerX
     const pdy = pos.y - this._playerY
@@ -4214,7 +4237,7 @@ Page({
       const spd = (baseSpeed * 3.2 + z.speedBonus) * dt
       z.x += (dx / dist) * spd
       z.y += (dy / dist) * spd
-      const clamped = this._clampToGrass(z.x, z.y)
+      const clamped = this._clampToGrass(z.x, z.y, Math.min(32, (z.r || 16) * 0.5))
       z.x = clamped.x
       z.y = clamped.y
       if (dist <= z.r + 16 && !z.skillFired) {
@@ -4261,9 +4284,11 @@ Page({
     const spd = (baseSpeed * moveMul + z.speedBonus) * dt
     z.x += (dx / dist) * spd
     z.y += (dy / dist) * spd
-    const clamped = this._clampToGrass(z.x, z.y)
+    // 按体型内缩，避免大半身子贴出屏幕边
+    const clamped = this._clampToGrass(z.x, z.y, Math.min(32, (z.r || 16) * 0.5))
     z.x = clamped.x
     z.y = clamped.y
+    if ((z.floatY || 0) > 14) z.floatY = 14
 
     if (atk === 'spit' && (z.skillCd || 0) <= 0 && dist < range && dist > 50) {
       z.state = 'skill'
@@ -7556,6 +7581,11 @@ Page({
       if (z.isBoss) size = z.r * (3.05 + emerge * 0.4)
       if (!z.isBoss && z.state === 'emerge') size = z.r * (2.6 + emerge * 0.5)
       if (z.gengScale != null) size *= z.gengScale
+      // 程序化人形 / 心魔：略缩小并限高，避免高境界体型撑出屏幕
+      if (z.proceduralBody || z.isShadowSelf) {
+        size *= z.isShadowSelf ? 0.8 : 0.78
+        size = Math.min(size, (this._h || 500) * 0.26)
+      }
       // 走动起伏与迈步帧同步，避免滑行感
       const walkPhase = (z.frameT || 0) * Math.max(5, 5.5 + (z.speedMul || 1) * 3.5) * Math.PI
       if (walking) {
@@ -8948,92 +8978,198 @@ Page({
     ctx.restore()
   },
 
-  /** 心魔黑影：全黑人形剪影，只漏血红眼睛与白牙 */
+  /**
+   * 心魔黑影：修长全黑人形剪影（更像人），只漏血红眼睛与白牙
+   * 复用姿态解析，走/攻/挡时有摆臂迈步
+   */
   _drawShadowSelfGuardian(ctx, z, drawX, drawY, size, faceLeft, flashOnly) {
     const t = this._animT || 0
+    const seed = z.id || 0
+    const pose = this._resolveCultivatorPose(z)
+    const bob = (pose.bob || 0) * size
+    const slimX = 0.58
+    const slimY = 1.14
     ctx.save()
-    ctx.translate(drawX, drawY)
-    if (faceLeft) ctx.scale(-1, 1)
+    ctx.translate(drawX, drawY + bob + size * 0.04)
+    if (faceLeft) ctx.scale(-slimX, slimY)
+    else ctx.scale(slimX, slimY)
+    ctx.rotate(pose.lean || 0)
 
-    // 全黑人形（头+发髻+袍+臂+腿）
+    // 脚底暗雾
+    ctx.globalAlpha = 0.4
     ctx.fillStyle = '#050505'
-    ctx.strokeStyle = '#0a0a0a'
-    ctx.lineWidth = 1.5
-    // 发髻
     ctx.beginPath()
-    ctx.ellipse(0, -size * 0.42, size * 0.1, size * 0.08, 0, 0, Math.PI * 2)
-    ctx.fill()
-    // 头
-    ctx.beginPath()
-    ctx.arc(0, -size * 0.28, size * 0.145, 0, Math.PI * 2)
-    ctx.fill()
-    // 颈
-    ctx.fillRect(-size * 0.04, -size * 0.16, size * 0.08, size * 0.08)
-    // 袍身
-    ctx.beginPath()
-    ctx.moveTo(-size * 0.2, -size * 0.1)
-    ctx.lineTo(-size * 0.28, size * 0.38)
-    ctx.lineTo(size * 0.28, size * 0.38)
-    ctx.lineTo(size * 0.2, -size * 0.1)
-    ctx.closePath()
-    ctx.fill()
-    // 双臂
-    ctx.beginPath()
-    ctx.ellipse(-size * 0.26, size * 0.02, size * 0.07, size * 0.16, -0.35, 0, Math.PI * 2)
-    ctx.ellipse(size * 0.26, size * 0.02, size * 0.07, size * 0.16, 0.35, 0, Math.PI * 2)
-    ctx.fill()
-    // 脚影
-    ctx.globalAlpha = 0.55
-    ctx.beginPath()
-    ctx.ellipse(0, size * 0.4, size * 0.26, size * 0.07, 0, 0, Math.PI * 2)
+    ctx.ellipse(0, size * 0.42, size * 0.22, size * 0.055, 0, 0, Math.PI * 2)
     ctx.fill()
     ctx.globalAlpha = 1
 
-    // 只漏眼睛
-    const eyeY = -size * 0.3
-    const eyeX = size * 0.055
-    const blink = Math.sin(t * 3 + (z.id || 0)) > 0.92 ? 0.2 : 1
+    const ink = '#050505'
+    const edge = '#111111'
+    ctx.fillStyle = ink
+    ctx.strokeStyle = edge
+    ctx.lineWidth = Math.max(1, size * 0.012)
+
+    // 发髻 + 披发
+    ctx.beginPath()
+    ctx.ellipse(0, -size * 0.46, size * 0.07, size * 0.055, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.beginPath()
+    ctx.ellipse(0, -size * 0.34, size * 0.13, size * 0.1, 0, Math.PI * 1.05, Math.PI * 1.95)
+    ctx.fill()
+    // 一侧垂发，更有人味
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.1, -size * 0.3)
+    ctx.quadraticCurveTo(-size * 0.22, -size * 0.05, -size * 0.12, size * 0.12)
+    ctx.quadraticCurveTo(-size * 0.08, -size * 0.05, -size * 0.06, -size * 0.28)
+    ctx.fill()
+
+    // 鹅蛋头
+    ctx.beginPath()
+    ctx.ellipse(0, -size * 0.27, size * 0.095, size * 0.125, 0, 0, Math.PI * 2)
+    ctx.fill()
+    // 颈
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.03, -size * 0.16)
+    ctx.lineTo(size * 0.03, -size * 0.16)
+    ctx.lineTo(size * 0.038, -size * 0.09)
+    ctx.lineTo(-size * 0.038, -size * 0.09)
+    ctx.fill()
+
+    // 修长道袍（肩窄、腰收、下摆略开）
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.11, -size * 0.1)
+    ctx.quadraticCurveTo(-size * 0.2, size * 0.08, -size * 0.18, size * 0.38)
+    ctx.quadraticCurveTo(0, size * 0.42, size * 0.18, size * 0.38)
+    ctx.quadraticCurveTo(size * 0.2, size * 0.08, size * 0.11, -size * 0.1)
+    ctx.quadraticCurveTo(0, -size * 0.14, -size * 0.11, -size * 0.1)
+    ctx.fill()
+    // 交领暗线
+    ctx.strokeStyle = '#1a1a1a'
+    ctx.globalAlpha = 0.7
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.015, -size * 0.1)
+    ctx.lineTo(-size * 0.07, size * 0.06)
+    ctx.moveTo(size * 0.015, -size * 0.1)
+    ctx.lineTo(size * 0.07, size * 0.06)
+    ctx.stroke()
+    ctx.globalAlpha = 1
+    ctx.fillStyle = ink
+
+    // 迈步双腿
+    const ws = pose.walkSwing || 0
+    const lx = ws * size * 0.05
+    const ly = Math.max(0, -ws) * size * 0.025
+    const rx = -ws * size * 0.05
+    const ry = Math.max(0, ws) * size * 0.025
+    ctx.beginPath()
+    ctx.ellipse(-size * 0.055 + lx, size * 0.36 - ly, size * 0.035, size * 0.065, 0.12, 0, Math.PI * 2)
+    ctx.ellipse(size * 0.055 + rx, size * 0.36 - ry, size * 0.035, size * 0.065, -0.12, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.beginPath()
+    ctx.ellipse(-size * 0.055 + lx, size * 0.42 - ly, size * 0.045, size * 0.02, 0, 0, Math.PI * 2)
+    ctx.ellipse(size * 0.055 + rx, size * 0.42 - ry, size * 0.045, size * 0.02, 0, 0, Math.PI * 2)
+    ctx.fill()
+
+    // 双臂（姿态角）
+    const armR = pose.armR != null ? pose.armR : 0.5
+    const armL = pose.armL != null ? pose.armL : -0.4
+    for (let i = 0; i < 2; i++) {
+      const side = i === 0 ? -1 : 1
+      const ang = side < 0 ? armL : armR
+      ctx.save()
+      ctx.translate(side * size * 0.12, -size * 0.02)
+      ctx.rotate(ang)
+      ctx.beginPath()
+      ctx.moveTo(-size * 0.035, 0)
+      ctx.quadraticCurveTo(-size * 0.055, size * 0.1, -size * 0.04, size * 0.2)
+      ctx.quadraticCurveTo(0, size * 0.23, size * 0.04, size * 0.2)
+      ctx.quadraticCurveTo(size * 0.055, size * 0.1, size * 0.035, 0)
+      ctx.closePath()
+      ctx.fill()
+      // 手
+      ctx.beginPath()
+      ctx.ellipse(0, size * 0.23, size * 0.028, size * 0.032, 0, 0, Math.PI * 2)
+      ctx.fill()
+      // 攻击/格挡时右手持暗影短刃剪影
+      if (side > 0 && (pose.mode === 'attack' || pose.mode === 'block' || pose.mode === 'idle' || pose.mode === 'walk')) {
+        ctx.save()
+        ctx.translate(0, size * 0.2)
+        ctx.rotate(pose.weaponAng != null ? pose.weaponAng : -0.9)
+        ctx.beginPath()
+        ctx.moveTo(-size * 0.02, size * 0.04)
+        ctx.lineTo(0, size * 0.28)
+        ctx.lineTo(size * 0.02, size * 0.04)
+        ctx.closePath()
+        ctx.fill()
+        ctx.restore()
+      }
+      ctx.restore()
+    }
+
+    // 前额发丝盖住脸缘
+    ctx.fillStyle = ink
+    ctx.beginPath()
+    ctx.ellipse(0, -size * 0.36, size * 0.11, size * 0.045, 0, Math.PI, Math.PI * 2)
+    ctx.fill()
+
+    // 只漏眼睛（修长眼形）
+    const eyeY = -size * 0.29
+    const eyeX = size * 0.042
+    const blink = Math.sin(t * 3 + seed) > 0.92 ? 0.2 : 1
     for (let side = -1; side <= 1; side += 2) {
       const ex = side * eyeX
-      ctx.fillStyle = '#7f1d1d'
+      ctx.fillStyle = '#450a0a'
       ctx.beginPath()
-      ctx.ellipse(ex, eyeY, size * 0.035, size * 0.028 * blink, 0, 0, Math.PI * 2)
+      ctx.ellipse(ex, eyeY, size * 0.028, size * 0.018 * blink, side * 0.15, 0, Math.PI * 2)
       ctx.fill()
       ctx.fillStyle = '#ef4444'
       ctx.beginPath()
-      ctx.ellipse(ex, eyeY, size * 0.022, size * 0.018 * blink, 0, 0, Math.PI * 2)
+      ctx.ellipse(ex, eyeY, size * 0.016, size * 0.012 * blink, 0, 0, Math.PI * 2)
       ctx.fill()
       ctx.fillStyle = '#fecaca'
+      ctx.globalAlpha = 0.9
       ctx.beginPath()
-      ctx.arc(ex + size * 0.008, eyeY - size * 0.006, size * 0.008, 0, Math.PI * 2)
+      ctx.arc(ex + size * 0.005, eyeY - size * 0.004 * blink, size * 0.005, 0, Math.PI * 2)
       ctx.fill()
+      ctx.globalAlpha = 1
     }
 
-    // 只漏牙齿
-    const open = 0.4 + Math.sin(t * 5.5 + (z.id || 0)) * 0.15
-    const my = -size * 0.18
-    const mw = size * 0.09
-    ctx.fillStyle = '#111'
+    // 只漏牙齿（略收窄）
+    const open = 0.35 + Math.sin(t * 5.5 + seed) * 0.12
+    const my = -size * 0.175
+    const mw = size * 0.07
+    ctx.fillStyle = '#0a0a0a'
     ctx.beginPath()
-    ctx.ellipse(0, my, mw, mw * 0.4 * open, 0, 0, Math.PI * 2)
+    ctx.ellipse(0, my, mw, mw * 0.38 * open, 0, 0, Math.PI * 2)
     ctx.fill()
     ctx.fillStyle = '#f8fafc'
     for (let i = 0; i < 5; i++) {
       const u = (i / 4) * 2 - 1
-      const tx = u * mw * 0.72
+      const tx = u * mw * 0.7
       ctx.beginPath()
-      ctx.moveTo(tx - size * 0.012, my - mw * 0.12 * open)
-      ctx.lineTo(tx, my + size * 0.035 + open * size * 0.02)
-      ctx.lineTo(tx + size * 0.012, my - mw * 0.12 * open)
+      ctx.moveTo(tx - size * 0.009, my - mw * 0.1 * open)
+      ctx.lineTo(tx, my + size * 0.028 + open * size * 0.015)
+      ctx.lineTo(tx + size * 0.009, my - mw * 0.1 * open)
       ctx.closePath()
       ctx.fill()
     }
 
+    // 格挡月牙（心魔挡招时）
+    if (pose.mode === 'block') {
+      ctx.globalAlpha = 0.75
+      ctx.strokeStyle = z.crescentColor || '#7f1d1d'
+      ctx.lineWidth = 2.4
+      ctx.beginPath()
+      ctx.arc(size * 0.14, 0, size * 0.32, -1.15, 1.15)
+      ctx.stroke()
+      ctx.globalAlpha = 1
+    }
+
     if (flashOnly) {
-      ctx.globalAlpha = 0.25
+      ctx.globalAlpha = 0.22
       ctx.fillStyle = '#fff'
       ctx.beginPath()
-      ctx.ellipse(0, 0, size * 0.24, size * 0.38, 0, 0, Math.PI * 2)
+      ctx.ellipse(0, 0, size * 0.16, size * 0.36, 0, 0, Math.PI * 2)
       ctx.fill()
     }
     ctx.restore()
@@ -9109,55 +9245,941 @@ Page({
 
   /**
    * 各大境界敌修外形档案（独立人形，不用主角贴图）
+   * weapon: blade/voidblade/claw/axe/spear/fan/ruler/needle/staff/demonblade
    */
   _getEnemyCultivatorLook(style, tint, glow) {
     const looks = {
       sha: {
-        name: '煞影修士', hair: 'horn', robe: 'flare', skin: '#f5d0c8',
-        hairCol: '#0f172a', robeCol: tint || '#0e7490', accent: glow || '#67e8f9', mark: '煞'
+        name: '煞影修士', hair: 'horn', robe: 'flare', weapon: 'blade', skin: '#f3c6b4',
+        hairCol: '#0b1220', robeCol: tint || '#0e7490', accent: glow || '#67e8f9',
+        lining: '#083344', mark: '煞', eye: '#67e8f9'
       },
       voidbeast: {
-        name: '虚空修士', hair: 'hood', robe: 'wide', skin: '#e2e8f0',
-        hairCol: '#134e4a', robeCol: tint || '#0f766e', accent: glow || '#99f6e4', mark: '虚'
+        name: '虚空修士', hair: 'hood', robe: 'wide', weapon: 'voidblade', skin: '#d8e4ea',
+        hairCol: '#134e4a', robeCol: tint || '#0f766e', accent: glow || '#99f6e4',
+        lining: '#042f2e', mark: '虚', eye: '#5eead4'
       },
       mutate: {
-        name: '真灵修士', hair: 'wild', robe: 'split', skin: '#f5e6ff',
-        hairCol: '#4c1d95', robeCol: tint || '#6d28d9', accent: glow || '#ddd6fe', mark: '灵'
+        name: '真灵修士', hair: 'wild', robe: 'split', weapon: 'claw', skin: '#ead8f8',
+        hairCol: '#3b0764', robeCol: tint || '#6d28d9', accent: glow || '#ddd6fe',
+        lining: '#2e1065', mark: '灵', eye: '#c4b5fd'
       },
       overlord: {
-        name: '霸体修士', hair: 'crown', robe: 'armor', skin: '#ffe4e6',
-        hairCol: '#881337', robeCol: tint || '#be123c', accent: glow || '#fecdd3', mark: '霸'
+        name: '霸体修士', hair: 'crown', robe: 'armor', weapon: 'axe', skin: '#f8cfcf',
+        hairCol: '#4c0519', robeCol: tint || '#be123c', accent: glow || '#fecdd3',
+        lining: '#4c0519', mark: '霸', eye: '#fda4af'
       },
       leibeast: {
-        name: '雷劫修士', hair: 'spike', robe: 'flare', skin: '#fff7ed',
-        hairCol: '#a16207', robeCol: tint || '#ca8a04', accent: glow || '#fef08a', mark: '雷'
+        name: '雷劫修士', hair: 'spike', robe: 'flare', weapon: 'spear', skin: '#f8e4c8',
+        hairCol: '#422006', robeCol: tint || '#ca8a04', accent: glow || '#fef08a',
+        lining: '#451a03', mark: '雷', eye: '#fde047'
       },
       timeprison: {
-        name: '时囚修士', hair: 'bun', robe: 'layer', skin: '#ffedd5',
-        hairCol: '#9a3412', robeCol: tint || '#c2410c', accent: glow || '#fdba74', mark: '时'
+        name: '时囚修士', hair: 'bun', robe: 'layer', weapon: 'fan', skin: '#f3d5b5',
+        hairCol: '#7c2d12', robeCol: tint || '#c2410c', accent: glow || '#fdba74',
+        lining: '#7c2d12', mark: '时', eye: '#fb923c'
       },
       tianmo: {
-        name: '天魔修士', hair: 'flat', robe: 'jade', skin: '#e7e5e4',
-        hairCol: '#44403c', robeCol: tint || '#78716c', accent: glow || '#fafaf9', mark: '魔'
+        name: '天魔修士', hair: 'flat', robe: 'jade', weapon: 'ruler', skin: '#e4dfd8',
+        hairCol: '#292524', robeCol: tint || '#78716c', accent: glow || '#fafaf9',
+        lining: '#1c1917', mark: '魔', eye: '#a8a29e'
       },
       sanshi: {
-        name: '三尸修士', hair: 'triple', robe: 'ghost', skin: '#ede9fe',
-        hairCol: '#5b21b6', robeCol: tint || '#6d28d9', accent: glow || '#c4b5fd', mark: '尸'
+        name: '三尸修士', hair: 'triple', robe: 'ghost', weapon: 'needle', skin: '#ddd6fe',
+        hairCol: '#4c1d95', robeCol: tint || '#6d28d9', accent: glow || '#c4b5fd',
+        lining: '#2e1065', mark: '尸', eye: '#a78bfa'
       },
       chaos: {
-        name: '混沌修士', hair: 'flow', robe: 'dao', skin: '#fffbeb',
-        hairCol: '#78350f', robeCol: tint || '#fdba74', accent: glow || '#fff7ed', mark: '道'
+        name: '混沌修士', hair: 'flow', robe: 'dao', weapon: 'staff', skin: '#f6e7c8',
+        hairCol: '#451a03', robeCol: tint || '#fdba74', accent: glow || '#fff7ed',
+        lining: '#78350f', mark: '道', eye: '#fbbf24'
       },
       demon: {
-        name: '魔影修士', hair: 'horn', robe: 'flare', skin: '#ede9fe',
-        hairCol: '#2e1065', robeCol: tint || '#7c3aed', accent: glow || '#a78bfa', mark: '魔'
+        name: '魔影修士', hair: 'horn', robe: 'flare', weapon: 'demonblade', skin: '#ddd6fe',
+        hairCol: '#1e1b4b', robeCol: tint || '#7c3aed', accent: glow || '#a78bfa',
+        lining: '#2e1065', mark: '魔', eye: '#c4b5fd'
       }
     }
     return looks[style] || looks.sha
   },
 
+  /** 混色：#rrggbb 线性插值 */
+  _mixHex(a, b, t) {
+    const parse = (hex) => {
+      const h = String(hex || '#888888').replace('#', '')
+      const full = h.length === 3 ? h[0] + h[0] + h[1] + h[1] + h[2] + h[2] : h
+      const n = parseInt(full.slice(0, 6), 16)
+      if (!isFinite(n)) return [136, 136, 136]
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+    }
+    const u = Math.max(0, Math.min(1, t == null ? 0.5 : t))
+    const A = parse(a)
+    const B = parse(b)
+    const r = Math.round(A[0] + (B[0] - A[0]) * u)
+    const g = Math.round(A[1] + (B[1] - A[1]) * u)
+    const bl = Math.round(A[2] + (B[2] - A[2]) * u)
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1)
+  },
+
   /**
-   * 元婴后敌修：每大境界独立生成的人形（非主角贴图）
+   * 敌修姿态：idle/walk/attack/block/dash → 臂角、前倾、武器角、进度
+   * 只读状态机，不改战斗逻辑
+   */
+  _resolveCultivatorPose(z) {
+    const t = this._animT || 0
+    const seed = z.id || 0
+    const maxBlock = z.blockCdMax || 0.4
+    const blocking = (z.blockCd || 0) > maxBlock * 0.45
+    const dashing = (z.dashT || 0) > 0
+    const attacking = !blocking && (z.state === 'attack' || z.state === 'skill' || dashing || !!z.atkFx)
+    const walking = !attacking && !blocking && (z.state === 'walk' || z.state === 'chase' || z.state === 'emerge')
+    let mode = 'idle'
+    if (blocking) mode = 'block'
+    else if (dashing) mode = 'dash'
+    else if (attacking) mode = 'attack'
+    else if (walking) mode = 'walk'
+
+    // 与主绘制走动起伏同相位，避免脚尘和迈步脱节
+    const walkPhase = (z.frameT || 0) * Math.max(5, 5.5 + (z.speedMul || 1) * 3.5) * Math.PI
+    const walkSwing = mode === 'walk' ? Math.sin(walkPhase) : Math.sin(t * 2.2 + seed) * 0.25
+    let atkU = 0
+    if (z.atkFx) atkU = Math.min(1, z.atkFx.t / Math.max(0.01, z.atkFx.dur))
+    else if (mode === 'attack' || mode === 'dash') atkU = Math.min(1, (z.frameT || z.skillT || 0) / 0.5)
+    const swing = Math.sin(atkU * Math.PI)
+    const blockU = blocking ? Math.min(1, (z.blockCd || 0) / maxBlock) : 0
+
+    // 右臂持武、左臂辅手；本地坐标系面向右
+    let armR = 0.55
+    let armL = -0.45
+    let weaponAng = -0.85
+    let lean = 0
+    let raise = 0
+    if (mode === 'walk') {
+      armR = 0.5 + walkSwing * 0.35
+      armL = -0.4 - walkSwing * 0.35
+      weaponAng = -0.9 + walkSwing * 0.12
+      lean = walkSwing * 0.04
+    } else if (mode === 'attack') {
+      armR = 0.2 - swing * 1.35
+      armL = -0.2 - swing * 0.35
+      weaponAng = -1.2 + swing * 2.1
+      lean = 0.08 + swing * 0.12
+      raise = swing * 0.06
+    } else if (mode === 'dash') {
+      armR = -0.9
+      armL = -0.55
+      weaponAng = 0.35
+      lean = 0.22
+    } else if (mode === 'block') {
+      armR = -0.15
+      armL = -1.05
+      weaponAng = -0.15
+      lean = -0.06
+      raise = 0.04
+    } else {
+      armR = 0.55 + Math.sin(t * 1.6 + seed) * 0.06
+      armL = -0.45
+      weaponAng = -0.85 + Math.sin(t * 2 + seed) * 0.08
+    }
+    return {
+      mode: mode,
+      walkSwing: walkSwing,
+      walkPhase: walkPhase,
+      atkU: atkU,
+      swing: swing,
+      blockU: blockU,
+      armR: armR,
+      armL: armL,
+      weaponAng: weaponAng,
+      lean: lean,
+      raise: raise,
+      bob: mode === 'walk' ? Math.abs(Math.sin(walkPhase)) * 0.012 : (mode === 'attack' ? -swing * 0.01 : 0)
+    }
+  },
+
+  /** 脚下灵气光斑 */
+  _paintCultivatorAura(ctx, size, accent, t, seed) {
+    ctx.save()
+    const pulse = 0.22 + Math.sin(t * 3.2 + seed) * 0.06
+    const grd = ctx.createRadialGradient(0, size * 0.4, size * 0.04, 0, size * 0.4, size * 0.36)
+    grd.addColorStop(0, this._hexToRgba(accent, pulse + 0.12))
+    grd.addColorStop(0.55, this._hexToRgba(accent, pulse * 0.45))
+    grd.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.fillStyle = grd
+    ctx.beginPath()
+    ctx.ellipse(0, size * 0.42, size * 0.34, size * 0.1, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  },
+
+  /** 发型 / 帽兜 */
+  _paintCultivatorHair(ctx, look, size, t) {
+    const col = look.hairCol
+    const hi = this._mixHex(col, '#ffffff', 0.18)
+    ctx.fillStyle = col
+    ctx.strokeStyle = hi
+    ctx.lineWidth = Math.max(1, size * 0.012)
+    const hair = look.hair
+    if (hair === 'hood') {
+      ctx.beginPath()
+      ctx.moveTo(-size * 0.2, -size * 0.18)
+      ctx.quadraticCurveTo(-size * 0.26, -size * 0.42, 0, -size * 0.52)
+      ctx.quadraticCurveTo(size * 0.26, -size * 0.42, size * 0.2, -size * 0.18)
+      ctx.quadraticCurveTo(size * 0.14, -size * 0.3, 0, -size * 0.32)
+      ctx.quadraticCurveTo(-size * 0.14, -size * 0.3, -size * 0.2, -size * 0.18)
+      ctx.fill()
+      ctx.globalAlpha = 0.35
+      ctx.stroke()
+      ctx.globalAlpha = 1
+      return
+    }
+    ctx.beginPath()
+    ctx.ellipse(0, -size * 0.3, size * 0.16, size * 0.14, 0, Math.PI * 1.05, Math.PI * 1.95)
+    ctx.fill()
+    if (hair === 'horn') {
+      for (let side = -1; side <= 1; side += 2) {
+        ctx.beginPath()
+        ctx.moveTo(side * size * 0.06, -size * 0.36)
+        ctx.quadraticCurveTo(side * size * 0.16, -size * 0.52, side * size * 0.1, -size * 0.58)
+        ctx.quadraticCurveTo(side * size * 0.04, -size * 0.5, side * size * 0.02, -size * 0.38)
+        ctx.fill()
+      }
+    } else if (hair === 'wild') {
+      for (let i = -3; i <= 3; i++) {
+        ctx.beginPath()
+        ctx.moveTo(i * size * 0.03, -size * 0.34)
+        ctx.quadraticCurveTo(i * size * 0.05, -size * 0.5 - Math.abs(i) * 1.2, i * size * 0.02 + size * 0.02, -size * 0.36)
+        ctx.lineTo(i * size * 0.03 + size * 0.01, -size * 0.34)
+        ctx.fill()
+      }
+    } else if (hair === 'crown') {
+      ctx.beginPath()
+      ctx.moveTo(-size * 0.14, -size * 0.38)
+      ctx.lineTo(-size * 0.08, -size * 0.54)
+      ctx.lineTo(-size * 0.02, -size * 0.42)
+      ctx.lineTo(0, -size * 0.58)
+      ctx.lineTo(size * 0.02, -size * 0.42)
+      ctx.lineTo(size * 0.08, -size * 0.54)
+      ctx.lineTo(size * 0.14, -size * 0.38)
+      ctx.quadraticCurveTo(0, -size * 0.44, -size * 0.14, -size * 0.38)
+      ctx.fill()
+      ctx.fillStyle = look.accent
+      ctx.globalAlpha = 0.75
+      ctx.beginPath()
+      ctx.arc(0, -size * 0.5, size * 0.025, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.globalAlpha = 1
+      ctx.fillStyle = col
+    } else if (hair === 'spike') {
+      for (let i = -2; i <= 2; i++) {
+        const x = i * size * 0.048
+        ctx.beginPath()
+        ctx.moveTo(x - size * 0.02, -size * 0.34)
+        ctx.lineTo(x + Math.sin(t * 8 + i) * 1.2, -size * 0.56)
+        ctx.lineTo(x + size * 0.025, -size * 0.34)
+        ctx.fill()
+      }
+    } else if (hair === 'triple') {
+      ;[-1, 0, 1].forEach((k, idx) => {
+        ctx.beginPath()
+        ctx.ellipse(k * size * 0.11, -size * (0.42 + (idx === 1 ? 0.06 : 0)), size * 0.055, size * 0.05, 0, 0, Math.PI * 2)
+        ctx.fill()
+      })
+    } else if (hair === 'flow') {
+      ctx.beginPath()
+      ctx.ellipse(0, -size * 0.34, size * 0.17, size * 0.11, 0, 0, Math.PI * 2)
+      ctx.fill()
+      const sway = Math.sin(t * 2.4) * size * 0.02
+      ctx.beginPath()
+      ctx.moveTo(-size * 0.14, -size * 0.28)
+      ctx.quadraticCurveTo(-size * 0.34 + sway, size * 0.05, -size * 0.18, size * 0.28)
+      ctx.quadraticCurveTo(-size * 0.1, size * 0.05, -size * 0.08, -size * 0.26)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.moveTo(size * 0.1, -size * 0.28)
+      ctx.quadraticCurveTo(size * 0.28 + sway, 0, size * 0.16, size * 0.2)
+      ctx.quadraticCurveTo(size * 0.08, -0.02 * size, size * 0.06, -size * 0.26)
+      ctx.fill()
+    } else if (hair === 'flat') {
+      ctx.beginPath()
+      ctx.ellipse(0, -size * 0.38, size * 0.17, size * 0.055, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.moveTo(-size * 0.16, -size * 0.34)
+      ctx.quadraticCurveTo(-size * 0.22, -size * 0.18, -size * 0.12, -size * 0.16)
+      ctx.lineTo(-size * 0.08, -size * 0.32)
+      ctx.fill()
+    } else {
+      ctx.beginPath()
+      ctx.ellipse(0, -size * 0.34, size * 0.15, size * 0.1, 0, Math.PI, Math.PI * 2)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.arc(0, -size * 0.46, size * 0.075, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = look.accent
+      ctx.globalAlpha = 0.7
+      ctx.beginPath()
+      ctx.arc(0, -size * 0.46, size * 0.04, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.globalAlpha = 1
+    }
+  },
+
+  /** 头脸五官（偏修长鹅蛋脸） */
+  _paintCultivatorHead(ctx, look, size, t, seed) {
+    const skin = look.skin
+    const shade = this._mixHex(skin, '#7c2d12', 0.22)
+    ctx.fillStyle = shade
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.032, -size * 0.16)
+    ctx.lineTo(size * 0.032, -size * 0.16)
+    ctx.lineTo(size * 0.04, -size * 0.08)
+    ctx.lineTo(-size * 0.04, -size * 0.08)
+    ctx.fill()
+    const hx = 0
+    const hy = -size * 0.27
+    const hr = size * 0.118
+    const g = ctx.createRadialGradient(hx - hr * 0.25, hy - hr * 0.3, hr * 0.2, hx, hy, hr)
+    g.addColorStop(0, this._mixHex(skin, '#ffffff', 0.28))
+    g.addColorStop(0.62, skin)
+    g.addColorStop(1, shade)
+    ctx.fillStyle = g
+    ctx.beginPath()
+    // 鹅蛋脸：上下略长、两侧收窄
+    ctx.ellipse(hx, hy, hr * 0.82, hr * 1.08, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = shade
+    ctx.beginPath()
+    ctx.ellipse(-hr * 0.88, hy + size * 0.01, size * 0.022, size * 0.035, -0.2, 0, Math.PI * 2)
+    ctx.ellipse(hr * 0.88, hy + size * 0.01, size * 0.022, size * 0.035, 0.2, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = this._mixHex(look.hairCol, '#000', 0.2)
+    ctx.lineWidth = Math.max(1.1, size * 0.015)
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.055, hy - size * 0.03)
+    ctx.quadraticCurveTo(-size * 0.032, hy - size * 0.045, -size * 0.012, hy - size * 0.028)
+    ctx.moveTo(size * 0.055, hy - size * 0.03)
+    ctx.quadraticCurveTo(size * 0.032, hy - size * 0.045, size * 0.012, hy - size * 0.028)
+    ctx.stroke()
+    const blink = Math.sin(t * 2.6 + seed) > 0.94 ? 0.18 : 1
+    const eyeCol = look.eye || look.accent
+    for (let side = -1; side <= 1; side += 2) {
+      const ex = side * size * 0.038
+      const ey = hy + size * 0.008
+      ctx.fillStyle = '#1e293b'
+      ctx.beginPath()
+      ctx.ellipse(ex, ey, size * 0.02, size * 0.014 * blink, side * 0.12, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = eyeCol
+      ctx.beginPath()
+      ctx.ellipse(ex + side * size * 0.003, ey, size * 0.01, size * 0.01 * blink, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#fff'
+      ctx.globalAlpha = 0.9
+      ctx.beginPath()
+      ctx.arc(ex - size * 0.005, ey - size * 0.004 * blink, size * 0.004, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.globalAlpha = 1
+    }
+    ctx.strokeStyle = this._hexToRgba(shade, 0.5)
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(0, hy + size * 0.015)
+    ctx.lineTo(-size * 0.01, hy + size * 0.038)
+    ctx.stroke()
+    ctx.strokeStyle = this._mixHex(skin, '#be123c', 0.32)
+    ctx.lineWidth = Math.max(1, size * 0.01)
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.022, hy + size * 0.055)
+    ctx.quadraticCurveTo(0, hy + size * 0.068, size * 0.022, hy + size * 0.055)
+    ctx.stroke()
+    ctx.fillStyle = this._hexToRgba('#fb7185', 0.14)
+    ctx.beginPath()
+    ctx.ellipse(-size * 0.06, hy + size * 0.035, size * 0.022, size * 0.014, 0, 0, Math.PI * 2)
+    ctx.ellipse(size * 0.06, hy + size * 0.035, size * 0.022, size * 0.014, 0, 0, Math.PI * 2)
+    ctx.fill()
+  },
+
+  /** 道袍 / 甲胄身躯（随步伐前倾与迈步） */
+  _paintCultivatorRobe(ctx, look, size, pose) {
+    const robe = look.robe
+    const dark = look.lining || this._mixHex(look.robeCol, '#000', 0.45)
+    const mid = look.robeCol
+    const lite = this._mixHex(mid, '#ffffff', 0.22)
+    const accent = look.accent
+    const walkSwing = (pose && pose.walkSwing) || 0
+    const lean = (pose && pose.lean) || 0
+    ctx.save()
+    ctx.rotate(lean)
+    ctx.translate(0, -((pose && pose.raise) || 0) * size)
+    ctx.fillStyle = dark
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.1, -size * 0.1)
+    ctx.lineTo(-size * 0.14, size * 0.32)
+    ctx.lineTo(size * 0.14, size * 0.32)
+    ctx.lineTo(size * 0.1, -size * 0.1)
+    ctx.closePath()
+    ctx.fill()
+    ctx.beginPath()
+    if (robe === 'armor') {
+      ctx.moveTo(-size * 0.18, -size * 0.12)
+      ctx.lineTo(-size * 0.28, size * 0.02)
+      ctx.lineTo(-size * 0.24, size * 0.36)
+      ctx.lineTo(-size * 0.06, size * 0.34)
+      ctx.lineTo(0, size * 0.38)
+      ctx.lineTo(size * 0.06, size * 0.34)
+      ctx.lineTo(size * 0.24, size * 0.36)
+      ctx.lineTo(size * 0.28, size * 0.02)
+      ctx.lineTo(size * 0.18, -size * 0.12)
+      ctx.quadraticCurveTo(0, -size * 0.16, -size * 0.18, -size * 0.12)
+    } else if (robe === 'wide') {
+      ctx.moveTo(-size * 0.14, -size * 0.12)
+      ctx.quadraticCurveTo(-size * 0.36, size * 0.12, -size * 0.34, size * 0.38)
+      ctx.quadraticCurveTo(0, size * 0.42, size * 0.34, size * 0.38)
+      ctx.quadraticCurveTo(size * 0.36, size * 0.12, size * 0.14, -size * 0.12)
+      ctx.quadraticCurveTo(0, -size * 0.16, -size * 0.14, -size * 0.12)
+    } else if (robe === 'split') {
+      ctx.moveTo(-size * 0.16, -size * 0.12)
+      ctx.lineTo(-size * 0.26, size * 0.38)
+      ctx.lineTo(-size * 0.04, size * 0.22)
+      ctx.lineTo(0, size * 0.3)
+      ctx.lineTo(size * 0.04, size * 0.22)
+      ctx.lineTo(size * 0.26, size * 0.38)
+      ctx.lineTo(size * 0.16, -size * 0.12)
+      ctx.quadraticCurveTo(0, -size * 0.16, -size * 0.16, -size * 0.12)
+    } else if (robe === 'jade') {
+      ctx.moveTo(-size * 0.17, -size * 0.12)
+      ctx.lineTo(-size * 0.2, size * 0.36)
+      ctx.quadraticCurveTo(0, size * 0.4, size * 0.2, size * 0.36)
+      ctx.lineTo(size * 0.17, -size * 0.12)
+      ctx.quadraticCurveTo(0, -size * 0.15, -size * 0.17, -size * 0.12)
+    } else if (robe === 'ghost') {
+      ctx.moveTo(-size * 0.16, -size * 0.12)
+      ctx.quadraticCurveTo(-size * 0.3, size * 0.1, -size * 0.28, size * 0.4)
+      ctx.quadraticCurveTo(-size * 0.1, size * 0.3, 0, size * 0.42)
+      ctx.quadraticCurveTo(size * 0.1, size * 0.3, size * 0.28, size * 0.4)
+      ctx.quadraticCurveTo(size * 0.3, size * 0.1, size * 0.16, -size * 0.12)
+      ctx.quadraticCurveTo(0, -size * 0.16, -size * 0.16, -size * 0.12)
+    } else if (robe === 'layer' || robe === 'dao') {
+      ctx.moveTo(-size * 0.15, -size * 0.12)
+      ctx.quadraticCurveTo(-size * 0.28, size * 0.08, -size * 0.26, size * 0.38)
+      ctx.lineTo(-size * 0.08, size * 0.34)
+      ctx.lineTo(0, size * 0.4)
+      ctx.lineTo(size * 0.08, size * 0.34)
+      ctx.lineTo(size * 0.26, size * 0.38)
+      ctx.quadraticCurveTo(size * 0.28, size * 0.08, size * 0.15, -size * 0.12)
+      ctx.quadraticCurveTo(0, -size * 0.16, -size * 0.15, -size * 0.12)
+    } else {
+      ctx.moveTo(-size * 0.15, -size * 0.12)
+      ctx.quadraticCurveTo(-size * 0.3, size * 0.1, -size * 0.27, size * 0.4)
+      ctx.quadraticCurveTo(0, size * 0.44, size * 0.27, size * 0.4)
+      ctx.quadraticCurveTo(size * 0.3, size * 0.1, size * 0.15, -size * 0.12)
+      ctx.quadraticCurveTo(0, -size * 0.16, -size * 0.15, -size * 0.12)
+    }
+    const rg = ctx.createLinearGradient(-size * 0.25, -size * 0.12, size * 0.25, size * 0.4)
+    rg.addColorStop(0, lite)
+    rg.addColorStop(0.45, mid)
+    rg.addColorStop(1, dark)
+    ctx.fillStyle = rg
+    ctx.fill()
+    ctx.strokeStyle = this._hexToRgba('#000000', 0.18)
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.06, -size * 0.08)
+    ctx.quadraticCurveTo(-size * 0.12, size * 0.12, -size * 0.1, size * 0.34)
+    ctx.moveTo(size * 0.05, -size * 0.06)
+    ctx.quadraticCurveTo(size * 0.12, size * 0.14, size * 0.09, size * 0.34)
+    ctx.stroke()
+    ctx.strokeStyle = accent
+    ctx.lineWidth = Math.max(1.4, size * 0.02)
+    ctx.globalAlpha = 0.85
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.02, -size * 0.12)
+    ctx.lineTo(-size * 0.1, size * 0.08)
+    ctx.moveTo(size * 0.02, -size * 0.12)
+    ctx.lineTo(size * 0.1, size * 0.08)
+    ctx.stroke()
+    ctx.globalAlpha = 0.95
+    ctx.fillStyle = this._mixHex(accent, dark, 0.35)
+    ctx.beginPath()
+    ctx.ellipse(0, size * 0.08, size * 0.15, size * 0.028, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = accent
+    ctx.lineWidth = 1.2
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.14, size * 0.08)
+    ctx.lineTo(size * 0.14, size * 0.08)
+    ctx.stroke()
+    ctx.fillStyle = accent
+    ctx.beginPath()
+    ctx.arc(size * 0.12, size * 0.1, size * 0.028, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.globalAlpha = 0.55
+    ctx.fillStyle = accent
+    ctx.font = 'bold ' + Math.max(8, Math.floor(size * 0.13)) + 'px "KaiTi","STKaiti",serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(look.mark || '修', 0, size * 0.0)
+    ctx.globalAlpha = 1
+    // 迈步：前后脚错位 + 抬膝
+    const lx = walkSwing * size * 0.055
+    const ly = Math.max(0, -walkSwing) * size * 0.03
+    const rx = -walkSwing * size * 0.055
+    const ry = Math.max(0, walkSwing) * size * 0.03
+    ctx.fillStyle = dark
+    ctx.beginPath()
+    ctx.ellipse(-size * 0.07 + lx, size * 0.36 - ly, size * 0.045, size * 0.07, 0.15, 0, Math.PI * 2)
+    ctx.ellipse(size * 0.07 + rx, size * 0.36 - ry, size * 0.045, size * 0.07, -0.15, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = this._mixHex(dark, '#000', 0.3)
+    ctx.beginPath()
+    ctx.ellipse(-size * 0.07 + lx, size * 0.42 - ly, size * 0.055, size * 0.025, 0, 0, Math.PI * 2)
+    ctx.ellipse(size * 0.07 + rx, size * 0.42 - ry, size * 0.055, size * 0.025, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  },
+
+  /** 袖臂与手：按姿态角摆动，右臂可挂武器 */
+  _paintCultivatorArms(ctx, look, size, pose, withWeapon) {
+    const mid = look.robeCol
+    const dark = look.lining || this._mixHex(mid, '#000', 0.4)
+    const skin = look.skin
+    const armR = (pose && pose.armR != null) ? pose.armR : 0.5
+    const armL = (pose && pose.armL != null) ? pose.armL : -0.4
+    const lean = (pose && pose.lean) || 0
+    ctx.save()
+    ctx.rotate(lean)
+    ctx.translate(0, -((pose && pose.raise) || 0) * size)
+    // 左臂（辅手，先画在身后）
+    this._paintOneCultivatorArm(ctx, -1, armL, size, mid, dark, skin, look.accent)
+    // 右臂 + 武器
+    ctx.save()
+    ctx.translate(size * 0.16, -size * 0.02)
+    ctx.rotate(armR)
+    const sg = ctx.createLinearGradient(0, -size * 0.05, 0, size * 0.22)
+    sg.addColorStop(0, this._mixHex(mid, '#fff', 0.15))
+    sg.addColorStop(1, dark)
+    ctx.fillStyle = sg
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.05, -size * 0.02)
+    ctx.quadraticCurveTo(-size * 0.09, size * 0.1, -size * 0.07, size * 0.2)
+    ctx.quadraticCurveTo(0, size * 0.24, size * 0.07, size * 0.2)
+    ctx.quadraticCurveTo(size * 0.09, size * 0.1, size * 0.05, -size * 0.02)
+    ctx.closePath()
+    ctx.fill()
+    ctx.fillStyle = this._hexToRgba(look.accent, 0.35)
+    ctx.beginPath()
+    ctx.ellipse(0, size * 0.2, size * 0.06, size * 0.025, 0, 0, Math.PI * 2)
+    ctx.fill()
+    if (withWeapon) {
+      ctx.save()
+      ctx.translate(0, size * 0.22)
+      ctx.rotate((pose && pose.weaponAng) || -0.85)
+      this._paintCultivatorWeapon(ctx, look, size, pose)
+      ctx.restore()
+    }
+    ctx.fillStyle = skin
+    ctx.beginPath()
+    ctx.ellipse(0, size * 0.24, size * 0.035, size * 0.04, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+    ctx.restore()
+  },
+
+  _paintOneCultivatorArm(ctx, side, ang, size, mid, dark, skin, accent) {
+    ctx.save()
+    ctx.translate(side * size * 0.16, -size * 0.02)
+    ctx.rotate(ang)
+    const sg = ctx.createLinearGradient(0, -size * 0.05, 0, size * 0.22)
+    sg.addColorStop(0, this._mixHex(mid, '#fff', 0.15))
+    sg.addColorStop(1, dark)
+    ctx.fillStyle = sg
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.05, -size * 0.02)
+    ctx.quadraticCurveTo(-size * 0.09, size * 0.1, -size * 0.07, size * 0.2)
+    ctx.quadraticCurveTo(0, size * 0.24, size * 0.07, size * 0.2)
+    ctx.quadraticCurveTo(size * 0.09, size * 0.1, size * 0.05, -size * 0.02)
+    ctx.closePath()
+    ctx.fill()
+    ctx.fillStyle = this._hexToRgba(accent, 0.35)
+    ctx.beginPath()
+    ctx.ellipse(0, size * 0.2, size * 0.06, size * 0.025, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = skin
+    ctx.beginPath()
+    ctx.ellipse(0, size * 0.24, size * 0.035, size * 0.04, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  },
+
+  /** 武器本体（本地：握点在原点，刃向 +y） */
+  _paintCultivatorWeapon(ctx, look, size, pose) {
+    const w = look.weapon || 'blade'
+    const accent = look.accent
+    const metal = this._mixHex(accent, '#e2e8f0', 0.45)
+    const dark = this._mixHex(look.lining || '#111', '#334155', 0.3)
+    const glowA = (pose && (pose.mode === 'attack' || pose.mode === 'dash')) ? (0.35 + (pose.swing || 0) * 0.4) : 0.18
+    ctx.save()
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    if (w === 'claw') {
+      ctx.strokeStyle = accent
+      ctx.lineWidth = Math.max(1.6, size * 0.02)
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath()
+        ctx.moveTo(i * size * 0.03, 0)
+        ctx.quadraticCurveTo(i * size * 0.05, size * 0.12, i * size * 0.02, size * 0.22)
+        ctx.stroke()
+      }
+      ctx.restore()
+      return
+    }
+    if (w === 'needle') {
+      ctx.strokeStyle = accent
+      ctx.lineWidth = 1.4
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath()
+        ctx.moveTo(i * size * 0.035, -size * 0.02)
+        ctx.lineTo(i * size * 0.02, size * 0.28)
+        ctx.stroke()
+      }
+      ctx.restore()
+      return
+    }
+    if (w === 'fan') {
+      ctx.fillStyle = this._hexToRgba(accent, 0.45)
+      ctx.strokeStyle = metal
+      ctx.lineWidth = 1.2
+      ctx.beginPath()
+      ctx.moveTo(0, 0)
+      ctx.arc(0, 0, size * 0.22, -0.9, 0.9)
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath()
+        ctx.moveTo(0, 0)
+        ctx.lineTo(Math.sin(i * 0.35) * size * 0.2, Math.cos(i * 0.35) * size * 0.2)
+        ctx.stroke()
+      }
+      ctx.restore()
+      return
+    }
+    if (w === 'staff') {
+      ctx.strokeStyle = dark
+      ctx.lineWidth = Math.max(2.5, size * 0.035)
+      ctx.beginPath()
+      ctx.moveTo(0, -size * 0.08)
+      ctx.lineTo(0, size * 0.38)
+      ctx.stroke()
+      ctx.fillStyle = accent
+      ctx.beginPath()
+      ctx.arc(0, -size * 0.1, size * 0.045, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.globalAlpha = glowA
+      ctx.beginPath()
+      ctx.arc(0, -size * 0.1, size * 0.08, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+      return
+    }
+    if (w === 'ruler') {
+      ctx.fillStyle = this._mixHex(look.robeCol, '#fff', 0.2)
+      ctx.fillRect(-size * 0.025, -size * 0.05, size * 0.05, size * 0.34)
+      ctx.strokeStyle = accent
+      ctx.lineWidth = 1
+      for (let i = 0; i < 4; i++) {
+        const y = size * (0.02 + i * 0.06)
+        ctx.beginPath()
+        ctx.moveTo(-size * 0.02, y)
+        ctx.lineTo(size * 0.02, y)
+        ctx.stroke()
+      }
+      ctx.restore()
+      return
+    }
+    if (w === 'axe') {
+      ctx.strokeStyle = dark
+      ctx.lineWidth = Math.max(2.2, size * 0.03)
+      ctx.beginPath()
+      ctx.moveTo(0, -size * 0.02)
+      ctx.lineTo(0, size * 0.28)
+      ctx.stroke()
+      ctx.fillStyle = metal
+      ctx.beginPath()
+      ctx.moveTo(0, size * 0.02)
+      ctx.quadraticCurveTo(size * 0.18, size * 0.08, size * 0.02, size * 0.18)
+      ctx.quadraticCurveTo(size * 0.05, size * 0.1, 0, size * 0.02)
+      ctx.fill()
+      ctx.strokeStyle = accent
+      ctx.lineWidth = 1.2
+      ctx.stroke()
+      ctx.restore()
+      return
+    }
+    if (w === 'spear') {
+      ctx.strokeStyle = dark
+      ctx.lineWidth = Math.max(2, size * 0.028)
+      ctx.beginPath()
+      ctx.moveTo(0, -size * 0.06)
+      ctx.lineTo(0, size * 0.36)
+      ctx.stroke()
+      ctx.fillStyle = metal
+      ctx.beginPath()
+      ctx.moveTo(0, -size * 0.18)
+      ctx.lineTo(-size * 0.04, -size * 0.04)
+      ctx.lineTo(size * 0.04, -size * 0.04)
+      ctx.closePath()
+      ctx.fill()
+      ctx.strokeStyle = accent
+      ctx.globalAlpha = glowA + 0.3
+      ctx.lineWidth = 1.4
+      ctx.beginPath()
+      ctx.moveTo(-size * 0.03, -size * 0.1)
+      ctx.lineTo(0, -size * 0.2)
+      ctx.lineTo(size * 0.03, -size * 0.1)
+      ctx.stroke()
+      ctx.restore()
+      return
+    }
+    // blade / voidblade / demonblade
+    const tip = (w === 'voidblade') ? size * 0.36 : size * 0.32
+    ctx.strokeStyle = dark
+    ctx.lineWidth = Math.max(2, size * 0.025)
+    ctx.beginPath()
+    ctx.moveTo(0, -size * 0.04)
+    ctx.lineTo(0, size * 0.08)
+    ctx.stroke()
+    const blade = ctx.createLinearGradient(0, size * 0.06, 0, tip)
+    blade.addColorStop(0, metal)
+    blade.addColorStop(1, accent)
+    ctx.fillStyle = blade
+    ctx.beginPath()
+    ctx.moveTo(-size * 0.035, size * 0.06)
+    ctx.lineTo(0, tip)
+    ctx.lineTo(size * 0.035, size * 0.06)
+    ctx.closePath()
+    ctx.fill()
+    ctx.strokeStyle = this._hexToRgba('#fff', 0.45)
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(0, size * 0.08)
+    ctx.lineTo(0, tip * 0.9)
+    ctx.stroke()
+    if (w === 'demonblade' || w === 'voidblade') {
+      ctx.globalAlpha = glowA
+      ctx.strokeStyle = accent
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(-size * 0.02, size * 0.1)
+      ctx.lineTo(0, tip)
+      ctx.lineTo(size * 0.02, size * 0.1)
+      ctx.stroke()
+    }
+    ctx.restore()
+  },
+
+  /** 境界专属装饰 */
+  _paintCultivatorOrnament(ctx, style, look, size, t) {
+    ctx.save()
+    ctx.strokeStyle = look.accent
+    ctx.fillStyle = look.accent
+    ctx.lineWidth = Math.max(1.2, size * 0.015)
+    ctx.globalAlpha = 0.72
+    if (style === 'voidbeast' || style === 'chaos') {
+      ctx.beginPath()
+      ctx.ellipse(0, size * 0.05, size * 0.3, size * 0.1, t * 0.4, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.globalAlpha = 0.35
+      ctx.beginPath()
+      ctx.ellipse(0, size * 0.05, size * 0.22, size * 0.06, -t * 0.5, 0, Math.PI * 2)
+      ctx.stroke()
+    } else if (style === 'leibeast') {
+      ctx.beginPath()
+      ctx.moveTo(-size * 0.08, -size * 0.5)
+      ctx.lineTo(-size * 0.02, -size * 0.62)
+      ctx.lineTo(size * 0.02, -size * 0.52)
+      ctx.lineTo(size * 0.08, -size * 0.64)
+      ctx.stroke()
+    } else if (style === 'timeprison') {
+      ctx.beginPath()
+      ctx.arc(size * 0.22, -size * 0.05, size * 0.08, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(size * 0.22, -size * 0.05)
+      ctx.lineTo(size * 0.22 + Math.cos(t) * size * 0.05, -size * 0.05 + Math.sin(t) * size * 0.05)
+      ctx.stroke()
+    } else if (style === 'sanshi') {
+      ctx.globalAlpha = 0.22
+      ctx.fillStyle = look.robeCol
+      ctx.beginPath()
+      ctx.ellipse(-size * 0.22, -size * 0.02, size * 0.1, size * 0.16, -0.2, 0, Math.PI * 2)
+      ctx.ellipse(size * 0.22, -size * 0.02, size * 0.1, size * 0.16, 0.2, 0, Math.PI * 2)
+      ctx.fill()
+    } else if (style === 'mutate') {
+      for (let side = -1; side <= 1; side += 2) {
+        ctx.beginPath()
+        ctx.arc(side * size * 0.2, -size * 0.18, size * 0.05, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.globalAlpha = 0.4
+        ctx.beginPath()
+        ctx.arc(side * size * 0.2, -size * 0.18, size * 0.02, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.globalAlpha = 0.72
+      }
+    } else if (style === 'overlord') {
+      ctx.beginPath()
+      ctx.moveTo(-size * 0.2, -size * 0.08)
+      ctx.lineTo(-size * 0.3, size * 0.02)
+      ctx.lineTo(-size * 0.2, size * 0.05)
+      ctx.moveTo(size * 0.2, -size * 0.08)
+      ctx.lineTo(size * 0.3, size * 0.02)
+      ctx.lineTo(size * 0.2, size * 0.05)
+      ctx.stroke()
+    } else if (style === 'sha' || style === 'demon') {
+      ctx.globalAlpha = 0.4
+      ctx.beginPath()
+      ctx.moveTo(-size * 0.12, -size * 0.4)
+      ctx.quadraticCurveTo(-size * 0.2, -size * 0.55, -size * 0.05, -size * 0.58)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(size * 0.12, -size * 0.4)
+      ctx.quadraticCurveTo(size * 0.2, -size * 0.55, size * 0.05, -size * 0.58)
+      ctx.stroke()
+    } else if (style === 'tianmo') {
+      ctx.fillStyle = this._hexToRgba(look.accent, 0.5)
+      ctx.beginPath()
+      ctx.arc(0, size * 0.0, size * 0.04, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.restore()
+  },
+
+  /**
+   * 步伐扬尘 / 攻击刀光 / 格挡盾弧 / 冲刺残影（角色本地坐标）
+   */
+  _paintCultivatorPoseFx(ctx, z, look, size, pose) {
+    if (!pose) return
+    const accent = look.accent
+    const mode = pose.mode
+    ctx.save()
+    if (mode === 'walk') {
+      const dust = Math.max(0, Math.sin(pose.walkPhase) )
+      if (dust > 0.55) {
+        const side = Math.sin(pose.walkPhase) > 0 ? 1 : -1
+        ctx.globalAlpha = (dust - 0.55) * 0.7
+        ctx.fillStyle = this._hexToRgba(accent, 0.35)
+        ctx.beginPath()
+        ctx.ellipse(side * size * 0.1, size * 0.42, size * 0.08 * dust, size * 0.03, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = 'rgba(148,163,184,0.35)'
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath()
+          ctx.arc(side * size * (0.12 + i * 0.04), size * 0.4 - i * 2, 1.5 + i * 0.4, 0, Math.PI * 2)
+          ctx.fill()
+        }
+      }
+    } else if (mode === 'attack') {
+      const u = pose.atkU
+      const fade = Math.sin(u * Math.PI)
+      ctx.globalAlpha = 0.55 * fade
+      ctx.strokeStyle = accent
+      ctx.lineWidth = Math.max(2, size * 0.03)
+      ctx.lineCap = 'round'
+      const a0 = -1.4 + u * 2.4
+      ctx.beginPath()
+      ctx.arc(size * 0.05, -size * 0.02, size * 0.34, a0, a0 + 0.9)
+      ctx.stroke()
+      ctx.globalAlpha = 0.28 * fade
+      ctx.fillStyle = this._hexToRgba(accent, 0.5)
+      ctx.beginPath()
+      ctx.moveTo(size * 0.05, -size * 0.02)
+      ctx.arc(size * 0.05, -size * 0.02, size * 0.34, a0, a0 + 0.9)
+      ctx.closePath()
+      ctx.fill()
+      // 武器尾迹点
+      ctx.globalAlpha = 0.45 * fade
+      ctx.fillStyle = accent
+      for (let i = 0; i < 4; i++) {
+        const a = a0 + i * 0.2
+        ctx.beginPath()
+        ctx.arc(size * 0.05 + Math.cos(a) * size * 0.34, -size * 0.02 + Math.sin(a) * size * 0.34, 2 + (1 - i / 4) * 2, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    } else if (mode === 'dash') {
+      ctx.strokeStyle = accent
+      ctx.lineWidth = 3
+      for (let i = 0; i < 3; i++) {
+        ctx.globalAlpha = 0.35 - i * 0.1
+        ctx.beginPath()
+        ctx.moveTo(-size * (0.2 + i * 0.12), -size * 0.05 + i * 2)
+        ctx.lineTo(-size * 0.05, size * 0.05)
+        ctx.stroke()
+      }
+      ctx.globalAlpha = 0.3
+      ctx.fillStyle = this._hexToRgba(accent, 0.4)
+      ctx.beginPath()
+      ctx.ellipse(-size * 0.15, size * 0.2, size * 0.22, size * 0.08, 0, 0, Math.PI * 2)
+      ctx.fill()
+    } else if (mode === 'block') {
+      const col = z.crescentColor || accent
+      const glow = z.crescentGlow || look.accent
+      const shape = z.gBlock || 'moon'
+      ctx.globalAlpha = 0.55 + pose.blockU * 0.25
+      ctx.strokeStyle = col
+      ctx.fillStyle = this._hexToRgba(glow, 0.25)
+      ctx.lineWidth = 2.6
+      if (shape === 'jindan' || shape === 'lei' || shape === 'ring') {
+        ctx.beginPath()
+        ctx.arc(size * 0.18, 0, size * 0.28, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.globalAlpha = 0.3
+        ctx.beginPath()
+        ctx.arc(size * 0.18, 0, size * 0.2, 0, Math.PI * 2)
+        ctx.fill()
+      } else if (shape === 'void' || shape === 'dao' || shape === 'time' || shape === 'rift') {
+        ctx.beginPath()
+        ctx.moveTo(size * 0.05, -size * 0.28)
+        ctx.quadraticCurveTo(size * 0.38, 0, size * 0.05, size * 0.28)
+        ctx.quadraticCurveTo(size * 0.22, 0, size * 0.05, -size * 0.28)
+        ctx.stroke()
+        ctx.fill()
+      } else if (shape === 'tri') {
+        for (let i = 0; i < 3; i++) {
+          const a = -0.8 + i * 0.8
+          ctx.beginPath()
+          ctx.arc(size * 0.16, 0, size * 0.26, a - 0.35, a + 0.35)
+          ctx.stroke()
+        }
+      } else {
+        // moon / bone / puppet → 月牙盾
+        ctx.beginPath()
+        ctx.arc(size * 0.14, 0, size * 0.34, -1.2, 1.2)
+        ctx.stroke()
+        ctx.globalAlpha = 0.35
+        ctx.beginPath()
+        ctx.arc(size * 0.14, 0, size * 0.34, -1.0, 1.0)
+        ctx.arc(size * 0.02, 0, size * 0.22, 1.0, -1.0, true)
+        ctx.closePath()
+        ctx.fill()
+      }
+      // 格挡火花
+      ctx.globalAlpha = 0.55
+      ctx.fillStyle = glow
+      for (let i = 0; i < 5; i++) {
+        const a = -0.9 + i * 0.45
+        ctx.beginPath()
+        ctx.arc(size * 0.14 + Math.cos(a) * size * 0.3, Math.sin(a) * size * 0.28, 1.8, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+    ctx.restore()
+  },
+
+  /**
+   * 元婴后敌修：分层绘制的人形修士（非主角贴图）
+   * 横向压窄 + 略拔高，更接近修长仙修体型
    */
   _drawProceduralCreature(ctx, z, drawX, drawY, size, faceLeft, flashOnly) {
     const tint = z.tint || z.crescentColor || '#67e8f9'
@@ -9165,213 +10187,51 @@ Page({
     const style = z.gDraw || 'sha'
     const look = this._getEnemyCultivatorLook(style, tint, glow)
     const t = this._animT || 0
-    const bob = Math.sin(t * 3 + (z.id || 0)) * size * 0.012
+    const seed = z.id || 0
+    const pose = this._resolveCultivatorPose(z)
+    const bob = (Math.sin(t * 3 + seed) * size * 0.008) + (pose.bob || 0) * size
+    // 绘制高度略上移，脚底仍落在落点附近
+    const slimX = 0.62
+    const slimY = 1.12
     ctx.save()
-    ctx.translate(drawX, drawY + bob)
-    if (faceLeft) ctx.scale(-1, 1)
+    ctx.translate(drawX, drawY + bob + size * 0.04)
+    if (faceLeft) ctx.scale(-slimX, slimY)
+    else ctx.scale(slimX, slimY)
 
-    // 脚底灵气
-    ctx.globalAlpha = 0.3
-    ctx.fillStyle = look.accent
+    this._paintCultivatorAura(ctx, size, look.accent, t, seed)
+    ctx.save()
+    ctx.globalAlpha = 0.18
+    const mist = ctx.createRadialGradient(0, 0, size * 0.05, 0, 0, size * 0.4)
+    mist.addColorStop(0, this._hexToRgba(look.accent, 0.4))
+    mist.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.fillStyle = mist
     ctx.beginPath()
-    ctx.ellipse(0, size * 0.42, size * 0.28, size * 0.08, 0, 0, Math.PI * 2)
+    ctx.ellipse(0, 0, size * 0.26, size * 0.4, 0, 0, Math.PI * 2)
     ctx.fill()
-    ctx.globalAlpha = 1
+    ctx.restore()
 
-    // —— 发型 ——
-    ctx.fillStyle = look.hairCol
-    if (look.hair === 'horn') {
+    if (pose.mode === 'dash') this._paintCultivatorPoseFx(ctx, z, look, size, pose)
+
+    this._paintCultivatorHair(ctx, look, size, t)
+    this._paintCultivatorRobe(ctx, look, size, pose)
+    this._paintCultivatorArms(ctx, look, size, pose, true)
+    this._paintCultivatorHead(ctx, look, size, t, seed)
+    if (look.hair !== 'hood') {
+      ctx.fillStyle = look.hairCol
       ctx.beginPath()
-      ctx.moveTo(-size * 0.08, -size * 0.38)
-      ctx.lineTo(-size * 0.18, -size * 0.55)
-      ctx.lineTo(-size * 0.02, -size * 0.4)
-      ctx.moveTo(size * 0.08, -size * 0.38)
-      ctx.lineTo(size * 0.18, -size * 0.55)
-      ctx.lineTo(size * 0.02, -size * 0.4)
-      ctx.fill()
-    } else if (look.hair === 'hood') {
-      ctx.beginPath()
-      ctx.ellipse(0, -size * 0.3, size * 0.2, size * 0.18, 0, Math.PI, Math.PI * 2)
-      ctx.fill()
-    } else if (look.hair === 'wild') {
-      for (let i = -2; i <= 2; i++) {
-        ctx.beginPath()
-        ctx.moveTo(i * size * 0.04, -size * 0.35)
-        ctx.lineTo(i * size * 0.06, -size * 0.52)
-        ctx.lineTo(i * size * 0.02 + size * 0.03, -size * 0.36)
-        ctx.fill()
-      }
-    } else if (look.hair === 'crown') {
-      ctx.beginPath()
-      ctx.moveTo(-size * 0.12, -size * 0.4)
-      ctx.lineTo(0, -size * 0.58)
-      ctx.lineTo(size * 0.12, -size * 0.4)
-      ctx.closePath()
-      ctx.fill()
-    } else if (look.hair === 'spike') {
-      for (let i = -2; i <= 2; i++) {
-        ctx.beginPath()
-        ctx.moveTo(i * size * 0.045, -size * 0.36)
-        ctx.lineTo(i * size * 0.045 + 2, -size * 0.56)
-        ctx.lineTo(i * size * 0.045 + 5, -size * 0.36)
-        ctx.fill()
-      }
-    } else if (look.hair === 'triple') {
-      ctx.beginPath()
-      ctx.arc(-size * 0.12, -size * 0.4, size * 0.06, 0, Math.PI * 2)
-      ctx.arc(0, -size * 0.48, size * 0.07, 0, Math.PI * 2)
-      ctx.arc(size * 0.12, -size * 0.4, size * 0.06, 0, Math.PI * 2)
-      ctx.fill()
-    } else if (look.hair === 'flow') {
-      ctx.beginPath()
-      ctx.ellipse(0, -size * 0.34, size * 0.18, size * 0.12, 0, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.beginPath()
-      ctx.moveTo(-size * 0.16, -size * 0.3)
-      ctx.quadraticCurveTo(-size * 0.35, 0, -size * 0.2, size * 0.2)
-      ctx.quadraticCurveTo(-size * 0.12, 0, -size * 0.1, -size * 0.28)
-      ctx.fill()
-    } else if (look.hair === 'flat') {
-      ctx.beginPath()
-      ctx.ellipse(0, -size * 0.38, size * 0.16, size * 0.06, 0, 0, Math.PI * 2)
-      ctx.fill()
-    } else {
-      // bun
-      ctx.beginPath()
-      ctx.arc(0, -size * 0.44, size * 0.07, 0, Math.PI * 2)
+      ctx.ellipse(0, -size * 0.34, size * 0.12, size * 0.05, 0, Math.PI, Math.PI * 2)
       ctx.fill()
     }
+    this._paintCultivatorOrnament(ctx, style, look, size, t)
 
-    // —— 头脸 ——
-    ctx.fillStyle = look.skin
-    ctx.beginPath()
-    ctx.arc(0, -size * 0.26, size * 0.13, 0, Math.PI * 2)
-    ctx.fill()
-    // 眉眼
-    ctx.fillStyle = '#1e293b'
-    ctx.beginPath()
-    ctx.ellipse(-size * 0.045, -size * 0.27, size * 0.02, size * 0.015, 0, 0, Math.PI * 2)
-    ctx.ellipse(size * 0.045, -size * 0.27, size * 0.02, size * 0.015, 0, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.fillStyle = look.accent
-    ctx.beginPath()
-    ctx.arc(-size * 0.045, -size * 0.27, size * 0.008, 0, Math.PI * 2)
-    ctx.arc(size * 0.045, -size * 0.27, size * 0.008, 0, Math.PI * 2)
-    ctx.fill()
-
-    // —— 袍身（按款式） ——
-    ctx.fillStyle = look.robeCol
-    ctx.beginPath()
-    if (look.robe === 'armor') {
-      ctx.moveTo(-size * 0.22, -size * 0.12)
-      ctx.lineTo(-size * 0.3, size * 0.08)
-      ctx.lineTo(-size * 0.22, size * 0.36)
-      ctx.lineTo(size * 0.22, size * 0.36)
-      ctx.lineTo(size * 0.3, size * 0.08)
-      ctx.lineTo(size * 0.22, -size * 0.12)
-      ctx.closePath()
-    } else if (look.robe === 'wide') {
-      ctx.moveTo(-size * 0.16, -size * 0.12)
-      ctx.lineTo(-size * 0.34, size * 0.32)
-      ctx.lineTo(size * 0.34, size * 0.32)
-      ctx.lineTo(size * 0.16, -size * 0.12)
-      ctx.closePath()
-    } else if (look.robe === 'split') {
-      ctx.moveTo(-size * 0.2, -size * 0.12)
-      ctx.lineTo(-size * 0.26, size * 0.36)
-      ctx.lineTo(-size * 0.02, size * 0.2)
-      ctx.lineTo(size * 0.02, size * 0.2)
-      ctx.lineTo(size * 0.26, size * 0.36)
-      ctx.lineTo(size * 0.2, -size * 0.12)
-      ctx.closePath()
-    } else if (look.robe === 'jade') {
-      ctx.rect(-size * 0.2, -size * 0.12, size * 0.4, size * 0.48)
-    } else {
-      ctx.moveTo(-size * 0.18, -size * 0.12)
-      ctx.lineTo(-size * 0.26, size * 0.38)
-      ctx.lineTo(size * 0.26, size * 0.38)
-      ctx.lineTo(size * 0.18, -size * 0.12)
-      ctx.closePath()
-    }
-    ctx.fill()
-
-    // 腰带 / 甲线
-    ctx.strokeStyle = look.accent
-    ctx.lineWidth = 1.6
-    ctx.globalAlpha = 0.85
-    ctx.beginPath()
-    ctx.moveTo(-size * 0.16, size * 0.06)
-    ctx.lineTo(size * 0.16, size * 0.06)
-    ctx.stroke()
-
-    // 胸口境界字印
-    ctx.globalAlpha = 0.7
-    ctx.fillStyle = look.accent
-    ctx.font = 'bold ' + Math.max(9, Math.floor(size * 0.14)) + 'px "KaiTi","STKaiti",serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(look.mark || '修', 0, size * 0.02)
-
-    // 双臂
-    ctx.globalAlpha = 1
-    ctx.fillStyle = look.robeCol
-    ctx.beginPath()
-    ctx.ellipse(-size * 0.24, size * 0.02, size * 0.07, size * 0.15, -0.4, 0, Math.PI * 2)
-    ctx.ellipse(size * 0.24, size * 0.02, size * 0.07, size * 0.15, 0.4, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.fillStyle = look.skin
-    ctx.beginPath()
-    ctx.arc(-size * 0.28, size * 0.14, size * 0.04, 0, Math.PI * 2)
-    ctx.arc(size * 0.28, size * 0.14, size * 0.04, 0, Math.PI * 2)
-    ctx.fill()
-
-    // 境界专属装饰
-    ctx.strokeStyle = look.accent
-    ctx.lineWidth = 1.4
-    ctx.globalAlpha = 0.7
-    if (style === 'voidbeast' || style === 'chaos') {
-      ctx.beginPath()
-      ctx.ellipse(0, size * 0.05, size * 0.32, size * 0.12, t * 0.5, 0, Math.PI * 2)
-      ctx.stroke()
-    } else if (style === 'leibeast') {
-      ctx.beginPath()
-      ctx.moveTo(-size * 0.1, -size * 0.48)
-      ctx.lineTo(0, -size * 0.6)
-      ctx.lineTo(size * 0.1, -size * 0.48)
-      ctx.stroke()
-    } else if (style === 'timeprison') {
-      ctx.beginPath()
-      ctx.arc(0, size * 0.12, size * 0.1, 0, Math.PI * 2)
-      ctx.stroke()
-    } else if (style === 'sanshi') {
-      ctx.globalAlpha = 0.28
-      ctx.fillStyle = look.robeCol
-      ctx.beginPath()
-      ctx.arc(-size * 0.2, -size * 0.05, size * 0.12, 0, Math.PI * 2)
-      ctx.arc(size * 0.2, -size * 0.05, size * 0.12, 0, Math.PI * 2)
-      ctx.fill()
-    } else if (style === 'mutate') {
-      ctx.beginPath()
-      ctx.arc(-size * 0.22, -size * 0.2, size * 0.06, 0, Math.PI * 2)
-      ctx.arc(size * 0.22, -size * 0.2, size * 0.06, 0, Math.PI * 2)
-      ctx.stroke()
-    }
+    if (pose.mode !== 'dash') this._paintCultivatorPoseFx(ctx, z, look, size, pose)
 
     if (flashOnly) {
       ctx.globalAlpha = 0.28
       ctx.fillStyle = '#fff'
       ctx.beginPath()
-      ctx.ellipse(0, 0, size * 0.24, size * 0.38, 0, 0, Math.PI * 2)
+      ctx.ellipse(0, 0, size * 0.18, size * 0.36, 0, 0, Math.PI * 2)
       ctx.fill()
-    }
-
-    if ((z.blockCd || 0) > (z.blockCdMax || 0.4) * 0.55) {
-      ctx.globalAlpha = 0.8
-      ctx.strokeStyle = z.crescentColor || '#fde68a'
-      ctx.lineWidth = 2.8
-      ctx.beginPath()
-      ctx.arc(size * 0.12, 0, size * 0.36, -1.15, 1.15)
-      ctx.stroke()
     }
     ctx.restore()
   },
