@@ -6,9 +6,12 @@
 const config = require('../../../../services/config')
 const api = require('../../../../services/api')
 const wxSession = require('../../../../services/wxSession')
+const xianChapterPlay = require('../../../../data/xianChapterPlay')
 
 /** 本地进度备份，避免读服失败时看不到再续入口 */
 const XIAN_PROGRESS_LOCAL_KEY = 'hyc_xian_progress'
+/** 章节通关进度（一章一局） */
+const XIAN_CHAPTER_LOCAL_KEY = 'hyc_xian_chapters'
 
 /** 远程资源根路径（后台 uploads），避免主包图片超 200K 质量门禁 */
 const ASSET_BASE = 'https://hychyr.top/uploads/game/xian'
@@ -837,9 +840,9 @@ const CORPSE_DAN_NEED = WAR_INTENT_NEED
 /** 战斗中每秒积蓄（元婴境主战更慢，便于打很久） */
 const WAR_INTENT_RATE = 6.2
 const WAR_INTENT_RATE_YUAN = 3.2
-const GENG_SWORD_COUNT = 64
+const GENG_SWORD_COUNT = 72
 /** 御剑上限：周身环绕与出击杀敌共用此数目 */
-const MAX_SWORD_COUNT = 64
+const MAX_SWORD_COUNT = 72
 
 function realmMajorKey(realmLv) {
   return realmByLv(realmLv).majorKey || 'mortal'
@@ -983,11 +986,33 @@ Page({
     showRealmInfo: false,
     showRealmPick: false,
     showContinueGate: false,
+    showChapterPick: false,
+    showChapterIntro: false,
+    showChapterClear: false,
     progressLoading: true,
     gameUiReady: false,
     canPickRealm: false,
     continueRealmName: '',
     continueKills: 0,
+    chapterList: [],
+    chapterGroups: [],
+    chapterId: '',
+    chapterUnit: '',
+    chapterTitle: '',
+    chapterModeLabel: '',
+    chapterText: '',
+    chapterHasNextLine: false,
+    chapterGoalTip: '',
+    chapterProgressTip: '',
+    chapterClearSub: '',
+    chapterHasNextChapter: false,
+    showChapterOutro: false,
+    chapterOutroText: '',
+    chapterOutroHasNext: false,
+    storyScene: 'ink',
+    storySceneLabel: '仙途',
+    storyAnimKey: 0,
+    storyFxOn: true,
     corpseDan: 0,
     corpseDanNeed: 50,
     realmInfoList: buildRealmInfoList(),
@@ -1000,6 +1025,7 @@ Page({
 
   onUnload() {
     this._persistProgress(true)
+    this._clearStoryTimers()
     if (this._bootTimer) {
       clearTimeout(this._bootTimer)
       this._bootTimer = null
@@ -1021,6 +1047,7 @@ Page({
     const t = e.touches && e.touches[0]
     if (!t || this._over || this._perfect) return
     if (this.data.showRealmPick || this.data.showContinueGate || this.data.progressLoading) return
+    if (this.data.showChapterPick || this.data.showChapterIntro || this.data.showChapterClear || this.data.showChapterOutro) return
     if (this._voidBlink) return
     // 凡人打坐阶段不可移动
     if (this._isMortalCultivate()) {
@@ -1081,6 +1108,28 @@ Page({
   },
 
   restart() {
+    // 章节模式下「再修一回」= 重试当前章；无章则回选章
+    if (this._chapter) {
+      this._stop()
+      this._canvas = null
+      this._ctx = null
+      this._loopRunning = false
+      this._pendingApplyProgress = null
+      this._gameStarted = false
+      this.setData({
+        over: false,
+        perfect: false,
+        showRealmInfo: false,
+        showRealmPick: false,
+        showContinueGate: false,
+        showChapterClear: false,
+        progressLoading: false,
+        gameUiReady: false,
+        autoPilot: true
+      })
+      this._startChapter(this._chapter)
+      return
+    }
     this._persistProgress(true)
     this._stop()
     this._canvas = null
@@ -1103,6 +1152,7 @@ Page({
 
   toggleRealmInfo() {
     if (this.data.showRealmPick || this.data.showContinueGate || this.data.progressLoading) return
+    if (this.data.showChapterPick || this.data.showChapterIntro || this.data.showChapterClear || this.data.showChapterOutro) return
     if (this.data.showRealmInfo) {
       this.closeRealmInfo()
       return
@@ -1142,22 +1192,120 @@ Page({
     })
   },
 
-  /** 再续仙途：加载上次存档 */
+  /** 再续仙途：加载上次存档（兼容旧入口；现主流程为一章一局） */
   onContinueXian() {
-    const p = this._pendingProgress
     this.setData({ showContinueGate: false, progressLoading: false })
-    this._enterGame(p || null)
-    console.log('仙途再续', p && p.realmLv, p && p.kills)
+    this._openChapterPick()
   },
 
-  /** 重生凡人：清档并从凡人开始 */
+  /** 重生凡人：清档并打开章节选择 */
   onRebirthMortal() {
     this._pendingProgress = null
     this._clearRemoteProgress()
     this._clearLocalProgress()
+    this._writeChapterProgress({ cleared: [], currentId: '' })
     this.setData({ showContinueGate: false, progressLoading: false })
-    this._enterGame(null)
-    console.log('仙途重生凡人')
+    this._openChapterPick()
+    console.log('仙途重置章节进度')
+  },
+
+  /** 选章开局 */
+  onPickChapter(e) {
+    const id = e.currentTarget.dataset.id
+    const unlocked = e.currentTarget.dataset.unlocked
+    if (!id || unlocked === false || unlocked === 'false') {
+      wx.showToast({ title: '先通前方章节', icon: 'none' })
+      return
+    }
+    const ch = xianChapterPlay.getChapter(id)
+    if (!ch) return
+    this._startChapter(ch)
+  },
+
+  onChapterIntroNext() {
+    const ch = this._chapter
+    if (!ch) return
+    if (this._storyTyping) {
+      // 打字中途再点：立刻显示全文
+      this._finishStoryTypewriter(true)
+      return
+    }
+    const lines = ch.lines || []
+    this._chapterLine = (this._chapterLine || 0) + 1
+    if (this._chapterLine < lines.length) {
+      this._playStoryLine(lines[this._chapterLine], this._chapterLine < lines.length - 1)
+      return
+    }
+    // 剧情章：读完即通关（播短过场）
+    if (ch.mode === 'story' || (ch.win && ch.win.type === 'story')) {
+      this._chapterStoryDone = true
+      this._playStoryOutro(() => this._onChapterCleared())
+      return
+    }
+    this._playStoryOutro(() => {
+      this.setData({ showChapterIntro: false, storyFxOn: false })
+      this._enterChapterBattle()
+    })
+  },
+
+  onChapterNext() {
+    const next = this._chapter && this._chapter.nextId
+      ? xianChapterPlay.getChapter(this._chapter.nextId)
+      : null
+    if (!next) {
+      this._openChapterPick()
+      return
+    }
+    this._startChapter(next)
+  },
+
+  onChapterOutroNext() {
+    const lines = (this._chapter && this._chapter.outro) || []
+    this._chapterOutroLine = (this._chapterOutroLine || 0) + 1
+    if (this._chapterOutroLine < lines.length) {
+      this.setData({
+        chapterOutroText: lines[this._chapterOutroLine],
+        chapterOutroHasNext: this._chapterOutroLine < lines.length - 1
+      })
+      return
+    }
+    this.setData({ showChapterOutro: false, showChapterClear: true })
+  },
+
+  onChapterRetry() {
+    const ch = this._chapter
+    if (!ch) {
+      this._openChapterPick()
+      return
+    }
+    this._startChapter(ch)
+  },
+
+  onChapterBackToList() {
+    this._teardownCanvas()
+    this._gameStarted = false
+    this._chapterActive = false
+    this.setData({
+      showChapterClear: false,
+      showChapterIntro: false,
+      showChapterOutro: false,
+      over: false,
+      perfect: false,
+      gameUiReady: false
+    })
+    this._openChapterPick()
+  },
+
+  /** 开发/体验版：解锁全部章节便于验收 */
+  onUnlockAllChapters() {
+    if (!(config.isDevOrTrialEnv && config.isDevOrTrialEnv())) return
+    const allIds = xianChapterPlay.CHAPTERS.map((c) => c.id)
+    this._writeChapterProgress({
+      cleared: allIds,
+      currentId: allIds[allIds.length - 1] || ''
+    })
+    wx.showToast({ title: '已解锁 ' + allIds.length + ' 章', icon: 'none' })
+    this._openChapterPick()
   },
 
   /** 太极：点一下自动，再点一下手动 */
@@ -1333,6 +1481,7 @@ Page({
     if (!this.data.gameUiReady) return
     if (this.data.showRealmPick || this.data.showRealmInfo || this.data.over || this.data.perfect) return
     if (this.data.showContinueGate || this.data.progressLoading) return
+    if (this.data.showChapterPick || this.data.showChapterIntro || this.data.showChapterClear || this.data.showChapterOutro) return
     this._canvasSoftResume = !!this._gameStarted
     this._initCanvas(0)
   },
@@ -1460,42 +1609,28 @@ Page({
     this._pendingProgress = null
     this._pendingApplyProgress = null
     this._gameStarted = false
+    this._chapterActive = false
     this.setData({
       progressLoading: true,
       showContinueGate: false,
+      showChapterPick: false,
+      showChapterIntro: false,
+      showChapterClear: false,
       gameUiReady: false
     })
     const afterSession = () => {
-      const userId = this._resolveXianUserId()
-      const local = this._readLocalProgress()
-      const finishWith = (p) => {
-        if (this._isMeaningfulProgress(p)) {
-          this._pendingProgress = p
-          const r = realmByLv(p.realmLv || 1)
-          this.setData({
-            progressLoading: false,
-            showContinueGate: true,
-            gameUiReady: false,
-            continueRealmName: r.name,
-            continueKills: p.kills || 0
-          })
-          console.log('仙途发现存档', r.name, p.kills)
-          return
-        }
-        this._enterGame(null)
+      // 一章一局：启动即选章（会话仅用于后续云存档兼容）
+      const ensureDone = () => {
+        this.setData({ progressLoading: false })
+        this._openChapterPick()
       }
+      const userId = this._resolveXianUserId()
       if (!userId) {
-        console.warn('仙途无用户 id，尝试本地档')
-        finishWith(local)
+        ensureDone()
         return
       }
-      api.getXianProgress(userId).then((res) => {
-        const remote = (res && res.code === 0 && res.data && res.data.hasProgress) ? res.data : null
-        finishWith(remote || local)
-      }).catch((err) => {
-        console.warn('仙途读档失败，回退本地', err && err.message)
-        finishWith(local)
-      })
+      // 轻量拉一次旧档，不阻断选章
+      api.getXianProgress(userId).then(() => ensureDone()).catch(() => ensureDone())
     }
     const ensure = wxSession.ensureWxSession
     if (typeof ensure === 'function' && !this._resolveXianUserId()) {
@@ -1503,6 +1638,283 @@ Page({
     } else {
       afterSession()
     }
+  },
+
+  _readChapterProgress() {
+    try {
+      const raw = wx.getStorageSync(XIAN_CHAPTER_LOCAL_KEY)
+      if (!raw) return { cleared: [], currentId: '' }
+      if (typeof raw === 'string') {
+        const o = JSON.parse(raw)
+        return {
+          cleared: Array.isArray(o.cleared) ? o.cleared : [],
+          currentId: o.currentId || ''
+        }
+      }
+      return {
+        cleared: Array.isArray(raw.cleared) ? raw.cleared : [],
+        currentId: raw.currentId || ''
+      }
+    } catch (e) {
+      return { cleared: [], currentId: '' }
+    }
+  },
+
+  _writeChapterProgress(p) {
+    try {
+      wx.setStorageSync(XIAN_CHAPTER_LOCAL_KEY, {
+        cleared: (p && p.cleared) || [],
+        currentId: (p && p.currentId) || ''
+      })
+    } catch (e) { /* ignore */ }
+  },
+
+  _openChapterPick() {
+    this._teardownCanvas()
+    this._chapterActive = false
+    this._gameStarted = false
+    const prog = this._readChapterProgress()
+    const groups = xianChapterPlay.listChapterGroups(prog.cleared)
+    const list = xianChapterPlay.listChapters(prog.cleared).map((c) => ({
+      ...c,
+      modeLabel: xianChapterPlay.modeLabel(c.mode),
+      statusText: c.cleared ? '已通' : (c.unlocked ? '可入' : '未解锁')
+    }))
+    const clearedN = (prog.cleared || []).length
+    const canPick = !!(config.isDevOrTrialEnv && config.isDevOrTrialEnv())
+    this.setData({
+      progressLoading: false,
+      showContinueGate: false,
+      showChapterPick: true,
+      showChapterIntro: false,
+      showChapterClear: false,
+      showChapterOutro: false,
+      gameUiReady: false,
+      over: false,
+      perfect: false,
+      canPickRealm: canPick,
+      chapterList: list,
+      chapterGroups: groups,
+      chapterClearSub: '已通 ' + clearedN + ' / ' + xianChapterPlay.CHAPTERS.length + ' 章'
+    })
+  },
+
+  _startChapter(ch) {
+    if (!ch) return
+    this._clearStoryTimers()
+    this._chapter = ch
+    this._chapterLine = 0
+    this._chapterActive = true
+    this._chapterKills = 0
+    this._chapterElapsed = 0
+    this._chapterBossDown = false
+    this._chapterStoryDone = false
+    this._chapterBossArmed = false
+    this._chapterClearedLatch = false
+    const prog = this._readChapterProgress()
+    prog.currentId = ch.id
+    this._writeChapterProgress(prog)
+    this._teardownCanvas()
+    const lines = ch.lines || ['仙途又启。']
+    const scene = xianChapterPlay.sceneForChapter(ch)
+    this.setData({
+      showChapterPick: false,
+      showChapterClear: false,
+      showChapterIntro: true,
+      gameUiReady: false,
+      over: false,
+      perfect: false,
+      chapterId: ch.id,
+      chapterUnit: ch.unitCode || '',
+      chapterTitle: ch.title || '',
+      chapterModeLabel: xianChapterPlay.modeLabel(ch.mode),
+      chapterText: '',
+      chapterHasNextLine: lines.length > 1,
+      chapterGoalTip: xianChapterPlay.goalTip(ch),
+      chapterProgressTip: '',
+      chapterClearSub: '',
+      chapterHasNextChapter: !!ch.nextId,
+      storyScene: scene,
+      storySceneLabel: xianChapterPlay.sceneLabel(scene),
+      storyAnimKey: Date.now(),
+      storyFxOn: true
+    }, () => {
+      this._playStoryLine(lines[0], lines.length > 1)
+    })
+    console.log('仙途开章', ch.unitCode, ch.title, ch.mode, scene)
+  },
+
+  _clearStoryTimers() {
+    if (this._storyTypeTimer) {
+      clearInterval(this._storyTypeTimer)
+      this._storyTypeTimer = null
+    }
+    if (this._storyOutroTimer) {
+      clearTimeout(this._storyOutroTimer)
+      this._storyOutroTimer = null
+    }
+    this._storyTyping = false
+    this._storyFullText = ''
+  },
+
+  /** 剧情行：淡入 + 简易打字机 */
+  _playStoryLine(fullText, hasNext) {
+    this._clearStoryTimers()
+    const text = String(fullText || '')
+    this._storyFullText = text
+    this._storyTyping = true
+    let i = 0
+    const step = Math.max(1, Math.ceil(text.length / 28))
+    this.setData({
+      chapterText: '',
+      chapterHasNextLine: !!hasNext,
+      storyAnimKey: Date.now(),
+      storyFxOn: true
+    })
+    this._storyTypeTimer = setInterval(() => {
+      i = Math.min(text.length, i + step)
+      this.setData({ chapterText: text.slice(0, i) })
+      if (i >= text.length) this._finishStoryTypewriter(false)
+    }, 42)
+  },
+
+  _finishStoryTypewriter(forceFull) {
+    if (this._storyTypeTimer) {
+      clearInterval(this._storyTypeTimer)
+      this._storyTypeTimer = null
+    }
+    this._storyTyping = false
+    if (forceFull || this.data.chapterText !== this._storyFullText) {
+      this.setData({ chapterText: this._storyFullText || '' })
+    }
+  },
+
+  /** 入道前短黑场（约 0.45s） */
+  _playStoryOutro(done) {
+    this._clearStoryTimers()
+    this.setData({ storyFxOn: false })
+    this._storyOutroTimer = setTimeout(() => {
+      this._storyOutroTimer = null
+      if (typeof done === 'function') done()
+    }, 420)
+  },
+
+  _enterChapterBattle() {
+    const ch = this._chapter
+    if (!ch) return
+    const rules = ch.rules || {}
+    const lv = firstRealmLvOfMajor(ch.major || 'lianqi')
+    // 凡人打坐章保持凡人；其余至少炼气一层
+    const sitMortal = ch.mode === 'cultivate' && ch.major === 'mortal'
+    const startLv = sitMortal ? 1 : Math.max(2, lv)
+    const swordBase = startLv <= 1 ? 1 : 3 + (rules.swordBonus || 0)
+    this._chapterRules = rules
+    this._pendingApplyProgress = {
+      realmLv: startLv,
+      kills: 0,
+      stageKills: 0,
+      swordCount: Math.min(MAX_SWORD_COUNT, Math.max(1, swordBase)),
+      wave: 1,
+      corpseDan: 0,
+      qiAbsorb: 0
+    }
+    this._chapterKills = 0
+    this._chapterElapsed = 0
+    this._chapterBossDown = false
+    this._chapterBossArmed = false
+    this._chapterClearedLatch = false
+    this.setData({
+      showChapterIntro: false,
+      showChapterClear: false,
+      showChapterOutro: false,
+      chapterGoalTip: xianChapterPlay.goalTip(ch),
+      chapterProgressTip: ''
+    })
+    this._enterGame(this._pendingApplyProgress)
+  },
+
+  _tickChapterSession(dt) {
+    if (!this._chapterActive || !this._chapter || this._chapterClearedLatch) return
+    if (this.data.showChapterIntro || this.data.showChapterClear || this.data.showChapterPick || this.data.showChapterOutro) return
+    this._chapterElapsed = (this._chapterElapsed || 0) + (dt || 0)
+
+    const ch = this._chapter
+    const rules = this._chapterRules || ch.rules || {}
+    const bossDelay = rules.bossDelay != null ? rules.bossDelay : 2.5
+    // boss 章：开局数秒后强制境主降临
+    if (ch.mode === 'boss' && !this._chapterBossArmed && !this._bossActive && (this._chapterElapsed || 0) > bossDelay) {
+      this._chapterBossArmed = true
+      const combat = getRealmCombat(this._realmLv)
+      if (combat) this._spawnRealmGuardian(combat)
+    }
+
+    // 剧情战无敌：血量被压低时回一截，避免误杀
+    if (rules.invuln && (this._hp || 0) < (this._maxHp || 1) * 0.35) {
+      this._hp = Math.max(this._hp || 0, (this._maxHp || 48) * 0.55)
+    }
+
+    const st = {
+      kills: this._chapterKills || 0,
+      qiAbsorb: this._qiAbsorb || 0,
+      elapsed: this._chapterElapsed || 0,
+      bossDown: !!this._chapterBossDown,
+      bossActive: !!this._bossActive,
+      storyDone: !!this._chapterStoryDone,
+      failed: !!this._over
+    }
+    const tip = xianChapterPlay.progressTip(ch, st)
+    if (tip && tip !== this.data.chapterProgressTip) {
+      this.setData({ chapterProgressTip: tip })
+    }
+    if (xianChapterPlay.checkWin(ch, st) === 'cleared') {
+      this._onChapterCleared()
+    }
+  },
+
+  _onChapterCleared() {
+    if (this._chapterClearedLatch) return
+    this._chapterClearedLatch = true
+    this._clearStoryTimers()
+    const ch = this._chapter
+    if (!ch) return
+    const prog = this._readChapterProgress()
+    if (prog.cleared.indexOf(ch.id) < 0) prog.cleared.push(ch.id)
+    prog.currentId = ch.nextId || ch.id
+    this._writeChapterProgress(prog)
+    this._teardownCanvas()
+    this._gameStarted = false
+    const outro = ch.outro && ch.outro.length ? ch.outro : ['此间事了，再踏前路。']
+    this._chapterOutroLine = 0
+    this.setData({
+      showChapterOutro: true,
+      showChapterClear: false,
+      showChapterIntro: false,
+      gameUiReady: false,
+      over: false,
+      perfect: false,
+      storyFxOn: true,
+      storyScene: xianChapterPlay.sceneForChapter(ch),
+      storySceneLabel: xianChapterPlay.sceneLabel(xianChapterPlay.sceneForChapter(ch)),
+      chapterOutroText: outro[0],
+      chapterOutroHasNext: outro.length > 1,
+      chapterClearSub: '第 ' + ch.order + ' 章 · ' + (ch.unitCode || '') + ' · ' + xianChapterPlay.modeLabel(ch.mode),
+      chapterHasNextChapter: !!ch.nextId,
+      chapterTitle: ch.title,
+      chapterUnit: ch.unitCode || ''
+    })
+    console.log('仙途通关', ch.unitCode, ch.title)
+  },
+
+  _onChapterFailed() {
+    if (!this._chapterActive || this._chapterClearedLatch) return
+    this._teardownCanvas()
+    this._gameStarted = false
+    this.setData({
+      over: true,
+      gameUiReady: true,
+      showChapterClear: false,
+      showChapterIntro: false
+    })
   },
 
   /** 选档结束：挂载画布并开局 */
@@ -2236,6 +2648,11 @@ Page({
     }
 
     if (this._qiAbsorb >= MORTAL_QI_NEED) {
+      // 一章一局打坐章：灵气满即通关
+      if (this._chapterActive && this._chapter && this._chapter.win && this._chapter.win.type === 'cultivate') {
+        this._onChapterCleared()
+        return
+      }
       this._startMortalBreakthrough()
     }
   },
@@ -2566,7 +2983,7 @@ Page({
     this._loopRunning = true
     const tick = (ts) => {
       this._raf = this._canvas.requestAnimationFrame(tick)
-      if (this._paused || this._over || this._perfect || this.data.showRealmInfo || this.data.showRealmPick || this.data.showContinueGate || this.data.progressLoading) {
+      if (this._paused || this._over || this._perfect || this.data.showRealmInfo || this.data.showRealmPick || this.data.showContinueGate || this.data.progressLoading || this.data.showChapterPick || this.data.showChapterIntro || this.data.showChapterClear || this.data.showChapterOutro) {
         this._draw()
         return
       }
@@ -2588,6 +3005,7 @@ Page({
         return
       }
       this._update(dt)
+      this._tickChapterSession(dt)
       this._draw()
     }
     this._raf = this._canvas.requestAnimationFrame(tick)
@@ -2681,7 +3099,12 @@ Page({
 
     // 每一级场上只保留一只怪；境主战期间 _bossActive 挡重复刷怪
     const guardianMode = isGuardianCombatRealm(realm.lv)
-    const spawnEvery = guardianMode ? 0.8 : Math.max(1.55, 2.8 - this._wave * 0.05 - realm.lv * 0.03)
+    let spawnEvery = guardianMode ? 0.8 : Math.max(1.55, 2.8 - this._wave * 0.05 - realm.lv * 0.03)
+    // 一章一局：按章节 rules.spawnMul 调刷怪节奏（>1 更快）
+    if (this._chapterActive && this._chapterRules && this._chapterRules.spawnMul != null) {
+      const mul = Math.max(0.15, Number(this._chapterRules.spawnMul) || 1)
+      spawnEvery = spawnEvery / mul
+    }
     const maxZ = 1
     this._spawnAcc += dt
     // 境主战 / 突破静默期不刷；样板境由 _spawnRealmGuardian 负责
@@ -3239,6 +3662,11 @@ Page({
       real = Math.max(1, Math.floor(dmg * 0.55))
       this._burst(this._playerX, this._playerY, '#67e8f9', 4)
     }
+    // 章节剧情战：受伤但不致死
+    if (this._chapterActive && this._chapterRules && this._chapterRules.invuln) {
+      real = Math.min(real, Math.max(1, Math.floor((this._hp || 1) * 0.12)))
+      if ((this._hp - real) < 1) real = Math.max(0, (this._hp || 1) - 1)
+    }
     this._hp -= real
     this._playerHurtT = 0.35
     this._burst(this._playerX, this._playerY, '#f87171', 8)
@@ -3248,7 +3676,14 @@ Page({
     const dist = Math.sqrt(dx * dx + dy * dy) || 1
     this._movePlayerTo(this._playerX + (dx / dist) * 18, this._playerY + (dy / dist) * 18)
     this.setData({ hp: Math.max(0, Math.ceil(this._hp)), maxHp: this._maxHp })
-    if (this._hp <= 0) this._gameOver()
+    if (this._hp <= 0) {
+      if (this._chapterActive && this._chapterRules && this._chapterRules.invuln) {
+        this._hp = Math.max(1, Math.floor((this._maxHp || 48) * 0.4))
+        this.setData({ hp: Math.ceil(this._hp) })
+        return
+      }
+      this._gameOver()
+    }
   },
 
   _pushTrail(realm) {
@@ -3407,13 +3842,17 @@ Page({
       pos = this._spawnPointOnGrass()
     }
     pos = this._clampToGrass(pos.x, pos.y)
+    let hpFinal = hp
+    if (this._chapterActive && this._chapterRules && this._chapterRules.hpMul != null) {
+      hpFinal = Math.max(4, Math.floor(hp * Number(this._chapterRules.hpMul)))
+    }
     const z = this._makeMonster({
       typeKey: typeKey,
       x: pos.x,
       y: pos.y,
       r: r,
-      hp: hp,
-      maxHp: hp,
+      hp: hpFinal,
+      maxHp: hpFinal,
       isBoss: false
     })
     // 元婴之后：每大境界独立生成的敌修人形（不用主角贴图）
@@ -3586,6 +4025,7 @@ Page({
     const isBoss = !!(opt && opt.boss)
     const isGuardian = !!(opt && opt.realmGuardian)
     this._kills += 1
+    if (this._chapterActive) this._chapterKills = (this._chapterKills || 0) + 1
     if (canSpaceBlink(this._realmLv)) {
       const before = this._spaceForce || 0
       this._spaceForce = Math.min(SPACE_FORCE_MAX, before + SPACE_FORCE_PER_KILL)
@@ -3837,6 +4277,13 @@ Page({
     this._swords = []
     this._focusZombie = null
     this._spawnAcc = 0
+
+    // 一章一局：境主章击败即通关，不走破境链
+    if (this._chapterActive && this._chapter && this._chapter.mode === 'boss') {
+      this._chapterBossDown = true
+      this._onChapterCleared()
+      return
+    }
 
     // 已在道祖且心魔/境主已尽 → 大圆满
     if ((this._realmLv || 1) >= REALMS.length) {
@@ -6493,7 +6940,7 @@ Page({
     const tx = fx.targetX
     const ty = fx.targetY
 
-    // 天空：大圆圈上竖立 64 雷剑
+    // 天空：大圆圈上竖立 72 雷剑
     if (fx.phase === 'sky') {
       for (let i = 0; i < fx.swords.length; i++) {
         const s = fx.swords[i]
@@ -6878,7 +7325,10 @@ Page({
       over: true,
       kills: this._kills,
       wave: this._wave,
-      realmName: realmByLv(this._realmLv).name
+      realmName: realmByLv(this._realmLv).name,
+      gameUiReady: true,
+      chapterTitle: (this._chapter && this._chapter.title) || '',
+      chapterUnit: (this._chapter && this._chapter.unitCode) || ''
     })
   },
 
@@ -8872,7 +9322,7 @@ Page({
       }
     }
 
-    // 64 金黄雷电剑
+    // 72 金黄雷电剑
     for (let i = 0; i < fx.swords.length; i++) {
       const s = fx.swords[i]
       const sc = (s.scale != null ? s.scale : 1)
