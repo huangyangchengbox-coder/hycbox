@@ -80,6 +80,11 @@
   color: #15803d;
 }
 
+.tool-icon.daotu {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
 .tool-name {
   font-size: 30rpx;
   font-weight: 600;

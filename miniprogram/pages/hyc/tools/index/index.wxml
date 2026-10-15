@@ -1,7 +1,7 @@
 <view class="tools-page">
   <view class="tools-hero">
     <view class="tools-title">实用工具</view>
-    <view class="tools-sub">定位 · 指南针 · 尺子 · 水平仪 · 手电筒 · 计时器 · 小游戏</view>
+    <view class="tools-sub">定位 · 指南针 · 尺子 · 水平仪 · 手电筒 · 计时器 · 仙途 · 道途</view>
   </view>
 
   <view class="tools-grid">
@@ -38,7 +38,12 @@
     <view class="tool-card" wx:if="{{showXian}}" bindtap="goZombie">
       <view class="tool-icon zombie">仙</view>
       <view class="tool-name">仙途</view>
-      <view class="tool-desc">草地斩尸 · 飞剑追踪 · 境界突破</view>
+      <view class="tool-desc">章节故事 · 自研Canvas · 一章一局</view>
+    </view>
+    <view class="tool-card" wx:if="{{showXian}}" bindtap="goDaotu">
+      <view class="tool-icon daotu">道</view>
+      <view class="tool-name">道途</view>
+      <view class="tool-desc">无尽斩尸 · 打坐突破 · 原仙途玩法</view>
     </view>
   </view>
 </view>

@@ -34,7 +34,8 @@
     "pages/hyc/tools/level/level",
     "pages/hyc/tools/flashlight/flashlight",
     "pages/hyc/tools/timer/timer",
-    "pages/hyc/tools/zombie/zombie"
+    "pages/hyc/tools/zombie/zombie",
+    "pages/hyc/tools/daotu/daotu"
   ],
   "window": {
     "navigationBarTextStyle": "black",

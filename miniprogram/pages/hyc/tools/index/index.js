@@ -48,5 +48,18 @@ Page({
         })
       }
     })
+  },
+  goDaotu() {
+    wx.navigateTo({
+      url: '/pages/hyc/tools/daotu/daotu',
+      fail(err) {
+        console.error('打开道途失败', err)
+        wx.showToast({
+          title: (err && err.errMsg) || '打开失败，请清缓存重编译',
+          icon: 'none',
+          duration: 2500
+        })
+      }
+    })
   }
 })
