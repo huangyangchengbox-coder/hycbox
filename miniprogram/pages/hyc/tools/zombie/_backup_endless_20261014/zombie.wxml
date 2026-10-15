@@ -1,0 +1,229 @@
+<!-- 仙途：顶栏与弹层不得叠在 type=2d canvas 上（原生层会盖住 view） -->
+<view class="xian-page">
+  <view wx:if="{{progressLoading}}" class="gate-screen">
+    <view class="gate-title">灵气汇聚中…</view>
+    <view class="gate-sub">正在读取仙途进度</view>
+  </view>
+
+  <!-- 一章一局：选章（按批次分组） -->
+  <view wx:elif="{{showChapterPick}}" class="panel-screen chapter-pick-screen">
+    <view class="info-title">仙途 · 全章</view>
+    <view class="info-sub">{{chapterClearSub}} · 一章一局 · 通关解锁</view>
+    <scroll-view scroll-y class="panel-scroll">
+      <view wx:for="{{chapterGroups}}" wx:key="batch" class="chapter-batch">
+        <view class="chapter-batch-title">{{item.title}}</view>
+        <view
+          wx:for="{{item.items}}"
+          wx:for-item="ch"
+          wx:key="id"
+          class="chapter-row {{ch.unlocked ? '' : 'chapter-row-locked'}} {{ch.cleared ? 'chapter-row-cleared' : ''}}"
+          data-id="{{ch.id}}"
+          data-unlocked="{{ch.unlocked}}"
+          bindtap="onPickChapter"
+        >
+          <view class="chapter-row-main">
+            <view class="chapter-row-code">{{ch.unitCode}}</view>
+            <view class="chapter-row-title">{{ch.title}}</view>
+          </view>
+          <view class="chapter-row-meta">
+            <text class="chapter-tag">{{ch.modeLabel}}</text>
+            <text class="chapter-status">{{ch.statusText}}</text>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+    <view class="chapter-pick-actions">
+      <view class="gate-btn-sub chapter-reset" bindtap="onRebirthMortal">重置进度</view>
+      <view class="gate-btn-sub chapter-reset" wx:if="{{canPickRealm}}" bindtap="onUnlockAllChapters">体验·解锁全章</view>
+    </view>
+  </view>
+
+  <!-- 兼容旧「再续」门（一般不再进入） -->
+  <view wx:elif="{{showContinueGate}}" class="gate-screen">
+    <view class="gate-title">仙途未尽</view>
+    <view class="gate-sub">上次 · {{continueRealmName}} · 击杀 {{continueKills}}</view>
+    <view class="gate-btn-main" bindtap="onContinueXian">进入章节</view>
+    <view class="gate-btn-sub" bindtap="onRebirthMortal">重置进度</view>
+  </view>
+
+  <block wx:if="{{gameUiReady || showChapterIntro || showChapterClear || showChapterOutro}}">
+    <!-- 章前叙事 + 轻量剧情动画 -->
+    <view wx:if="{{showChapterIntro}}" class="panel-screen story-screen story-scene-{{storyScene}} {{storyFxOn ? 'story-fx-on' : 'story-fx-out'}}">
+      <view class="story-sky"></view>
+      <view class="story-mist story-mist-a"></view>
+      <view class="story-mist story-mist-b"></view>
+      <view class="story-stage">
+        <!-- 小村剪影 -->
+        <block wx:if="{{storyScene === 'village'}}">
+          <view class="sil sil-hill sil-hill-l"></view>
+          <view class="sil sil-hill sil-hill-r"></view>
+          <view class="sil sil-hut"><view class="sil-roof"></view></view>
+          <view class="sil sil-hut sil-hut-2"><view class="sil-roof"></view></view>
+          <view class="sil sil-tree sil-tree-l"><view class="sil-crown"></view></view>
+          <view class="sil sil-tree sil-tree-r"><view class="sil-crown"></view></view>
+        </block>
+        <!-- 炼骨崖 -->
+        <block wx:elif="{{storyScene === 'cliff'}}">
+          <view class="sil sil-cliff"></view>
+          <view class="sil sil-bamboo sil-bamboo-1"></view>
+          <view class="sil sil-bamboo sil-bamboo-2"></view>
+          <view class="sil sil-bamboo sil-bamboo-3"></view>
+          <view class="sil sil-climber"><view class="sil-head"></view></view>
+        </block>
+        <!-- 掌天瓶 -->
+        <block wx:elif="{{storyScene === 'bottle'}}">
+          <view class="sil sil-glow"></view>
+          <view class="sil sil-bottle"><view class="sil-bottle-cap"></view></view>
+          <view class="sil sil-spark sil-spark-1"></view>
+          <view class="sil sil-spark sil-spark-2"></view>
+          <view class="sil sil-spark sil-spark-3"></view>
+        </block>
+        <!-- 打坐 -->
+        <block wx:elif="{{storyScene === 'meditate'}}">
+          <view class="sil sil-moon"></view>
+          <view class="sil sil-seat"></view>
+          <view class="sil sil-aura"></view>
+          <view class="sil sil-figure"><view class="sil-head"></view></view>
+        </block>
+        <!-- 境主 -->
+        <block wx:elif="{{storyScene === 'boss'}}">
+          <view class="sil sil-rift"></view>
+          <view class="sil sil-boss"><view class="sil-head sil-boss-head"></view></view>
+          <view class="sil sil-slash"></view>
+        </block>
+        <!-- 斩妖 / 清剿 / 切磋 / 灵光 / 通用 -->
+        <block wx:else>
+          <view class="sil sil-hill sil-hill-l"></view>
+          <view class="sil sil-hill sil-hill-r"></view>
+          <view class="sil sil-sword"></view>
+          <view class="sil sil-orb"></view>
+        </block>
+      </view>
+      <view class="story-veil"></view>
+      <view class="story-ui">
+        <view class="story-chapter">{{chapterUnit}} · {{chapterModeLabel}} · {{storySceneLabel}}</view>
+        <view class="story-title">{{chapterTitle}}</view>
+        <view class="story-goal">{{chapterGoalTip}}</view>
+        <view class="story-text" wx:key="storyAnimKey">{{chapterText}}</view>
+        <view class="story-next" bindtap="onChapterIntroNext">{{chapterHasNextLine ? '继续' : '入道'}}</view>
+      </view>
+    </view>
+
+    <!-- 通关剧情收束 -->
+    <view wx:elif="{{showChapterOutro}}" class="panel-screen story-screen story-scene-{{storyScene}} story-fx-on">
+      <view class="story-sky"></view>
+      <view class="story-mist story-mist-a"></view>
+      <view class="story-veil"></view>
+      <view class="story-ui">
+        <view class="story-chapter">章成 · {{chapterUnit}}</view>
+        <view class="story-title">{{chapterTitle}}</view>
+        <view class="story-text">{{chapterOutroText}}</view>
+        <view class="story-next" bindtap="onChapterOutroNext">{{chapterOutroHasNext ? '继续' : '了结'}}</view>
+      </view>
+    </view>
+
+    <!-- 通关结算 -->
+    <view wx:elif="{{showChapterClear}}" class="panel-screen mask-panel chapter-clear-anim">
+      <view class="clear-ink-ring"></view>
+      <view class="ink-epitaph">章成</view>
+      <view class="mask-sub">{{chapterUnit}} · {{chapterTitle}}</view>
+      <view class="mask-sub soft">{{chapterClearSub}}</view>
+      <view class="gate-btn-main" wx:if="{{chapterHasNextChapter}}" bindtap="onChapterNext">下一章</view>
+      <view class="gate-btn-sub" bindtap="onChapterBackToList">章节目录</view>
+    </view>
+
+    <!-- 选境 / 境界说明：全屏普通 view，此时不挂 canvas -->
+    <view wx:elif="{{showRealmPick}}" class="panel-screen">
+      <view class="info-title">选择境界</view>
+      <view class="info-sub">开发/体验版 · 选后播突破动画直达</view>
+      <scroll-view scroll-y class="panel-scroll">
+        <view
+          wx:for="{{realmPickList}}"
+          wx:key="lv"
+          class="pick-row"
+          data-lv="{{item.lv}}"
+          bindtap="onPickRealm"
+        >
+          <view class="pick-name">{{item.tierName}} · {{item.name}}</view>
+          <view class="pick-meta">击杀门槛 {{item.kills}}</view>
+        </view>
+      </scroll-view>
+      <view class="info-close" bindtap="closeRealmPick">关闭</view>
+    </view>
+
+    <view wx:elif="{{showRealmInfo}}" class="panel-screen">
+      <view class="info-title">修仙境界</view>
+      <view class="info-sub">大境界划分小境界 · 小境升层灵气入丹 · 巅峰击败境主破大境</view>
+      <scroll-view scroll-y class="panel-scroll">
+        <view wx:for="{{realmInfoList}}" wx:key="title" class="info-group">
+          <view class="info-group-title">{{item.title}}</view>
+          <view wx:for="{{item.items}}" wx:for-item="r" wx:key="name" class="info-row">
+            <view class="info-name">{{r.name}}期</view>
+            <view class="info-meta" wx:if="{{r.stages}}">小境界：{{r.stages}}</view>
+            <view class="info-meta" wx:if="{{r.skills}}">技能：{{r.skills}}</view>
+            <view class="info-meta" wx:if="{{r.guardian}}">境主：{{r.guardian}}</view>
+            <view class="info-desc">{{r.desc}}</view>
+            <view class="info-desc tip-line" wx:if="{{r.tip}}">玩法：{{r.tip}}</view>
+          </view>
+        </view>
+      </scroll-view>
+      <view class="info-close" bindtap="closeRealmInfo">关闭</view>
+    </view>
+
+    <view wx:elif="{{perfect}}" class="panel-screen mask-panel">
+      <view class="ink-epitaph">大圆满</view>
+      <view class="mask-sub">道祖 · 击杀 {{kills}}</view>
+      <view class="mask-btn" bindtap="onChapterBackToList">回章节目录</view>
+    </view>
+
+    <view wx:elif="{{over}}" class="panel-screen mask-panel">
+      <view class="ink-epitaph">大道无情</view>
+      <view class="mask-sub" wx:if="{{chapterTitle}}">{{chapterUnit}} · {{chapterTitle}}</view>
+      <view class="mask-sub">击杀 {{kills}} · 境界 {{realmName}}</view>
+      <view class="gate-btn-main" bindtap="onChapterRetry">再试本章</view>
+      <view class="gate-btn-sub" bindtap="onChapterBackToList">章节目录</view>
+    </view>
+
+    <!-- 对局：顶栏在 canvas 上方独立区域，不会被原生画布盖住 -->
+    <block wx:else>
+      <view class="top-chrome">
+        <view class="realm-btn" bindtap="toggleRealmInfo">境界</view>
+        <view class="hud">
+          <view class="hud-item" wx:if="{{chapterUnit}}">{{chapterUnit}} {{chapterTitle}}</view>
+          <view class="hud-item">击杀 {{kills}}</view>
+          <view class="hud-item">{{realmTierName}} · {{realmName}}</view>
+          <view class="hud-item">飞剑 ×{{swordCount}}</view>
+          <view class="hud-item">灵气 {{lingQi}}/{{maxLingQi}}</view>
+          <view class="hud-item" wx:if="{{spaceUnlocked}}">空间 {{spaceForce}}/{{maxSpaceForce}}</view>
+          <view class="hud-item" wx:if="{{heldFu}}">符 · {{heldFu}}</view>
+          <view class="hud-item">波次 {{wave}}</view>
+        </view>
+        <view
+          class="realm-btn realm-btn-skip"
+          wx:if="{{canPickRealm}}"
+          bindtap="openRealmPick"
+        >跳境</view>
+      </view>
+      <view class="tip-bar tip-bar-quote" wx:if="{{chapterGoalTip}}">
+        <text>{{chapterGoalTip}}</text>
+        <text wx:if="{{chapterProgressTip}}"> · {{chapterProgressTip}}</text>
+      </view>
+      <view class="tip-bar tip-bar-quote" wx:elif="{{realmMajorName === '凡人'}}">身如枯木，心若止水，待惊雷破晓！</view>
+      <view class="tip-bar" wx:elif="{{heldFu}}">点按落点扔出「{{heldFu}}」</view>
+      <view class="tip-bar" wx:elif="{{realmTip}}">{{realmTip}}</view>
+      <view class="tip-bar" wx:else>点按锁定 · 持符点按释放 · 左下太极切换自动</view>
+
+      <view class="game-area">
+        <canvas
+          type="2d"
+          id="gameCanvas"
+          class="canvas"
+          bindtouchstart="onTouchStart"
+          bindtouchmove="onTouchMove"
+          bindtouchend="onTouchEnd"
+          bindtouchcancel="onTouchEnd"
+        ></canvas>
+      </view>
+    </block>
+  </block>
+</view>

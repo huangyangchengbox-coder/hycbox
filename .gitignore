@@ -19,3 +19,9 @@ game-assets/_tmp_img/
 
 # 原著第三方全文（版权保护，不入库）
 docs/story/原文/
+
+# 微信小程序上传密钥与本地环境（勿提交）
+deploy/upload-weixin.env
+deploy/*.key
+**/private.*.key
+**/wx*.key

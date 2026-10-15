@@ -1,8 +1,8 @@
 {
   "usingComponents": {},
-  "backgroundColor": "#0f1419",
+  "backgroundColor": "#5c8a3a",
   "disableScroll": true,
-  "navigationBarBackgroundColor": "#0f1419",
+  "navigationBarBackgroundColor": "#3d6b2a",
   "navigationBarTextStyle": "white",
   "navigationBarTitleText": "仙途"
 }

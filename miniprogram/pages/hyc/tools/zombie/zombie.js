@@ -7,6 +7,7 @@ const config = require('../../../../services/config')
 const api = require('../../../../services/api')
 const wxSession = require('../../../../services/wxSession')
 const xianChapterPlay = require('../../../../data/xianChapterPlay')
+const xianStoryCanvas = require('../../../../libs/xianStoryCanvas')
 
 /** 本地进度备份，避免读服失败时看不到再续入口 */
 const XIAN_PROGRESS_LOCAL_KEY = 'hyc_xian_progress'
@@ -1011,8 +1012,18 @@ Page({
     chapterOutroHasNext: false,
     storyScene: 'ink',
     storySceneLabel: '仙途',
+    storyRender: 'canvas',
+    storyRenderLabel: '自研Canvas',
+    storyCanvasReady: false,
+    storyCanvasFailed: false,
+    storyFx: 'mist',
     storyAnimKey: 0,
     storyFxOn: true,
+    showStoryFight: false,
+    fightFoe: '',
+    fightProgress: 0,
+    fightNeed: 4,
+    fightHint: '',
     corpseDan: 0,
     corpseDanNeed: 50,
     realmInfoList: buildRealmInfoList(),
@@ -1225,27 +1236,58 @@ Page({
   onChapterIntroNext() {
     const ch = this._chapter
     if (!ch) return
+    if (this.data.showStoryFight) return
+    if (this._storyAutoTimer) {
+      clearTimeout(this._storyAutoTimer)
+      this._storyAutoTimer = null
+    }
     if (this._storyTyping) {
-      // 打字中途再点：立刻显示全文
       this._finishStoryTypewriter(true)
+      this._scheduleAutoAdvance(400)
       return
     }
-    const lines = ch.lines || []
-    this._chapterLine = (this._chapterLine || 0) + 1
-    if (this._chapterLine < lines.length) {
-      this._playStoryLine(lines[this._chapterLine], this._chapterLine < lines.length - 1)
+    this._advanceChapterBeat()
+  },
+
+  /** 剧情打斗：自动/点按进攻 */
+  onStoryFightTap() {
+    if (!this.data.showStoryFight || this._chapterClearedLatch) return
+    const need = this.data.fightNeed || 4
+    let p = (this.data.fightProgress || 0) + 1
+    if (p >= need) {
+      if (this._storyFightTimer) {
+        clearInterval(this._storyFightTimer)
+        this._storyFightTimer = null
+      }
+      this.setData({
+        fightProgress: need,
+        showStoryFight: false,
+        fightHint: ''
+      })
+      this._advanceChapterBeat()
       return
     }
-    // 剧情章：读完即通关（播短过场）
-    if (ch.mode === 'story' || (ch.win && ch.win.type === 'story')) {
-      this._chapterStoryDone = true
-      this._playStoryOutro(() => this._onChapterCleared())
-      return
-    }
-    this._playStoryOutro(() => {
-      this.setData({ showChapterIntro: false, storyFxOn: false })
-      this._enterChapterBattle()
+    this.setData({
+      fightProgress: p,
+      storyFx: 'slash',
+      storyAnimKey: Date.now(),
+      fightHint: '交锋 ' + p + '/' + need
     })
+    this._syncStoryCanvasFx('slash')
+  },
+
+  _advanceChapterBeat() {
+    const ch = this._chapter
+    if (!ch) return
+    const beats = this._chapterBeats || xianChapterPlay.getBeats(ch)
+    this._chapterLine = (this._chapterLine || 0) + 1
+    if (this._chapterLine < beats.length) {
+      this._playStoryBeat(beats[this._chapterLine], this._chapterLine < beats.length - 1)
+      return
+    }
+    // Demo：全部走故事通关，不再进入旧打坐/斩尸 canvas
+    this._chapterStoryDone = true
+    this._playStoryOutro(() => this._onChapterCleared())
   },
 
   onChapterNext() {
@@ -1260,6 +1302,10 @@ Page({
   },
 
   onChapterOutroNext() {
+    if (this._storyAutoTimer) {
+      clearTimeout(this._storyAutoTimer)
+      this._storyAutoTimer = null
+    }
     const lines = (this._chapter && this._chapter.outro) || []
     this._chapterOutroLine = (this._chapterOutroLine || 0) + 1
     if (this._chapterOutroLine < lines.length) {
@@ -1267,6 +1313,7 @@ Page({
         chapterOutroText: lines[this._chapterOutroLine],
         chapterOutroHasNext: this._chapterOutroLine < lines.length - 1
       })
+      this._scheduleAutoAdvance(1800)
       return
     }
     this.setData({ showChapterOutro: false, showChapterClear: true })
@@ -1283,12 +1330,16 @@ Page({
 
   onChapterBackToList() {
     this._teardownCanvas()
+    this._destroyStoryCanvas()
+    this._clearStoryTimers()
     this._gameStarted = false
     this._chapterActive = false
     this.setData({
       showChapterClear: false,
       showChapterIntro: false,
       showChapterOutro: false,
+      showStoryFight: false,
+      storyCanvasReady: false,
       over: false,
       perfect: false,
       gameUiReady: false
@@ -1702,7 +1753,9 @@ Page({
   _startChapter(ch) {
     if (!ch) return
     this._clearStoryTimers()
+    this._destroyStoryCanvas()
     this._chapter = ch
+    this._chapterBeats = xianChapterPlay.getBeats(ch)
     this._chapterLine = 0
     this._chapterActive = true
     this._chapterKills = 0
@@ -1715,12 +1768,16 @@ Page({
     prog.currentId = ch.id
     this._writeChapterProgress(prog)
     this._teardownCanvas()
-    const lines = ch.lines || ['仙途又启。']
+    const beats = this._chapterBeats
     const scene = xianChapterPlay.sceneForChapter(ch)
+    const render = xianChapterPlay.renderOf(ch)
+    const firstFx = (beats[0] && beats[0].fx) || 'mist'
     this.setData({
       showChapterPick: false,
       showChapterClear: false,
+      showChapterOutro: false,
       showChapterIntro: true,
+      showStoryFight: false,
       gameUiReady: false,
       over: false,
       perfect: false,
@@ -1729,19 +1786,29 @@ Page({
       chapterTitle: ch.title || '',
       chapterModeLabel: xianChapterPlay.modeLabel(ch.mode),
       chapterText: '',
-      chapterHasNextLine: lines.length > 1,
-      chapterGoalTip: xianChapterPlay.goalTip(ch),
+      chapterHasNextLine: beats.length > 1,
+      chapterGoalTip: xianChapterPlay.goalTip(ch) + ' · ' + xianChapterPlay.renderLabel(render),
       chapterProgressTip: '',
       chapterClearSub: '',
       chapterHasNextChapter: !!ch.nextId,
       storyScene: scene,
       storySceneLabel: xianChapterPlay.sceneLabel(scene),
+      storyRender: render,
+      storyRenderLabel: xianChapterPlay.renderLabel(render),
+      storyCanvasReady: false,
+      storyCanvasFailed: false,
+      storyFx: firstFx,
       storyAnimKey: Date.now(),
-      storyFxOn: true
+      storyFxOn: true,
+      fightFoe: '',
+      fightProgress: 0,
+      fightNeed: 4,
+      fightHint: ''
     }, () => {
-      this._playStoryLine(lines[0], lines.length > 1)
+      this._playStoryBeat(beats[0], beats.length > 1)
+      this._initStoryCanvas(ch)
     })
-    console.log('仙途开章', ch.unitCode, ch.title, ch.mode, scene)
+    console.log('仙途开章(故事)', ch.unitCode, ch.title, scene, firstFx)
   },
 
   _clearStoryTimers() {
@@ -1753,29 +1820,151 @@ Page({
       clearTimeout(this._storyOutroTimer)
       this._storyOutroTimer = null
     }
+    if (this._storyAutoTimer) {
+      clearTimeout(this._storyAutoTimer)
+      this._storyAutoTimer = null
+    }
+    if (this._storyFightTimer) {
+      clearInterval(this._storyFightTimer)
+      this._storyFightTimer = null
+    }
     this._storyTyping = false
     this._storyFullText = ''
   },
 
-  /** 剧情行：淡入 + 简易打字机 */
-  _playStoryLine(fullText, hasNext) {
+  _destroyStoryCanvas() {
+    if (this._storyCanvasAnim) {
+      try {
+        this._storyCanvasAnim.destroy()
+      } catch (e) {}
+      this._storyCanvasAnim = null
+    }
+  },
+
+  /** 自研 Canvas：按章节 scene / beat.fx 绘制 */
+  _initStoryCanvas(ch) {
+    this._destroyStoryCanvas()
+    this.setData({ storyCanvasReady: false, storyCanvasFailed: false })
+    this._storyCanvasTries = 0
+    this._mountStoryCanvas(ch)
+  },
+
+  _mountStoryCanvas(ch) {
+    const chapter = ch || this._chapter
+    const scene = xianChapterPlay.sceneForChapter(chapter)
+    const fx = this.data.storyFx || 'mist'
+    const label = (chapter && (chapter.unitCode + ' · ' + chapter.title)) || ''
+    const tryMount = () => {
+      this._storyCanvasTries = (this._storyCanvasTries || 0) + 1
+      if (!this.data.showChapterIntro) return
+      wx.createSelectorQuery()
+        .select('#storyCanvasAnim')
+        .fields({ node: true, size: true })
+        .exec((res) => {
+          if (!this.data.showChapterIntro) return
+          const info = res && res[0]
+          const canvas = info && info.node
+          let width = info && info.width
+          let height = info && info.height
+          if (!canvas) {
+            if (this._storyCanvasTries < 12) {
+              setTimeout(tryMount, 80)
+            } else {
+              console.error('storyCanvasAnim 未就绪', res)
+              this.setData({ storyCanvasFailed: true })
+            }
+            return
+          }
+          if (!width || !height) {
+            width = width || 320
+            height = height || 240
+          }
+          try {
+            this._storyCanvasAnim = xianStoryCanvas.play(canvas, width, height, {
+              scene: scene,
+              fx: fx,
+              label: label
+            })
+            this.setData({ storyCanvasReady: true, storyCanvasFailed: false })
+          } catch (err) {
+            console.error('自研 Canvas 初始化失败', err)
+            this.setData({ storyCanvasFailed: true })
+          }
+        })
+    }
+    setTimeout(tryMount, 100)
+  },
+
+  _syncStoryCanvasFx(fx) {
+    if (this._storyCanvasAnim && typeof this._storyCanvasAnim.setFx === 'function') {
+      this._storyCanvasAnim.setFx(fx || 'mist')
+    }
+  },
+
+  /** 剧情 beat：旁白打字机后自动续；打斗自动推进 */
+  _playStoryBeat(beat, hasNext) {
+    const b = beat || { text: '仙途又启。', fx: 'mist', kind: 'narrate' }
     this._clearStoryTimers()
-    const text = String(fullText || '')
+    const text = String(b.text || '')
+    const isFight = b.kind === 'fight'
     this._storyFullText = text
-    this._storyTyping = true
-    let i = 0
-    const step = Math.max(1, Math.ceil(text.length / 28))
+    this._storyTyping = !isFight
+    const nextFx = b.fx || (isFight ? 'slash' : 'mist')
     this.setData({
-      chapterText: '',
+      chapterText: isFight ? text : '',
       chapterHasNextLine: !!hasNext,
+      storyFx: nextFx,
       storyAnimKey: Date.now(),
-      storyFxOn: true
+      storyFxOn: true,
+      showStoryFight: !!isFight,
+      fightFoe: isFight ? (b.foe || '对手') : '',
+      fightProgress: 0,
+      fightNeed: isFight ? Math.max(3, b.taps || 4) : 4,
+      fightHint: isFight ? '交锋中…' : '自动播放'
     })
+    this._syncStoryCanvasFx(nextFx)
+    if (isFight) {
+      this._storyTyping = false
+      this._startAutoFight()
+      return
+    }
+    let i = 0
+    const step = Math.max(1, Math.ceil(text.length / 22))
     this._storyTypeTimer = setInterval(() => {
       i = Math.min(text.length, i + step)
       this.setData({ chapterText: text.slice(0, i) })
       if (i >= text.length) this._finishStoryTypewriter(false)
-    }, 42)
+    }, 36)
+  },
+
+  /** 打斗自动点按推进（无需按钮） */
+  _startAutoFight() {
+    if (this._storyFightTimer) clearInterval(this._storyFightTimer)
+    this._storyFightTimer = setInterval(() => {
+      if (!this.data.showStoryFight) {
+        clearInterval(this._storyFightTimer)
+        this._storyFightTimer = null
+        return
+      }
+      this.onStoryFightTap()
+    }, 520)
+  },
+
+  _scheduleAutoAdvance(ms) {
+    if (this._storyAutoTimer) clearTimeout(this._storyAutoTimer)
+    this._storyAutoTimer = setTimeout(() => {
+      this._storyAutoTimer = null
+      if (this.data.showChapterIntro && !this.data.showStoryFight) {
+        this._advanceChapterBeat()
+      } else if (this.data.showChapterOutro) {
+        this.onChapterOutroNext()
+      }
+    }, ms || 1600)
+  },
+
+  /** @deprecated 兼容旧调用 */
+  _playStoryLine(fullText, hasNext) {
+    this._playStoryBeat({ text: fullText, fx: this.data.storyFx || 'mist' }, hasNext)
   },
 
   _finishStoryTypewriter(forceFull) {
@@ -1787,50 +1976,29 @@ Page({
     if (forceFull || this.data.chapterText !== this._storyFullText) {
       this.setData({ chapterText: this._storyFullText || '' })
     }
+    // 旁白读完后自动进入下一段（无需点继续）
+    if (!forceFull && this.data.showChapterIntro && !this.data.showStoryFight) {
+      const hold = Math.min(2800, 1200 + String(this._storyFullText || '').length * 28)
+      this._scheduleAutoAdvance(hold)
+    }
   },
 
   /** 入道前短黑场（约 0.45s） */
   _playStoryOutro(done) {
     this._clearStoryTimers()
-    this.setData({ storyFxOn: false })
+    this._destroyStoryCanvas()
+    this.setData({ storyFxOn: false, showStoryFight: false })
     this._storyOutroTimer = setTimeout(() => {
       this._storyOutroTimer = null
       if (typeof done === 'function') done()
     }, 420)
   },
 
+  /** Demo 已弃用旧 canvas 局；保留空壳防止误调 */
   _enterChapterBattle() {
-    const ch = this._chapter
-    if (!ch) return
-    const rules = ch.rules || {}
-    const lv = firstRealmLvOfMajor(ch.major || 'lianqi')
-    // 凡人打坐章保持凡人；其余至少炼气一层
-    const sitMortal = ch.mode === 'cultivate' && ch.major === 'mortal'
-    const startLv = sitMortal ? 1 : Math.max(2, lv)
-    const swordBase = startLv <= 1 ? 1 : 3 + (rules.swordBonus || 0)
-    this._chapterRules = rules
-    this._pendingApplyProgress = {
-      realmLv: startLv,
-      kills: 0,
-      stageKills: 0,
-      swordCount: Math.min(MAX_SWORD_COUNT, Math.max(1, swordBase)),
-      wave: 1,
-      corpseDan: 0,
-      qiAbsorb: 0
-    }
-    this._chapterKills = 0
-    this._chapterElapsed = 0
-    this._chapterBossDown = false
-    this._chapterBossArmed = false
-    this._chapterClearedLatch = false
-    this.setData({
-      showChapterIntro: false,
-      showChapterClear: false,
-      showChapterOutro: false,
-      chapterGoalTip: xianChapterPlay.goalTip(ch),
-      chapterProgressTip: ''
-    })
-    this._enterGame(this._pendingApplyProgress)
+    console.warn('仙途 Demo 不再进入斩尸/打坐 canvas，改为故事通关')
+    this._chapterStoryDone = true
+    this._onChapterCleared()
   },
 
   _tickChapterSession(dt) {
@@ -1902,6 +2070,7 @@ Page({
       chapterTitle: ch.title,
       chapterUnit: ch.unitCode || ''
     })
+    this._scheduleAutoAdvance(1800)
     console.log('仙途通关', ch.unitCode, ch.title)
   },
 
@@ -1998,8 +2167,9 @@ Page({
     })
   },
 
-  /** 节流写档；force 时立刻提交（本地+服务端） */
+  /** 节流写档；章节模式不写无尽主线档，只靠 hyc_xian_chapters */
   _persistProgress(force) {
+    if (this._chapterActive) return
     if (!this._gameStarted || this.data.showContinueGate || this.data.progressLoading || !this.data.gameUiReady) return
     if (this._over || this._perfect) return
     const now = Date.now()
@@ -2648,9 +2818,11 @@ Page({
     }
 
     if (this._qiAbsorb >= MORTAL_QI_NEED) {
-      // 一章一局打坐章：灵气满即通关
-      if (this._chapterActive && this._chapter && this._chapter.win && this._chapter.win.type === 'cultivate') {
-        this._onChapterCleared()
+      // 一章一局：禁止凡人破境链；打坐章由 tick / 此处通关
+      if (this._chapterActive) {
+        if (this._chapter && this._chapter.win && this._chapter.win.type === 'cultivate') {
+          this._onChapterCleared()
+        }
         return
       }
       this._startMortalBreakthrough()
@@ -4053,8 +4225,8 @@ Page({
       } else {
         this._onBossDefeated({ skipHeartDemon: wasHeart })
       }
-    } else if (!isGuardianCombatRealm(this._realmLv)) {
-      // 小境界：击杀积蓄，满则灵气旋涡入丹田升层
+    } else if (!this._chapterActive && !isGuardianCombatRealm(this._realmLv)) {
+      // 小境界：击杀积蓄，满则灵气旋涡入丹田升层（章节模式禁用）
       this._stageKills = (this._stageKills || 0) + 1
       this._maybeMinorRealmUp()
     }
@@ -4062,6 +4234,7 @@ Page({
 
   /** 小境界升层：天地灵气漩涡灌入丹田 */
   _maybeMinorRealmUp() {
+    if (this._chapterActive) return
     if (this._qiVortexFx || this._spiritFx || this._breakFx || this._over || this._perfect) return
     if (isGuardianCombatRealm(this._realmLv)) return
     if ((this._realmLv || 1) >= REALMS.length) return
@@ -4278,10 +4451,12 @@ Page({
     this._focusZombie = null
     this._spawnAcc = 0
 
-    // 一章一局：境主章击败即通关，不走破境链
-    if (this._chapterActive && this._chapter && this._chapter.mode === 'boss') {
-      this._chapterBossDown = true
-      this._onChapterCleared()
+    // 一章一局：禁止破境链；境主章击败即通关
+    if (this._chapterActive) {
+      if (this._chapter && this._chapter.mode === 'boss') {
+        this._chapterBossDown = true
+        this._onChapterCleared()
+      }
       return
     }
 
@@ -7195,6 +7370,14 @@ Page({
 
   /** 突破：全屏清尸（不计杀）+ 短暂停刷 + 境界特效；道祖触发大圆满 */
   _onRealmBreakthrough(realm) {
+    // 一章一局：禁止破境链推进
+    if (this._chapterActive) {
+      this._zombies = []
+      this._swords = []
+      this._focusZombie = null
+      this._spawnAcc = 0
+      return
+    }
     const zombies = this._zombies || []
     for (let i = 0; i < zombies.length; i++) {
       const z = zombies[i]

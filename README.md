@@ -63,7 +63,17 @@ module.exports = {
 
 1. 确认 `config.js` 指向正式 API
 2. 公众平台配置 request / uploadFile 合法域名（正式版需 HTTPS 域名备案通过后）
-3. 开发者工具：上传 → 提交审核
+3. **方式 A（推荐）**：微信开发者工具 → 上传 → 公众平台设体验版 / 提交审核
+4. **方式 B（命令行）**：
+   ```bash
+   npm i -D miniprogram-ci
+   # 公众平台下载「代码上传密钥」，本地保存
+   copy deploy\upload-weixin.example.env deploy\upload-weixin.env
+   # 编辑 upload-weixin.env，填写 WEIXIN_PRIVATE_KEY_PATH
+   npm run upload:weixin
+   # 或：node deploy/upload-weixin.js --version=1.0.1 --desc=仙途更新
+   ```
+   私钥与 `upload-weixin.env` 已 gitignore，勿提交仓库。
 
 ## 相关仓库
 

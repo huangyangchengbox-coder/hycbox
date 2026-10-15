@@ -8,7 +8,7 @@
   <!-- 一章一局：选章（按批次分组） -->
   <view wx:elif="{{showChapterPick}}" class="panel-screen chapter-pick-screen">
     <view class="info-title">仙途 · 全章</view>
-    <view class="info-sub">{{chapterClearSub}} · 一章一局 · 通关解锁</view>
+    <view class="info-sub">{{chapterClearSub}} · 自研Canvas · 一章一故事</view>
     <scroll-view scroll-y class="panel-scroll">
       <view wx:for="{{chapterGroups}}" wx:key="batch" class="chapter-batch">
         <view class="chapter-batch-title">{{item.title}}</view>
@@ -47,78 +47,42 @@
   </view>
 
   <block wx:if="{{gameUiReady || showChapterIntro || showChapterClear || showChapterOutro}}">
-    <!-- 章前叙事 + 轻量剧情动画 -->
-    <view wx:if="{{showChapterIntro}}" class="panel-screen story-screen story-scene-{{storyScene}} {{storyFxOn ? 'story-fx-on' : 'story-fx-out'}}">
-      <view class="story-sky"></view>
-      <view class="story-mist story-mist-a"></view>
-      <view class="story-mist story-mist-b"></view>
-      <view class="story-stage">
-        <!-- 小村剪影 -->
-        <block wx:if="{{storyScene === 'village'}}">
-          <view class="sil sil-hill sil-hill-l"></view>
-          <view class="sil sil-hill sil-hill-r"></view>
-          <view class="sil sil-hut"><view class="sil-roof"></view></view>
-          <view class="sil sil-hut sil-hut-2"><view class="sil-roof"></view></view>
-          <view class="sil sil-tree sil-tree-l"><view class="sil-crown"></view></view>
-          <view class="sil sil-tree sil-tree-r"><view class="sil-crown"></view></view>
-        </block>
-        <!-- 炼骨崖 -->
-        <block wx:elif="{{storyScene === 'cliff'}}">
-          <view class="sil sil-cliff"></view>
-          <view class="sil sil-bamboo sil-bamboo-1"></view>
-          <view class="sil sil-bamboo sil-bamboo-2"></view>
-          <view class="sil sil-bamboo sil-bamboo-3"></view>
-          <view class="sil sil-climber"><view class="sil-head"></view></view>
-        </block>
-        <!-- 掌天瓶 -->
-        <block wx:elif="{{storyScene === 'bottle'}}">
-          <view class="sil sil-glow"></view>
-          <view class="sil sil-bottle"><view class="sil-bottle-cap"></view></view>
-          <view class="sil sil-spark sil-spark-1"></view>
-          <view class="sil sil-spark sil-spark-2"></view>
-          <view class="sil sil-spark sil-spark-3"></view>
-        </block>
-        <!-- 打坐 -->
-        <block wx:elif="{{storyScene === 'meditate'}}">
-          <view class="sil sil-moon"></view>
-          <view class="sil sil-seat"></view>
-          <view class="sil sil-aura"></view>
-          <view class="sil sil-figure"><view class="sil-head"></view></view>
-        </block>
-        <!-- 境主 -->
-        <block wx:elif="{{storyScene === 'boss'}}">
-          <view class="sil sil-rift"></view>
-          <view class="sil sil-boss"><view class="sil-head sil-boss-head"></view></view>
-          <view class="sil sil-slash"></view>
-        </block>
-        <!-- 斩妖 / 清剿 / 切磋 / 灵光 / 通用 -->
-        <block wx:else>
-          <view class="sil sil-hill sil-hill-l"></view>
-          <view class="sil sil-hill sil-hill-r"></view>
-          <view class="sil sil-sword"></view>
-          <view class="sil sil-orb"></view>
-        </block>
+    <!-- 章前叙事：自研 Canvas 场景 + 左上角旁白自动续播 -->
+    <view wx:if="{{showChapterIntro}}" class="panel-screen story-screen story-fill story-render-canvas {{storyFxOn ? 'story-fx-on' : 'story-fx-out'}}" catchtap="onChapterIntroNext">
+      <view class="story-sky story-sky-fallback"></view>
+      <!-- 下半屏 Canvas，避开左上文字原生层遮挡 -->
+      <view class="canvas-stage canvas-stage-full">
+        <canvas type="2d" id="storyCanvasAnim" class="canvas-anim" style="width:100%;height:100%;"></canvas>
       </view>
-      <view class="story-veil"></view>
-      <view class="story-ui">
-        <view class="story-chapter">{{chapterUnit}} · {{chapterModeLabel}} · {{storySceneLabel}}</view>
+      <view class="story-ui story-ui-tl">
+        <view class="story-chapter">{{chapterUnit}} · {{storySceneLabel}}</view>
         <view class="story-title">{{chapterTitle}}</view>
         <view class="story-goal">{{chapterGoalTip}}</view>
         <view class="story-text" wx:key="storyAnimKey">{{chapterText}}</view>
-        <view class="story-next" bindtap="onChapterIntroNext">{{chapterHasNextLine ? '继续' : '入道'}}</view>
+        <view wx:if="{{showStoryFight}}" class="story-fight">
+          <view class="fight-row">
+            <view class="fight-actor fight-hero">你</view>
+            <view class="fight-vs">VS</view>
+            <view class="fight-actor fight-foe">{{fightFoe}}</view>
+          </view>
+          <view class="fight-bar-wrap">
+            <view class="fight-bar" style="width: {{fightNeed ? (fightProgress * 100 / fightNeed) : 0}}%;"></view>
+          </view>
+          <view class="fight-hint">{{fightHint}}</view>
+        </view>
+        <view wx:else class="story-auto-hint">自动播放 · 点按跳过</view>
       </view>
     </view>
 
     <!-- 通关剧情收束 -->
-    <view wx:elif="{{showChapterOutro}}" class="panel-screen story-screen story-scene-{{storyScene}} story-fx-on">
+    <view wx:elif="{{showChapterOutro}}" class="panel-screen story-screen story-fill story-scene-{{storyScene}} story-fx-on" catchtap="onChapterOutroNext">
       <view class="story-sky"></view>
-      <view class="story-mist story-mist-a"></view>
-      <view class="story-veil"></view>
-      <view class="story-ui">
+      <view class="mc-ground"></view>
+      <view class="story-ui story-ui-tl">
         <view class="story-chapter">章成 · {{chapterUnit}}</view>
         <view class="story-title">{{chapterTitle}}</view>
         <view class="story-text">{{chapterOutroText}}</view>
-        <view class="story-next" bindtap="onChapterOutroNext">{{chapterOutroHasNext ? '继续' : '了结'}}</view>
+        <view class="story-auto-hint">自动播放 · 点按跳过</view>
       </view>
     </view>
 
