@@ -1264,6 +1264,7 @@ Page({
         showStoryFight: false,
         fightHint: ''
       })
+      this._syncStoryCanvasFight(false)
       this._advanceChapterBeat()
       return
     }
@@ -1317,6 +1318,19 @@ Page({
       return
     }
     this.setData({ showChapterOutro: false, showChapterClear: true })
+    this._scheduleNextChapter(1500)
+  },
+
+  /** 章成结算后自动进入下一章 */
+  _scheduleNextChapter(ms) {
+    if (this._storyAutoTimer) clearTimeout(this._storyAutoTimer)
+    if (!this._chapter || !this._chapter.nextId) return
+    this._storyAutoTimer = setTimeout(() => {
+      this._storyAutoTimer = null
+      if (this.data.showChapterClear && this.data.chapterHasNextChapter) {
+        this.onChapterNext()
+      }
+    }, ms == null ? 1500 : ms)
   },
 
   onChapterRetry() {
@@ -1883,6 +1897,8 @@ Page({
             this._storyCanvasAnim = xianStoryCanvas.play(canvas, width, height, {
               scene: scene,
               fx: fx,
+              fighting: !!this.data.showStoryFight,
+              foeName: this.data.fightFoe || '',
               label: label
             })
             this.setData({ storyCanvasReady: true, storyCanvasFailed: false })
@@ -1898,6 +1914,13 @@ Page({
   _syncStoryCanvasFx(fx) {
     if (this._storyCanvasAnim && typeof this._storyCanvasAnim.setFx === 'function') {
       this._storyCanvasAnim.setFx(fx || 'mist')
+    }
+  },
+
+  /** 打斗段切到道途飞剑斩怪场 */
+  _syncStoryCanvasFight(on, foeName) {
+    if (this._storyCanvasAnim && typeof this._storyCanvasAnim.setFighting === 'function') {
+      this._storyCanvasAnim.setFighting(!!on, foeName || '')
     }
   },
 
@@ -1923,6 +1946,7 @@ Page({
       fightHint: isFight ? '交锋中…' : '自动播放'
     })
     this._syncStoryCanvasFx(nextFx)
+    this._syncStoryCanvasFight(isFight, isFight ? (b.foe || '对手') : '')
     if (isFight) {
       this._storyTyping = false
       this._startAutoFight()

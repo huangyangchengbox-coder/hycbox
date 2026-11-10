@@ -21,6 +21,136 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath()
 }
 
+const ASSET_BASE = 'https://hychyr.top/uploads/game/xian'
+const ASSET_VER = '20260731i'
+function assetUrl(rel) {
+  return ASSET_BASE + '/' + rel + '?v=' + ASSET_VER
+}
+
+/** 与道途共用的立绘 / 草地 / 尸怪 */
+const ASSETS = { player: null, grass: null, foe: null }
+
+function loadCanvasImage(canvas, url, key) {
+  if (!canvas || typeof canvas.createImage !== 'function') return
+  const img = canvas.createImage()
+  img.onload = function () { ASSETS[key] = img }
+  img.onerror = function () { ASSETS[key] = null }
+  img.src = url
+}
+
+function drawSprite(ctx, img, x, y, size) {
+  if (!img) return
+  const iw = img.width || 0
+  const ih = img.height || 0
+  ctx.save()
+  ctx.translate(x, y)
+  if (iw > 0 && ih > 0 && iw / ih >= 1.6) {
+    const frames = Math.max(2, Math.min(6, Math.round(iw / ih)))
+    const fw = Math.floor(iw / frames)
+    ctx.drawImage(img, 0, 0, fw, ih, -size / 2, -size / 2, size, size)
+  } else {
+    ctx.drawImage(img, -size / 2, -size / 2, size, size)
+  }
+  ctx.restore()
+}
+
+/** 道途主角立绘；图未到时用色块人 */
+function drawHero(ctx, x, y, size) {
+  const s = size || 56
+  if (ASSETS.player) {
+    drawSprite(ctx, ASSETS.player, x, y, s)
+    return
+  }
+  drawPerson(ctx, x - 11, y - 28, s / 40, {})
+}
+
+function drawFoe(ctx, x, y, size) {
+  const s = size || 52
+  if (ASSETS.foe) {
+    drawSprite(ctx, ASSETS.foe, x, y, s)
+    return
+  }
+  drawPerson(ctx, x - 11, y - 28, s / 40, { head: '#65a30d', body: '#3f6212', leg: '#1a2e05' })
+}
+
+function paintInkSword(ctx, color) {
+  ctx.save()
+  ctx.fillStyle = color || '#e2e8f0'
+  ctx.strokeStyle = color || '#e2e8f0'
+  ctx.beginPath()
+  ctx.moveTo(22, 0)
+  ctx.lineTo(6, 2.6)
+  ctx.lineTo(-8, 2.2)
+  ctx.lineTo(-8, -2.2)
+  ctx.lineTo(6, -2.6)
+  ctx.closePath()
+  ctx.fill()
+  ctx.globalAlpha = 0.9
+  ctx.fillRect(-8, -5.5, 3, 11)
+  ctx.fillStyle = '#78350f'
+  ctx.fillRect(-14, -2.2, 6, 4.4)
+  ctx.restore()
+}
+
+/**
+ * 道途打怪场：草地 + 主角立绘 + 飞剑斩尸
+ */
+function paintDaoCombat(ctx, w, h, t, foeName) {
+  if (ASSETS.grass) {
+    ctx.drawImage(ASSETS.grass, 0, 0, w, h)
+  } else {
+    skyFor('spar', h, w, ctx)
+    drawChecker(ctx, h * 0.55, w, h, '#4d7c0f', '#365314', 16)
+  }
+  ctx.fillStyle = 'rgba(15,23,42,0.18)'
+  ctx.fillRect(0, 0, w, h)
+
+  const heroX = w * 0.28
+  const heroY = h * 0.58 + Math.sin(t * 3) * 3
+  drawHero(ctx, heroX, heroY, Math.min(92, h * 0.38))
+
+  const foes = [
+    { x: w * 0.62, y: h * 0.42, ph: 0 },
+    { x: w * 0.78, y: h * 0.62, ph: 1.4 },
+    { x: w * 0.7, y: h * 0.78, ph: 2.2 }
+  ]
+  for (let i = 0; i < foes.length; i++) {
+    const f = foes[i]
+    const bob = Math.sin(t * 2.4 + f.ph) * 4
+    const hit = Math.sin(t * 5 + f.ph) > 0.72
+    if (hit) {
+      ctx.fillStyle = 'rgba(255,255,255,0.45)'
+      ctx.beginPath()
+      ctx.arc(f.x, f.y + bob, 28, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    drawFoe(ctx, f.x, f.y + bob, Math.min(72, h * 0.3))
+  }
+
+  // 三柄飞剑绕场斩击
+  for (let i = 0; i < 3; i++) {
+    const ang = t * 3.2 + i * 2.1
+    const dash = 0.5 + 0.5 * Math.sin(t * 4 + i)
+    const sx = heroX + 30 + Math.cos(ang) * (40 + dash * 90)
+    const sy = heroY - 10 + Math.sin(ang * 1.3) * (24 + dash * 50)
+    ctx.save()
+    ctx.translate(sx, sy)
+    ctx.rotate(ang + 0.4)
+    ctx.globalAlpha = 0.35
+    ctx.strokeStyle = '#fde68a'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(-26, 0)
+    ctx.lineTo(-6, 0)
+    ctx.stroke()
+    ctx.globalAlpha = 1
+    paintInkSword(ctx, i === 0 ? '#f8fafc' : '#e2e8f0')
+    ctx.restore()
+  }
+
+  drawLabel(ctx, foeName ? ('飞剑斩 · ' + foeName) : '飞剑斩妖', w * 0.5, h * 0.9)
+}
+
 function drawPerson(ctx, x, y, scale, opts) {
   opts = opts || {}
   const s = scale || 1
@@ -139,7 +269,7 @@ function paintVillage(ctx, w, h, t, fx) {
   drawHouse(ctx, w * 0.38, h * 0.48, 1.5)
   const walk = fx === 'walk' ? Math.sin(t * 4) * 18 : 0
   const bob = Math.sin(t * 3) * 3
-  drawPerson(ctx, w * 0.22 + walk, h * 0.55 + bob, 1.6, { bob: 0 })
+  drawHero(ctx, w * 0.28 + walk, h * 0.62 + bob, 64)
   drawLabel(ctx, '小村', w * 0.5, h * 0.88)
   if (fx === 'glow' || fx === 'mist') {
     ctx.fillStyle = 'rgba(253,230,138,' + (0.08 + 0.08 * Math.sin(t * 2)) + ')'
@@ -173,7 +303,7 @@ function paintCliff(ctx, w, h, t, fx) {
   ctx.fillRect(24 + sway, h * 0.32, 22, 8)
   // climber
   const climbY = fx === 'climb' ? h * 0.55 - (Math.sin(t * 2) * 0.5 + 0.5) * h * 0.22 : h * 0.42
-  drawPerson(ctx, w * 0.48, climbY, 1.5, { body: '#2563eb' })
+  drawHero(ctx, w * 0.52, climbY + 20, 58)
   drawLabel(ctx, '炼骨崖', w * 0.72, h * 0.88)
   if (fx === 'slash') {
     ctx.strokeStyle = '#fde68a'
@@ -253,7 +383,7 @@ function paintMeditate(ctx, w, h, t, fx) {
   ctx.fillStyle = '#4c1d95'
   roundRect(ctx, cx - 36, h * 0.62, 72, 14, 4)
   ctx.fill()
-  drawPerson(ctx, cx - 11, h * 0.48, 1.5, { body: '#64748b', bob: Math.sin(t) * 2 })
+  drawHero(ctx, cx, h * 0.56 + Math.sin(t) * 2, 62)
   drawLabel(ctx, '打坐', cx, h * 0.88)
   if (fx === 'spirit' || fx === 'pulse') {
     ctx.strokeStyle = 'rgba(125,211,252,0.6)'
@@ -272,12 +402,8 @@ function paintSpar(ctx, w, h, t, fx) {
   roundRect(ctx, w * 0.15, h * 0.55, w * 0.7, h * 0.18, 6)
   ctx.fill()
   const bob = Math.sin(t * 5) * 4
-  drawPerson(ctx, w * 0.28, h * 0.42 + bob, 1.7, { body: '#2563eb' })
-  drawPerson(ctx, w * 0.58, h * 0.42 - bob, 1.7, {
-    head: '#65a30d',
-    body: '#3f6212',
-    leg: '#1a2e05'
-  })
+  drawHero(ctx, w * 0.32, h * 0.52 + bob, 68)
+  drawFoe(ctx, w * 0.68, h * 0.52 - bob, 64)
   drawLabel(ctx, '你', w * 0.32, h * 0.78)
   drawLabel(ctx, '对手', w * 0.62, h * 0.78)
   if (fx === 'slash' || fx === 'spar') {
@@ -312,7 +438,7 @@ function paintSpirit(ctx, w, h, t, fx) {
   ctx.fillRect(wx, h * 0.64, 40, 6)
   drawChecker(ctx, h * 0.7, w, h, '#166534', '#14532d', 16)
   drawTree(ctx, 20, h * 0.38, 1.3)
-  drawPerson(ctx, w * 0.35, h * 0.48, 1.5, { body: '#2563eb' })
+  drawHero(ctx, w * 0.38, h * 0.55, 64)
   // fallen
   ctx.save()
   ctx.translate(w * 0.58, h * 0.58)
@@ -332,7 +458,7 @@ function paintBoss(ctx, w, h, t, fx) {
   drawChecker(ctx, h * 0.7, w, h, '#44403c', '#292524', 16)
   ctx.fillStyle = 'rgba(248,113,113,' + (0.35 + 0.25 * Math.sin(t * 4)) + ')'
   ctx.fillRect(w * 0.48, 0, 10, h * 0.7)
-  drawPerson(ctx, w * 0.2, h * 0.48, 1.6, { body: '#2563eb' })
+  drawHero(ctx, w * 0.24, h * 0.55, 66)
   // boss
   ctx.fillStyle = '#171717'
   ctx.fillRect(w * 0.52, h * 0.32, 36, 28)
@@ -355,7 +481,7 @@ function paintBoss(ctx, w, h, t, fx) {
 function paintDefault(ctx, w, h, t, fx, scene) {
   skyFor(scene || 'ink', h, w, ctx)
   drawChecker(ctx, h * 0.7, w, h, '#4ade80', '#22c55e', 16)
-  drawPerson(ctx, w * 0.42, h * 0.5, 1.6, { bob: Math.sin(t * 2) * 3 })
+  drawHero(ctx, w * 0.46, h * 0.58 + Math.sin(t * 2) * 3, 64)
   drawLabel(ctx, '仙途', w * 0.5, h * 0.88)
 }
 
@@ -400,8 +526,13 @@ function play(canvas, cssW, cssH, opts) {
     _timer: null,
     scene: opts.scene || 'village',
     fx: opts.fx || 'mist',
+    fighting: !!opts.fighting,
+    foeName: opts.foeName || '',
     label: opts.label || ''
   }
+  loadCanvasImage(canvas, assetUrl('heroes/player_fixed.png'), 'player')
+  loadCanvasImage(canvas, assetUrl('bg_field.jpg'), 'grass')
+  loadCanvasImage(canvas, assetUrl('mobs/walker.png'), 'foe')
   const sys = typeof wx !== 'undefined' ? wx.getSystemInfoSync() : { pixelRatio: 2 }
   const dpr = Math.min(2, sys.pixelRatio || 2)
   const w = Math.max(200, cssW || 320)
@@ -417,8 +548,12 @@ function play(canvas, cssW, cssH, opts) {
     if (!handle._alive) return
     const t = (Date.now() - t0) / 1000
     ctx.clearRect(0, 0, w, h)
-    const painter = PAINTERS[handle.scene] || paintDefault
-    painter(ctx, w, h, t, handle.fx, handle.scene)
+    if (handle.fighting) {
+      paintDaoCombat(ctx, w, h, t, handle.foeName)
+    } else {
+      const painter = PAINTERS[handle.scene] || paintDefault
+      painter(ctx, w, h, t, handle.fx, handle.scene)
+    }
 
     // 角标
     ctx.fillStyle = 'rgba(15,23,42,0.82)'
@@ -457,6 +592,11 @@ function play(canvas, cssW, cssH, opts) {
     },
     setFx: function (fx) {
       if (fx) handle.fx = fx
+    },
+    setFighting: function (on, foeName) {
+      handle.fighting = !!on
+      if (foeName) handle.foeName = foeName
+      if (!on) handle.foeName = ''
     },
     setLabel: function (label) {
       handle.label = label || ''

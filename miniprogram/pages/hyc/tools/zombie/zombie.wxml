@@ -92,6 +92,7 @@
       <view class="ink-epitaph">章成</view>
       <view class="mask-sub">{{chapterUnit}} · {{chapterTitle}}</view>
       <view class="mask-sub soft">{{chapterClearSub}}</view>
+      <view class="mask-sub soft" wx:if="{{chapterHasNextChapter}}">约 1.5 秒后进入下一章</view>
       <view class="gate-btn-main" wx:if="{{chapterHasNextChapter}}" bindtap="onChapterNext">下一章</view>
       <view class="gate-btn-sub" bindtap="onChapterBackToList">章节目录</view>
     </view>
