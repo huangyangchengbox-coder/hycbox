@@ -1,0 +1,14 @@
+.git/
+.gitea/
+deploy/node_modules/
+deploy/*.bundle
+deploy/gitea-token.local
+**/application-local.yml
+*.md
+.idea/
+.vscode/
+target/classes/
+target/generated-sources/
+target/maven-archiver/
+target/maven-status/
+target/test-classes/

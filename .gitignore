@@ -1,0 +1,30 @@
+# Maven
+target/
+data/
+uploads/
+logs/
+*.log
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+
+# Deploy secrets / local
+deploy/node_modules/
+deploy/ssl/
+deploy/*-token*
+deploy/server.env
+*.mv.db
+*.trace.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+*.zip
+deploy/gitea-token.local
+deploy/*.local
+deploy/ssh.local.env
+deploy/*.bundle
+deploy/login-*.json

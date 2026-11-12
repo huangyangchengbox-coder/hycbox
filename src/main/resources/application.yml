@@ -1,0 +1,71 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: hyc-box-server
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  datasource:
+    url: ${HYCBOX_DB_URL:jdbc:mysql://127.0.0.1:3306/hycbox?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${HYCBOX_DB_USER:hycbox}
+    # 生产必须通过环境变量 / server.env 注入，禁止写入仓库
+    password: ${HYCBOX_DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+hycbox:
+  # 生产用 SeaweedFS；本地调试可在 application-local.yml 改回 local
+  storage-type: ${HYCBOX_STORAGE_TYPE:seaweedfs}
+  upload-dir: ./uploads
+  # 对外域名（可用环境变量覆盖）
+  public-base-url: ${HYCBOX_PUBLIC_BASE_URL:https://hychyr.top/api}
+  upload-public-url: ${HYCBOX_UPLOAD_PUBLIC_URL:https://hychyr.top/uploads}
+  seaweedfs:
+    filer-url: ${HYCBOX_SEAWEEDFS_FILER_URL:http://127.0.0.1:8888}
+    path-prefix: /uploads
+  admin-password: ${HYCBOX_ADMIN_PASSWORD:}
+  wx-app-id: ${HYCBOX_WX_APP_ID:}
+  wx-app-secret: ${HYCBOX_WX_APP_SECRET:}
+  # 仅 local profile + true 时允许清空重建演示数据
+  reset-demo-data: false
+  wx-subscribe-template-id: ${HYCBOX_WX_SUBSCRIBE_TEMPLATE_ID:}
+  # 用户订单进度模板（可选，不配则复用上面模板字段）
+  wx-user-order-template-id: ${HYCBOX_WX_USER_ORDER_TEMPLATE_ID:}
+  # release | trial | develop；体验实例在 server.env 设 HYCBOX_WX_MP_ENV_VERSION=trial
+  wx-mp-env-version: ${HYCBOX_WX_MP_ENV_VERSION:release}
+  ai:
+    api-key: ${HYCBOX_AI_API_KEY:}
+    base-url: ${HYCBOX_AI_BASE_URL:https://apihub.agnes-ai.com/v1}
+    model: ${HYCBOX_AI_MODEL:agnes-2.0-flash}
+    image-model: ${HYCBOX_AI_IMAGE_MODEL:agnes-image-2.0-flash}
+    video-model: ${HYCBOX_AI_VIDEO_MODEL:agnes-video-v2.0}
+  cloudflare-workers-ai:
+    account-id: ${HYCBOX_CF_ACCOUNT_ID:}
+    api-token: ${HYCBOX_CF_API_TOKEN:}
+    default-model: ${HYCBOX_CF_DEFAULT_MODEL:@cf/meta/llama-3.1-8b-instruct}
+  nvidia-nim-ai:
+    api-key: ${HYCBOX_NVIDIA_NIM_API_KEY:}
+    base-url: ${HYCBOX_NVIDIA_NIM_BASE_URL:https://integrate.api.nvidia.com/v1}
+    default-model: ${HYCBOX_NVIDIA_NIM_DEFAULT_MODEL:meta/llama-3.1-8b-instruct}
+
+logging:
+  level:
+    com.hycbox: info
+    root: info
+  file:
+    path: logs
+  charset:
+    console: UTF-8
+    file: UTF-8

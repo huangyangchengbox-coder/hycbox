@@ -1,0 +1,29 @@
+# 推送到 online：本机检出 → mvn package → Docker 镜像发布
+# 使用 host runner + Docker（不依赖 GitHub Actions 市场）
+name: Deploy Online
+
+on:
+  push:
+    branches:
+      - online
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: hyc-online
+    steps:
+      - name: Docker build and deploy
+        run: |
+          set -euo pipefail
+          WORK=/opt/hycbox/ci/hycBoxServer
+          BARE=/opt/gitea/data/gitea-repositories/hyc/hycboxserver.git
+          mkdir -p /opt/hycbox/ci
+          test -d "$BARE"
+          git config --global --add safe.directory "$BARE" || true
+          git config --global --add safe.directory "$WORK" || true
+          rm -rf "$WORK"
+          git clone --branch online "$BARE" "$WORK"
+          cd "$WORK"
+          echo "commit=$(git rev-parse --short HEAD)"
+          chmod +x deploy/ci-deploy.sh
+          bash deploy/ci-deploy.sh

@@ -1,0 +1,20 @@
+# 线上：host 网络，兼容现有 nginx → :8080 与 MySQL 127.0.0.1
+# 密钥放 /opt/hycbox/server.env（见 deploy/server.env.example）
+services:
+  hycbox:
+    image: hycbox-server:online
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hycbox
+    network_mode: host
+    restart: always
+    env_file:
+      - /opt/hycbox/server.env
+    environment:
+      TZ: Asia/Shanghai
+      JAVA_OPTS: -Xms128m -Xmx384m
+      LOG_PATH: /app/logs
+    volumes:
+      - /opt/hycbox/uploads:/app/uploads
+      - /opt/hycbox/logs:/app/logs
